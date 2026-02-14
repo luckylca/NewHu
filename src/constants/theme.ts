@@ -1,53 +1,62 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
+import { 
+  MD3LightTheme, 
+  MD3DarkTheme, 
+  adaptNavigationTheme 
+} from 'react-native-paper';
+import { 
+  DefaultTheme as NavigationDefaultTheme, 
+  DarkTheme as NavigationDarkTheme,
+} from '@react-navigation/native';
 
-import { Platform } from 'react-native';
+// 1. 定义品牌色
+const brandColor = '#4F46E5'; 
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+// 2. 将 React Navigation 的主题转换为适配 Paper 的格式
+const { LightTheme: AdaptedLightTheme, DarkTheme: AdaptedDarkTheme } = adaptNavigationTheme({
+  reactNavigationLight: NavigationDefaultTheme,
+  reactNavigationDark: NavigationDarkTheme,
+});
 
-export const Colors = {
-  light: {
-    text: '#11181C',
-    background: '#fff',
-    tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
+// 3. 构建最终的浅色主题
+export const AppLightTheme = {
+  ...MD3LightTheme,
+  ...AdaptedLightTheme, // 引入适配后的导航主题配置
+  colors: {
+    ...MD3LightTheme.colors,
+    ...AdaptedLightTheme.colors,
+    // 你的自定义颜色覆盖
+    primary: brandColor,
+    primaryContainer: '#E0E7FF',
+    secondary: '#4338CA',
+    background: '#FFFFFF',
+    surface: '#F8FAFC',
+    elevation: {
+        ...MD3LightTheme.colors.elevation,
+        level3: '#F8FAFC',
+    },
   },
-  dark: {
-    text: '#ECEDEE',
-    background: '#151718',
-    tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
-  },
+  // 关键修复：强制使用 Paper 的 MD3 字体配置，忽略 Navigation 的字体
+  fonts: MD3LightTheme.fonts, 
 };
 
-export const Fonts = Platform.select({
-  ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
-    serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
-    mono: 'ui-monospace',
+// 4. 构建最终的深色主题
+export const AppDarkTheme = {
+  ...MD3DarkTheme,
+  ...AdaptedDarkTheme,
+  colors: {
+    ...MD3DarkTheme.colors,
+    ...AdaptedDarkTheme.colors,
+    // 你的自定义颜色覆盖
+    primary: '#818CF8', // 深色模式提亮
+    primaryContainer: '#312E81',
+    secondary: '#6366F1',
+    background: '#0F172A', // 深蓝灰背景
+    surface: '#1E293B',
+    elevation: {
+        ...MD3DarkTheme.colors.elevation,
+        level3: '#1E293B',
+    },
   },
-  default: {
-    sans: 'normal',
-    serif: 'serif',
-    rounded: 'normal',
-    mono: 'monospace',
-  },
-  web: {
-    sans: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-    serif: "Georgia, 'Times New Roman', serif",
-    rounded: "'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif",
-    mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-  },
-});
+  // 关键修复：强制使用 Paper 的 MD3 字体配置
+  fonts: MD3DarkTheme.fonts,
+};

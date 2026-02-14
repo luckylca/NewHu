@@ -1,0 +1,56 @@
+import { useUserStore } from "@/src/stores/useUserStore";
+import { router } from "expo-router";
+import React from "react";
+import { Dimensions, ScrollView, TouchableOpacity, View } from 'react-native';
+import { Avatar, Button, Card, Portal, Text, useTheme } from 'react-native-paper';
+
+
+const { width: WindowWidth,height: WindowHeight } = Dimensions.get('window');
+
+const UserScreen = ({ navigation }: any) => {
+    const theme = useTheme();
+    const userStore = useUserStore();
+    const [isSwitchOn, setIsSwitchOn] = React.useState(false);
+    const onToggleSwitch = () => {
+        setIsSwitchOn(!isSwitchOn)
+    };
+
+    const [isLoading, setIsLoading] = React.useState(false);
+
+    return (
+            <ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: 'center', paddingBottom: 30,backgroundColor: theme.colors.background  }}>
+                
+                <Portal>
+                    <Text>1</Text>
+                </Portal>
+                <TouchableOpacity style={{ alignItems: 'center', marginTop: 30, width: '30%' }} activeOpacity={0.8} onPress={() => { router.push('/webview'); console.log('点击了登录'); }}>
+                    <Avatar.Icon size={100} icon="folder" style={{ marginTop: 30, marginBottom: 10 }} />
+                    <Card mode="elevated" style={{ marginBottom: 30, height: 40, justifyContent: 'center', alignItems: 'center' }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }}>
+                            <Text style={{ margin: 8, textAlign: 'center', fontSize: 18 }}>请登录</Text>
+                        </View>
+                    </Card>
+                </TouchableOpacity>
+                <Button mode="elevated" onPress={() => { router.push('/like'); }} 
+                    style={{ width: '80%', marginBottom: 20,height: 60,justifyContent: 'center' ,backgroundColor: theme.colors.primaryContainer }}
+                    contentStyle={{ height: 60, justifyContent: 'center', alignItems: 'center',flexDirection: 'row',backgroundColor: theme.colors.primaryContainer }}
+                    >
+                    <Text style={{ fontSize: 15,height: 60,textAlignVertical: 'center' }}>收藏列表</Text>
+                </Button>
+                <Button mode="elevated" onPress={() => { router.push('/browse'); }} 
+                    style={{ width: '80%', marginBottom: 20,height: 60,justifyContent: 'center' ,backgroundColor: theme.colors.primaryContainer }}
+                    contentStyle={{ height: 60, justifyContent: 'center', alignItems: 'center',flexDirection: 'row',backgroundColor: theme.colors.primaryContainer }}
+                    >
+                    <Text style={{ fontSize: 15,height: 60,textAlignVertical: 'center' }}>浏览列表</Text>
+                </Button>
+                <Button mode="elevated" onPress={() => { router.push('/settings'); }} 
+                    style={{ width: '80%', marginBottom: 20 ,height: 60,justifyContent: 'center' ,backgroundColor: theme.colors.primaryContainer }}
+                    contentStyle={{ height: 60, justifyContent: 'center', alignItems: 'center',flexDirection: 'row',backgroundColor: theme.colors.primaryContainer }}
+                    >
+                    <Text style={{ fontSize: 15,height: 60,textAlignVertical: 'center' }}>设置</Text>
+                </Button>
+            </ScrollView>
+    );
+}
+
+export default UserScreen;
