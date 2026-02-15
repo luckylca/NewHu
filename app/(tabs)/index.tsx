@@ -1,14 +1,71 @@
 import React from 'react';
-import { Dimensions, View } from 'react-native';
-import { Text } from 'react-native-paper';
+import PagerView from 'react-native-pager-view';
+import { View, StyleSheet } from 'react-native';
+import HomeScreen from '../home';
+import UserScreen from '../user';
+import CustomTabNav,{tabRoute} from '@/src/components/CustomTabNav';
 
-const { width: WindowWidth } = Dimensions.get('window');
+const MainScreens = () => {
 
-const HomeScreen = ({ navigation }: any) => {
+    const [activeIndex, setActiveIndex] = React.useState(0);
+    const pageViewRef = React.useRef<PagerView>(null);
+
+    const routes: tabRoute[] = React.useMemo(() => [
+        { key: 'home', title: '首页', icon: 'home' },
+        { key: 'user', title: '我的', icon: 'account' }
+    ], []);
+
+    const handlePageSelected = (e: any) => {
+        setActiveIndex(e.nativeEvent.position);
+    };
+
+    const handleTabPress = (index: number) => {
+        setActiveIndex(index);
+        pageViewRef.current?.setPage(index);
+    }
+
     return (
-        <View style={{ marginTop: WindowWidth * 0.1, flex: 1 }}>
-            <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#333', margin: 16 }}>欢迎！</Text>
+        <View style={styles.container}>
+            {/* 8. 身体部分：PagerView */}
+            <PagerView
+                ref={pageViewRef}           // 挂上钩子
+                style={styles.pagerView} // 样式
+                initialPage={0}          // 初始在第 0 页
+                onPageSelected={handlePageSelected} // 监听滑动结束事件
+            >
+                {/* 第 0 页：首页 */}
+                <View key="home_page" style={styles.pageWrapper}>
+                    <HomeScreen />
+                </View>
+                {/* 第 1 页：用户 */}
+                <View key="user_page" style={styles.pageWrapper}>
+                    <UserScreen />
+                </View>
+            </PagerView>
+
+            {/* 9. 遥控器部分：CustomTabBar */}
+            <CustomTabNav
+                activeIndex={activeIndex}      // 告诉它：现在哪一页是激活的（用来变色）
+                onIndexChange={handleTabPress} // 告诉它：有人按按钮时，执行这个函数
+                routes={routes}                // 告诉它：有哪些按钮要渲染
+            />
         </View>
-    );
+    )
 }
-export default HomeScreen;
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: 'transparent',
+    },
+    pagerView: {
+        flex: 1,
+        backgroundColor: 'transparent',
+    },
+    pageWrapper: {
+        flex: 1,
+        backgroundColor: 'transparent',
+    }
+});
+
+export default MainScreens;

@@ -32,7 +32,8 @@ const ZhihuLoginWebView = () => {
                 const data:any = await apiInstance.getMe()
                 if(data.name){
                     setStatueText(`${data.name} 登录成功，三秒后返回`);
-                    userStore.login(data.name, cookieString);
+                    userStore.login(data.name, cookieString, data.avatar_url);
+                    
                     setTimeout(() => {
                         setModalVisible(false);
                         router.back();

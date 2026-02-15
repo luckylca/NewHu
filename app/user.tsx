@@ -17,17 +17,26 @@ const UserScreen = ({ navigation }: any) => {
 
     const [isLoading, setIsLoading] = React.useState(false);
 
+    const handlePress = ()=>{
+        if(userStore.isLoggedIn){
+            router.push('/userinfo');
+        }
+        else{
+            router.push('/webview');
+        }
+    }
+
     return (
             <ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: 'center', paddingBottom: 30,backgroundColor: theme.colors.background  }}>
                 
                 <Portal>
                     <Text>1</Text>
                 </Portal>
-                <TouchableOpacity style={{ alignItems: 'center', marginTop: 30, width: '30%' }} activeOpacity={0.8} onPress={() => { router.push('/webview'); console.log('点击了登录'); }}>
-                    <Avatar.Icon size={100} icon="folder" style={{ marginTop: 30, marginBottom: 10 }} />
+                <TouchableOpacity style={{ alignItems: 'center', marginTop: 30, width: '30%' }} activeOpacity={0.8} onPress={handlePress}>
+                    <Avatar.Image size={100} source={{ uri: userStore.avatar }} style={{ marginTop: 30, marginBottom: 10 }} />
                     <Card mode="elevated" style={{ marginBottom: 30, height: 40, justifyContent: 'center', alignItems: 'center' }}>
                         <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }}>
-                            <Text style={{ margin: 8, textAlign: 'center', fontSize: 18 }}>请登录</Text>
+                            <Text style={{ margin: 8, textAlign: 'center', fontSize: 18 }}>{userStore.username || '请登录'}</Text>
                         </View>
                     </Card>
                 </TouchableOpacity>

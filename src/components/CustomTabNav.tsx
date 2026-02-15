@@ -4,43 +4,30 @@ import { Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {useRouter} from 'expo-router';
+
+interface tabRoute {
+    key: string;
+    title: string;
+    icon: string;
+}
+
+interface customTabNavProps {
+    activeIndex: number;
+    onIndexChange: (index: number) => void;
+    routes: tabRoute[];
+}
 
 const { width } = Dimensions.get('window');
 
-const TabItem = ({ route, index, state, descriptors, navigation, theme }: any) => {
-    const { options } = descriptors[route.key];
-    const label =
-        options.tabBarLabel !== undefined
-            ? options.tabBarLabel
-            : options.title !== undefined
-                ? options.title
-                : route.name;
+const TabItem = ({ route, index, activeIndex, onIndexChange, theme }: any) => {
 
-    const isFocused = state.index === index;
-
+    const isFocused = activeIndex === index;
     const onPress = () => {
-        const event = navigation.emit({
-            type: 'tabPress',
-            target: route.key,
-            canPreventDefault: true,
-        });
-
-        if (!isFocused && !event.defaultPrevented) {
-            navigation.navigate(route.name);
+        if (!isFocused) {
+            onIndexChange(index);
         }
     };
-
-    const onLongPress = () => {
-        navigation.emit({
-            type: 'tabLongPress',
-            target: route.key,
-        });
-    };
-
-    // Icon logic
-    const iconName =
-        route.name === 'index' ? 'home' :
-            route.name === 'user' ? 'account' : 'help-circle';
     // Tab Item Animation
     const scale = useRef(new Animated.Value(0)).current;
     const opacity = useRef(new Animated.Value(0)).current;
@@ -64,23 +51,20 @@ const TabItem = ({ route, index, state, descriptors, navigation, theme }: any) =
             key={route.key}
             accessibilityRole="button"
             accessibilityState={isFocused ? { selected: true } : {}}
-            accessibilityLabel={options.tabBarAccessibilityLabel}
-            testID={options.tabBarTestID}
             onPress={onPress}
-            onLongPress={onLongPress}
             style={styles.tabItem}
             activeOpacity={0.8}
         >
             <Animated.View style={{ transform: [{ scale }], opacity, alignItems: 'center' }}>
                 <MaterialCommunityIcons
-                    name={iconName}
+                    name={route.icon}
                     size={24}
                     color={isFocused ? theme.colors.primary : theme.colors.onSurfaceVariant}
                 />
                 {isFocused && (
                     <Animated.View style={{ opacity }}>
                         <Text variant="labelSmall" style={{ color: theme.colors.primary, fontWeight: 'bold', marginTop: 2 }}>
-                            {label as string}
+                            {route.title}
                         </Text>
                     </Animated.View>
                 )}
@@ -89,7 +73,7 @@ const TabItem = ({ route, index, state, descriptors, navigation, theme }: any) =
     );
 };
 
-const CustomTabNav = ({ state, descriptors, navigation }: BottomTabBarProps) => {
+const CustomTabNav = ({ activeIndex, onIndexChange, routes }: customTabNavProps) => {
     const theme = useTheme();
     const insets = useSafeAreaInsets();
     const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -98,7 +82,7 @@ const CustomTabNav = ({ state, descriptors, navigation }: BottomTabBarProps) => 
     const translateValue = useRef(new Animated.Value(0)).current;
 
     // Calculate tab width based on number of tabs
-    const tabWidth = (width - 40) / state.routes.length; // 40 is total horizontal margin
+    const tabWidth = (width - 40) / routes.length;
 
     useEffect(() => {
         const keyboardDidShowListener = Keyboard.addListener(
@@ -118,13 +102,13 @@ const CustomTabNav = ({ state, descriptors, navigation }: BottomTabBarProps) => 
 
     useEffect(() => {
         Animated.spring(translateValue, {
-            toValue: state.index * tabWidth,
+            toValue: activeIndex * tabWidth,
             useNativeDriver: true,
             damping: 15,
             mass: 1,
             stiffness: 100,
         }).start();
-    }, [state.index, tabWidth, translateValue]);
+    }, [activeIndex, tabWidth, translateValue]);
 
     if (keyboardVisible) return null; // Hide tab bar when keyboard is open
 
@@ -143,14 +127,13 @@ const CustomTabNav = ({ state, descriptors, navigation }: BottomTabBarProps) => 
                     ]}
                 />
 
-                {state.routes.map((route, index) => (
+                {routes.map((route, index) => (
                     <TabItem
                         key={route.key}
+                        onIndexChange={onIndexChange}
                         route={route}
                         index={index}
-                        state={state}
-                        descriptors={descriptors}
-                        navigation={navigation}
+                        activeIndex={activeIndex}
                         theme={theme}
                     />
                 ))}
@@ -197,3 +180,4 @@ const styles = StyleSheet.create({
 });
 
 export default CustomTabNav;
+export type { tabRoute };

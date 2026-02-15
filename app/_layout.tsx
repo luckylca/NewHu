@@ -17,6 +17,7 @@ export default function RootLayout() {
 				<Stack.Screen name="browse" options={{ title: '浏览历史', headerShown: false }} />
 				<Stack.Screen name="webview" options={{ title: '登录', headerShown: false }} />
 				<Stack.Screen name="search" options={{ title: '搜索', headerShown: false }} />
+				<Stack.Screen name="userinfo" options={{ title: '用户信息', headerShown: false }} />
 			</Stack>
 		</PaperProvider>
 	);

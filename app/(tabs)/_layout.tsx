@@ -1,14 +1,9 @@
-import { Tabs } from 'expo-router';
-import CustomTabNav from '@/src/components/CustomTabNav'; 
+import { Stack } from 'expo-router';
 
 export default function TabLayout() {
   return (
-    <Tabs
-      tabBar={(props) => <CustomTabNav {...props} />}
-      screenOptions={{ headerShown: false }}
-    >
-      <Tabs.Screen name="index" options={{ title: '首页' }} />
-      <Tabs.Screen name="user" options={{ title: '用户' }} />
-    </Tabs>
+    <Stack>
+      <Stack.Screen name="index" options={{ headerShown: false }} />
+    </Stack>
   );
 }
