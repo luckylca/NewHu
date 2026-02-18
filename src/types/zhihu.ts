@@ -16,6 +16,7 @@ interface SimpleAnswer {
     id: string;
     excerpt: string;
     voteup_count: number;
+    favorite_count: number;
     comment_count: number;
     question: {
         id: string;
@@ -26,6 +27,10 @@ interface SimpleArticle {
     id: string;
     title: string;
     excerpt: string;
+
+    voteup_count: number;
+    favorite_count: number;
+    comment_count: number;
 }
 
 type FeedType = 'answer' | 'article';
@@ -81,3 +86,6 @@ type FeedItemInfo =
         isPaid: boolean;
         item: SimpleArticle;
     };
+
+
+export type { PeopleInfo, SimpleAnswer, SimpleArticle, FeedType, Answer, Article, FeedItemInfo };
