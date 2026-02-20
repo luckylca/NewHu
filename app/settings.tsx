@@ -108,7 +108,7 @@ const SettingsScreen = ({ navigation: _navigation }: any) => {
                 </Dialog>
             </Portal>
             <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 30, backgroundColor: theme.colors.background }}>
-                <Appbar.Header style={{ backgroundColor: theme.colors.surface, elevation: 0 }}>
+                <Appbar.Header style={{ backgroundColor: 'transparent', elevation: 0 }}>
                     <Appbar.BackAction onPress={() => router.back()} />
                     <Appbar.Content title="设置" />
                 </Appbar.Header>

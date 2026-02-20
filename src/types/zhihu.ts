@@ -15,22 +15,23 @@ interface PeopleInfo {
 interface SimpleAnswer {
     id: string;
     excerpt: string;
-    voteup_count: number;
-    favorite_count: number;
-    comment_count: number;
-    question: {
-        id: string;
-        title: string;
-    };
+    authorName: string;
+
+    voteCount: number;
+    favoriteCount: number;
+    commentCount: number;
+
+    questionId: string;
+    questionTitle: string;
 }
 interface SimpleArticle {
     id: string;
     title: string;
     excerpt: string;
-
-    voteup_count: number;
-    favorite_count: number;
-    comment_count: number;
+    authorName: string;
+    voteCount: number;
+    favoriteCount: number;
+    commentCount: number;
 }
 
 type FeedType = 'answer' | 'article';

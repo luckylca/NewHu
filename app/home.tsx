@@ -1,61 +1,191 @@
-import React from 'react';
-import { Dimensions, ScrollView, View } from 'react-native';
-import { Card, Text,TextInput } from 'react-native-paper';
+import { getApiInstance, getRecommend } from '@/src/api/ZhihuApi';
+import { useContentStore } from '@/src/stores/useContentStore';
+import { useUserStore } from '@/src/stores/useUserStore';
+import React, { useEffect, useRef, useState } from 'react';
+import { Dimensions, FlatList, Pressable, View } from 'react-native';
+import { Card, Icon, Text, TextInput } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {PeopleInfo, SimpleAnswer, SimpleArticle, FeedType, Answer, Article, FeedItemInfo} from '@/src/types/zhihu';
 
 const { width: WindowWidth } = Dimensions.get('window');
 
-
-
-interface RenderItem {
-    question: string;
-    question_author: string;
-    description: string;
-}
-
-
-
-const renderItem = (item:any,type:string) => {
-
-    const title = type === 'answer' ? (item as SimpleAnswer).question.title : (item as SimpleArticle).title;
-    const excerpt = type === 'answer' ? (item as SimpleAnswer).excerpt : (item as SimpleArticle).excerpt;
-    const voteup_count = type === 'answer' ? (item as SimpleAnswer).voteup_count : (item as SimpleArticle).voteup_count;
-    const favorite_count = type === 'answer' ? (item as SimpleAnswer).favorite_count : (item as SimpleArticle).favorite_count;
-    const comment_count = type === 'answer' ? (item as SimpleAnswer).comment_count : (item as SimpleArticle).comment_count;
+const renderItem = (item: any, type: string) => {
+    const title = type === 'answer' ? item.questionTitle : item.title;
 
     return (
-        <Card            
-            mode="contained"
-            style={{ width: WindowWidth * 0.9, marginBottom: 20, padding: 10 }}
+        <Pressable
+            onPress={() => console.log('点击了', item.id)}
+            android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
+            style={{
+                width: WindowWidth * 0.9,
+                marginBottom: 10,
+                borderRadius: 16,
+                overflow: 'hidden'
+            }}
         >
-            <Card.Title title={title} />
-            <Card.Content>
-                <Text>{excerpt}</Text>
-                <Text>点赞数: {voteup_count}, 收藏数: {favorite_count}, 评论数: {comment_count}</Text>
-            </Card.Content>
-        </Card>
+            <Card
+                mode="contained"
+                style={{ borderRadius: 16, overflow: 'hidden' }}
+            >
+                <Card.Content style={{ paddingVertical: 8 }}>
+                <Text
+                    variant="titleMedium"
+                    style={{ fontWeight: 'bold', marginBottom: 8 }}
+                    numberOfLines={2}
+                >
+                    {title}
+                </Text>
+
+                <Text
+                    variant="bodyMedium"
+                    style={{ color: '#49454F', marginBottom: 10, lineHeight: 20 }}
+                    numberOfLines={3}
+                >
+                    {item.excerpt}
+                </Text>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
+                        <Icon source="thumb-up-outline" size={16} color="#49454F" />
+                        <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
+                            {item.voteCount}
+                        </Text>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
+                        <Icon source="star-outline" size={16} color="#49454F" />
+                        <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
+                            {item.favoriteCount}
+                        </Text>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
+                        <Icon source="comment-outline" size={16} color="#49454F" />
+                        <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
+                            {item.commentCount}
+                        </Text>
+                    </View>
+                </View>
+                </Card.Content>
+            </Card>
+        </Pressable>
     );
 };
 
-
 const HomeScreen = ({ navigation }: any) => {
-
     const insets = useSafeAreaInsets();
+    const contentStore = useContentStore();
+    const userStore = useUserStore();
+    // 1. 状态管理：是否正在下拉刷新，是否正在上拉加载
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+    // 2. 使用 useRef 保存 token，这样每次组件刷新它不会被清空重置
+    const sessionTokenRef = useRef("");
+
+    const processFeedItem = (item: any) => {
+        const target = item.target;
+        const isAds = !!item.promotion_extra;
+        const isPaid = !!(target.paid_info || target.answer_type === 'paid');
+        if (isAds || isPaid) {
+            return null; // 过滤掉广告和付费内容
+        }
+        if (target.type === 'answer' || target.type === 'article') {
+            return {
+                feedType: target.type,
+                isAds: isAds,
+                isPaid: isPaid,
+                item: {
+                    id: target.id,
+                    title: target.title || '无标题',
+                    questionTitle: target.question?.title || '未知问题',
+                    questionId: target.question?.id || '',
+                    authorName: target.author?.name || '匿名用户',
+                    excerpt: target.excerpt || '',
+                    voteCount: target.voteup_count || 0,
+                    favoriteCount: target.favorite_count || 0,
+                    commentCount: target.comment_count || 0,
+                }
+            };
+        }
+        return null;
+    };
+
+    // 3. 核心加载函数：isRefresh 区分是下拉刷新还是上拉加载
+    const loadData = async (isRefresh = false) => {
+        // 防抖：如果正在加载中，就不要重复请求
+        if (isRefreshing || isLoadingMore) return;
+
+        if (isRefresh) {
+            setIsRefreshing(true);
+            sessionTokenRef.current = ""; // 下拉刷新重置 token
+        } else {
+            setIsLoadingMore(true);
+        }
+
+        try {
+            // 这里假设你的 getRecommend 可以接收 token 参数，比如 getRecommend(token)
+            const res = await getRecommend(sessionTokenRef.current);
+            const data = res.data as any[];
+
+            // 注意：这里去掉了原来可能会引发错误的隐式优先级，明确加上了括号
+            const cleanData = data.filter((item) => item.target && (item.target.type === 'answer' || item.target.type === 'article'));
+            const processedItems = cleanData.map(processFeedItem).filter(Boolean); // 过滤掉 null
+
+            if (isRefresh) {
+                // 下拉刷新：直接替换整个列表
+                contentStore.setFeedList(processedItems);
+            } else {
+                // 上拉加载：在原有列表后面追加新数据
+                const mergedData = [...contentStore.feedList, ...processedItems];
+                const uniqueData = mergedData.filter((v, i, a) =>
+                    a.findIndex(t => t.item.id === v.item.id) === i
+                );
+                contentStore.setFeedList(uniqueData);
+            }
+
+            // 保存下一页的 token
+            const urlString = res.paging.next;
+            try {
+                const url = new URL(urlString);
+                const token = url.searchParams.get('session_token');
+
+                if (token) {
+                    sessionTokenRef.current = token;
+                }
+            } catch (e) {
+                console.error('URL 格式不正确', e);
+            }
+        } catch (error) {
+            console.error('获取数据失败:', error);
+        } finally {
+            setIsRefreshing(false);
+            setIsLoadingMore(false);
+        }
+    };
+
+    useEffect(() => {
+        getApiInstance(userStore.cookies); // 确保 API 实例使用了最新的 Cookie
+        loadData(true);
+    }, []);
 
     return (
-        <ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: 'center',marginTop: insets.top }}>
+        <View style={{ flex: 1, alignItems: 'center', marginTop: insets.top }}>
             <TextInput
                 label="搜索"
                 mode="flat"
-                style={{ width: '90%', marginBottom: 20,borderRadius: 5 }}
+                style={{ width: '90%', marginBottom: 20, borderRadius: 5 }}
                 left={<TextInput.Icon icon="magnify" />}
             />
-
-
-
-
-        </ScrollView>
+            <FlatList
+                data={contentStore.feedList}
+                renderItem={({ item }) => renderItem(item.item, item.feedType)}
+                keyExtractor={(item) => item.item.id.toString()}
+                refreshing={isRefreshing} // 绑定下拉圈圈的显示状态
+                onRefresh={() => loadData(true)} // 触发下拉时执行的方法
+                onEndReached={() => loadData(false)} // 列表滑动到底部时触发的方法
+                onEndReachedThreshold={0.8} // 距离底部还有 50% 列表长度时，提前触发加载（实现无感）
+            />
+        </View>
     );
 }
 export default HomeScreen;
