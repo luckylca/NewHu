@@ -23,6 +23,7 @@ interface ZhihuAPI {
     favoriteAnswer(answerId: string): Promise<any>;
     unfavoriteAnswer(answerId: string): Promise<any>;
     search(keyword: string, offset?: number, type?: string): Promise<any>;
+
 }
 
 
@@ -159,7 +160,7 @@ class ZhihuAPI {
      * @param {number} offset - 偏移量
      */
     async getComments(id: string, type: string, offset: number = 0) {
-        return this.client.get(`https://www.zhihu.com/api/v4/${type}/${id}/root_comments?limit=20&offset=${offset}&order=normal`);
+        return this.client.get(`https://www.zhihu.com/api/v4/comment_v5/${type}/${id}/root_comment?limit=20&offset=${offset}&order=normal`);
     }
 
     // ==================== 收藏相关 ====================
@@ -190,6 +191,29 @@ class ZhihuAPI {
      */
     async search(keyword: string, offset: number = 0, type: string = 'general') {
         return this.client.get(`https://www.zhihu.com/api/v4/search_v3?t=${type}&q=${encodeURIComponent(keyword)}&offset=${offset}&limit=20`);
+    }
+    // ==================== 历史记录相关 ====================
+
+    /**
+     * 添加阅读历史记录
+     * @param {string} contentToken 资源的ID (例如文章ID或回答ID)
+     * @param {string} contentType 资源类型 (例如 'article', 'answer', 'question')
+     */
+    async addReadHistory(contentToken: string, contentType = 'article') {
+        const payload = {
+            content_token: String(contentToken),
+            content_type: contentType
+        };
+        // 传入第三个参数 true，让 client 以 application/json 格式发起 POST 请求
+        return this.client.post('https://www.zhihu.com/api/v4/read_history/add', payload, true);
+    }
+
+    /**
+     * 获取阅读历史列表
+     * @param {number|string} offset 翻页偏移量，默认 0
+     */
+    async getReadHistory(offset:number = 0) {
+        return this.client.get(`https://www.zhihu.com/api/v4/unify-consumption/read_history?offset=${offset}&limit=20`);
     }
 }
 

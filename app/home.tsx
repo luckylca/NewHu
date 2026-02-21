@@ -1,75 +1,16 @@
 import { getApiInstance, getRecommend } from '@/src/api/ZhihuApi';
 import { useContentStore } from '@/src/stores/useContentStore';
 import { useUserStore } from '@/src/stores/useUserStore';
+import { router } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Dimensions, FlatList, Pressable, View } from 'react-native';
 import { Card, Icon, Text, TextInput } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+
 const { width: WindowWidth } = Dimensions.get('window');
 
-const renderItem = (item: any, type: string) => {
-    const title = type === 'answer' ? item.questionTitle : item.title;
 
-    return (
-        <Pressable
-            onPress={() => console.log('点击了', item.id)}
-            android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
-            style={{
-                width: WindowWidth * 0.9,
-                marginBottom: 10,
-                borderRadius: 16,
-                overflow: 'hidden'
-            }}
-        >
-            <Card
-                mode="contained"
-                style={{ borderRadius: 16, overflow: 'hidden' }}
-            >
-                <Card.Content style={{ paddingVertical: 8 }}>
-                <Text
-                    variant="titleMedium"
-                    style={{ fontWeight: 'bold', marginBottom: 8 }}
-                    numberOfLines={2}
-                >
-                    {title}
-                </Text>
-
-                <Text
-                    variant="bodyMedium"
-                    style={{ color: '#49454F', marginBottom: 10, lineHeight: 20 }}
-                    numberOfLines={3}
-                >
-                    {item.excerpt}
-                </Text>
-
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
-                        <Icon source="thumb-up-outline" size={16} color="#49454F" />
-                        <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
-                            {item.voteCount}
-                        </Text>
-                    </View>
-
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
-                        <Icon source="star-outline" size={16} color="#49454F" />
-                        <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
-                            {item.favoriteCount}
-                        </Text>
-                    </View>
-
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
-                        <Icon source="comment-outline" size={16} color="#49454F" />
-                        <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
-                            {item.commentCount}
-                        </Text>
-                    </View>
-                </View>
-                </Card.Content>
-            </Card>
-        </Pressable>
-    );
-};
 
 const HomeScreen = ({ navigation }: any) => {
     const insets = useSafeAreaInsets();
@@ -97,13 +38,23 @@ const HomeScreen = ({ navigation }: any) => {
                 item: {
                     id: target.id,
                     title: target.title || '无标题',
-                    questionTitle: target.question?.title || '未知问题',
-                    questionId: target.question?.id || '',
                     authorName: target.author?.name || '匿名用户',
+                    authorUrlToken: target.author?.url_token || '',
+                    authorAvatar: target.author?.avatar_url || '',
                     excerpt: target.excerpt || '',
+                    updatedTime: item.updated_time || 0,
                     voteCount: target.voteup_count || 0,
                     favoriteCount: target.favorite_count || 0,
                     commentCount: target.comment_count || 0,
+
+                    content: target.content || "",
+                    questionTitle: target.question?.title || '未知问题',
+                    questionId: target.question?.id || '',
+                    questionAuthorName: target.question?.author?.name || '匿名用户',
+                    questionAuthorAvatar: target.question?.author?.avatar_url || '',
+                    questionAuthorUrlToken: target.question?.author?.url_token || '',
+                    questionAnswerCount: target.question?.answer_count || 0,
+                    questionCreatedTime: target.question?.created || 0,
                 }
             };
         }
@@ -166,7 +117,75 @@ const HomeScreen = ({ navigation }: any) => {
     useEffect(() => {
         getApiInstance(userStore.cookies); // 确保 API 实例使用了最新的 Cookie
         loadData(true);
+        loadData(false);
     }, []);
+
+
+    const openItem = (id:string, type:string) => {
+        router.push(`/item?id=${id}&type=${type}`);
+    }
+
+    const renderItem = (item: any, type: string) => {
+        const title = type === 'answer' ? item.questionTitle : item.title;
+        return (
+            <Pressable
+                onPress={() => openItem(item.id, type)}
+                android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
+                style={{
+                    width: WindowWidth * 0.9,
+                    marginBottom: 10,
+                    borderRadius: 16,
+                    overflow: 'hidden',
+                    backgroundColor: '#F3EDF7'
+                }}
+            >
+                <Card
+                    mode="contained"
+                    style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: 'transparent' }}
+                >
+                    <Card.Content style={{ paddingVertical: 8 }}>
+                        <Text
+                            variant="titleMedium"
+                            style={{ fontWeight: 'bold', marginBottom: 8 }}
+                            numberOfLines={2}
+                        >
+                            {title}
+                        </Text>
+
+                        <Text
+                            variant="bodyMedium"
+                            style={{ color: '#49454F', marginBottom: 10, lineHeight: 20 }}
+                            numberOfLines={3}
+                        >
+                            {item.excerpt}
+                        </Text>
+
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
+                                <Icon source="thumb-up-outline" size={16} color="#49454F" />
+                                <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
+                                    {item.voteCount}
+                                </Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
+                                <Icon source="star-outline" size={16} color="#49454F" />
+                                <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
+                                    {item.favoriteCount}
+                                </Text>
+                            </View>
+
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
+                                <Icon source="comment-outline" size={16} color="#49454F" />
+                                <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
+                                    {item.commentCount}
+                                </Text>
+                            </View>
+                        </View>
+                    </Card.Content>
+                </Card>
+            </Pressable>
+        );
+    };
 
     return (
         <View style={{ flex: 1, alignItems: 'center', marginTop: insets.top }}>
@@ -184,6 +203,7 @@ const HomeScreen = ({ navigation }: any) => {
                 onRefresh={() => loadData(true)} // 触发下拉时执行的方法
                 onEndReached={() => loadData(false)} // 列表滑动到底部时触发的方法
                 onEndReachedThreshold={0.8} // 距离底部还有 50% 列表长度时，提前触发加载（实现无感）
+                showsVerticalScrollIndicator={false}
             />
         </View>
     );

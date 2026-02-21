@@ -42,34 +42,38 @@ interface Answer {
     excerpt: string;
     content: string;
     visited_count: number;
-    created_time: number;
+    updatedTime: number;
       // 统计数据
     voteup_count: number;
     comment_count: number;
     favorite_count: number;
-    author: PeopleInfo;
+    authorName: string;
+    authorUrlToken: string;
+    authorAvatar: string;
     isVisited: boolean; // 这个字段需要我们自己添加，用于标记是否已访问过
-    question: {
-        id: string;
-        title: string;
-        author: PeopleInfo;
-        answer_count: number;
-        created_time: number;
-    };
+
+    questionId: string;
+    questionTitle: string;
+    questionAuthorName: string;
+    questionAuthorAvatar: string;
+    questionAuthorUrlToken: string;
+    questionAnswerCount: number;
+    questionCreatedTime: number;
 }
 
 interface Article {
     id: string;
     title: string;
     excerpt: string;
-    author: PeopleInfo;
-
+    authorName: string;
+    authorUrlToken: string;
+    authorAvatar: string;
     voteup_count: number;
     comment_count: number;
     favorite_count: number;
      // 统计数据
-    created_time: number;
-
+    updatedTime: number;
+    content:string;
     isVisited: boolean; // 这个字段需要我们自己添加，用于标记是否已访问过
 }
 
@@ -79,13 +83,13 @@ type FeedItemInfo =
         feedType: 'answer';
         isAds: boolean;
         isPaid: boolean;
-        item: SimpleAnswer;
+        item: Answer;
     }
     | {
         feedType: 'article';
         isAds: boolean;
         isPaid: boolean;
-        item: SimpleArticle;
+        item: Article;
     };
 
 

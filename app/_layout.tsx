@@ -75,6 +75,7 @@ export default function RootLayout() {
 					<Stack.Screen name="webview" options={{ title: '登录' }} />
 					<Stack.Screen name="search" options={{ title: '搜索' }} />
 					<Stack.Screen name="userinfo" options={{ title: '用户信息' }} />
+					<Stack.Screen name="item" options={{ title: '详情'}} />
 				</Stack>
 			</ThemeProvider>
 		</PaperProvider>

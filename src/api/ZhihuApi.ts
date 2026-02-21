@@ -118,3 +118,15 @@ export async function search(keyword: string, offset: number = 0, type: string =
     const data = await requireApiInstance().search(keyword, offset, type);
     return data;
 }
+
+// 添加阅读历史。
+export async function addReadHistory(contentToken: string, contentType = "article") {
+    const data = await requireApiInstance().addReadHistory(contentToken, contentType);
+    return data;
+}
+
+// 获取阅读历史列表。
+export async function getReadHistory(offset: number = 0) {
+    const data = await requireApiInstance().getReadHistory(offset);
+    return data;
+}
