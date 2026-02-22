@@ -42,7 +42,7 @@ const HomeScreen = ({ navigation }: any) => {
                     authorUrlToken: target.author?.url_token || '',
                     authorAvatar: target.author?.avatar_url || '',
                     excerpt: target.excerpt || '',
-                    updatedTime: item.updated_time || 0,
+                    updatedTime: target.updated_time || target.created || 0,
                     voteCount: target.voteup_count || 0,
                     favoriteCount: target.favorite_count || 0,
                     commentCount: target.comment_count || 0,

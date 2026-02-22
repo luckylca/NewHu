@@ -1,15 +1,19 @@
-import React from "react";
-import { View, ScrollView, useWindowDimensions, Pressable } from "react-native";
-import { Appbar, Text, Avatar, Divider, useTheme } from "react-native-paper";
-import { useLocalSearchParams, useRouter } from "expo-router";
 import { useContentStore } from "@/src/stores/useContentStore";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useRef,useState } from "react";
+import { Pressable, ScrollView, useWindowDimensions, View, TouchableOpacity, Image } from "react-native";
+import { Appbar, Avatar, Divider, Portal, Text, useTheme } from "react-native-paper";
 import RenderHtml from 'react-native-render-html';
+import ImageReanimatedModal from "@/src/components/ImageReanimatedModal";
 
 export default function Item() {
     const { id, type } = useLocalSearchParams();
     const contentStore = useContentStore();
     const router = useRouter();
     const theme = useTheme();
+    const [orgin, setOrigin] = useState({ x: 0, y: 0, width: 0, height: 0 });
+    const [modalVisible, setModalVisible] = useState(false);
+    const [imageUrl, setImageUrl] = useState("");
     const { width } = useWindowDimensions();
 
     const readData = contentStore.feedList.find((item) => String(item.item.id) === String(id))?.item;
@@ -25,7 +29,6 @@ export default function Item() {
     const title = type === 'answer' ? readData.questionTitle : (readData.title || '未知标题');
     const htmlContent = readData.content || "<p>暂无正文内容</p>";
 
-    // 注意：RenderHtml 的 tagsStyles 必须是一个对象传递，这部分保持不变
     const tagsStyles = {
         body: { color: theme.colors.onSurface, fontSize: 16, lineHeight: 28 },
         p: { marginBottom: 16 },
@@ -33,8 +36,56 @@ export default function Item() {
         img: { borderRadius: 12 }
     };
 
+    const CustomImageRenderer = (props: any) => {
+        // 从 tnode 中提取 src 和样式
+        const imageRef = useRef<View>(null);
+        const { src } = props.tnode.attributes;
+        const { width: imgWidth, height: imgHeight } = props.tnode.attributes;
+
+        const openImage = () => {
+            if (imageRef.current) {
+                imageRef.current.measure((x, y, width, height, pageX, pageY) => {
+                    setOrigin({ x: pageX, y: pageY, width, height });
+                });
+            }
+        };
+
+        return (
+            <View ref={imageRef} style={{ flex: 1, alignItems: 'center', marginVertical: 8 }}>
+                <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => {
+                        console.log('图片地址:', src);
+                        openImage();
+                        setImageUrl(src);
+                        setModalVisible(true);
+                    }}
+                >
+                    <Image
+                        source={{ uri: src }}
+                        style={{
+                            width: '100%',
+                            // 如果 HTML 里没给高度，给个默认比例防止高度为 0
+                            aspectRatio: imgWidth && imgHeight ? imgWidth / imgHeight : 16 / 9,
+                            borderRadius: 8
+                        }}
+                        resizeMode="contain"
+                    />
+                </TouchableOpacity>
+            </View>
+        );
+    };
+
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+            <Portal>
+                <ImageReanimatedModal
+                    visible={modalVisible}
+                    url={imageUrl}
+                    origin={orgin}
+                    onClose={() => setModalVisible(false)}
+                />
+            </Portal>
             {/* 顶部导航栏 */}
             <Appbar.Header elevated>
                 <Appbar.BackAction onPress={() => router.back()} />
@@ -52,7 +103,7 @@ export default function Item() {
                     style={{
                         width: '100%',
                         borderRadius: 16,
-                        height:'auto',
+                        height: 'auto',
                         overflow: 'hidden',
                         paddingTop: 8,
                         paddingBottom: 8,
@@ -65,12 +116,12 @@ export default function Item() {
 
                 {/* 作者信息区域 */}
                 <Pressable
-                    onPress={() => console.log('点击了作者信息')}
+                    onPress={() => console.log(readData.updatedTime)}
                     android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
                     style={{
                         width: '100%',
                         borderRadius: 16,
-                        height:'auto',
+                        height: 'auto',
                         overflow: 'hidden',
                         paddingTop: 8,
                         paddingBottom: 8,
@@ -99,6 +150,12 @@ export default function Item() {
                     source={{ html: htmlContent }}
                     tagsStyles={tagsStyles}
                     enableExperimentalMarginCollapsing={true}
+                    renderers={{
+                        img: CustomImageRenderer
+                    }}
+                    defaultTextProps={
+                        { selectable: true }
+                    }
                 />
 
                 {/* 底部留白 */}

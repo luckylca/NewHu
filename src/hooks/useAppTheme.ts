@@ -36,6 +36,10 @@ export const useAppTheme = () => {
             ...baseTheme,
             colors: adaptedColors,
             fonts: adaptedFonts,
+            animation: {
+                ...baseTheme.animation,
+                scale: 1.0, // 确保动画比例为 1，找回 Menu 的淡入淡出
+            },
         };
     }, [isDarkMode, themeColor, backgroundImage]);
 };
