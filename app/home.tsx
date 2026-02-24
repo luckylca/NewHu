@@ -10,7 +10,70 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: WindowWidth } = Dimensions.get('window');
 
+export const renderItem = (item: any, type: string,needToGet: boolean) => {
+    const title = type === 'answer' ? item.questionTitle : item.title;
+    const openItem = (id: string, type: string) => {
+        router.push(`/item?id=${id}&type=${type}&needToGet=${needToGet}`);
+    }
+    return (
+        <Pressable
+            onPress={() => {openItem(item.id, type);console.log('点击了项：', item, type);}}
+            android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
+            style={{
+                width: WindowWidth * 0.9,
+                marginBottom: 10,
+                borderRadius: 16,
+                overflow: 'hidden',
+                backgroundColor: '#F3EDF7'
+            }}
+        >
+            <Card
+                mode="contained"
+                style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: 'transparent' }}
+            >
+                <Card.Content style={{ paddingVertical: 8 }}>
+                    <Text
+                        variant="titleMedium"
+                        style={{ fontWeight: 'bold', marginBottom: 8 }}
+                        numberOfLines={2}
+                    >
+                        {title}
+                    </Text>
 
+                    <Text
+                        variant="bodyMedium"
+                        style={{ color: '#49454F', marginBottom: 10, lineHeight: 20 }}
+                        numberOfLines={3}
+                    >
+                        {item.excerpt}
+                    </Text>
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
+                            <Icon source="thumb-up-outline" size={16} color="#49454F" />
+                            <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
+                                {item.voteCount}
+                            </Text>
+                        </View>
+                        {item.favoriteCount > 0 && <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
+                            <Icon source="star-outline" size={16} color="#49454F" />
+                            <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
+                                {item.favoriteCount}
+                            </Text>
+                        </View>}
+
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
+                            <Icon source="comment-outline" size={16} color="#49454F" />
+                            <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
+                                {item.commentCount}
+                            </Text>
+                        </View>
+                    </View>
+                </Card.Content>
+            </Card>
+        </Pressable>
+    );
+};
 
 const HomeScreen = ({ navigation }: any) => {
     const insets = useSafeAreaInsets();
@@ -63,8 +126,6 @@ const HomeScreen = ({ navigation }: any) => {
 
     // 3. 核心加载函数：isRefresh 区分是下拉刷新还是上拉加载
     const loadData = async (isRefresh = false) => {
-        // 防抖：如果正在加载中，就不要重复请求
-        if (isRefreshing || isLoadingMore) return;
 
         if (isRefresh) {
             setIsRefreshing(true);
@@ -74,19 +135,14 @@ const HomeScreen = ({ navigation }: any) => {
         }
 
         try {
-            // 这里假设你的 getRecommend 可以接收 token 参数，比如 getRecommend(token)
             const res = await getRecommend(sessionTokenRef.current);
             const data = res.data as any[];
-
-            // 注意：这里去掉了原来可能会引发错误的隐式优先级，明确加上了括号
             const cleanData = data.filter((item) => item.target && (item.target.type === 'answer' || item.target.type === 'article'));
             const processedItems = cleanData.map(processFeedItem).filter(Boolean); // 过滤掉 null
 
             if (isRefresh) {
-                // 下拉刷新：直接替换整个列表
                 contentStore.setFeedList(processedItems);
             } else {
-                // 上拉加载：在原有列表后面追加新数据
                 const mergedData = [...contentStore.feedList, ...processedItems];
                 const uniqueData = mergedData.filter((v, i, a) =>
                     a.findIndex(t => t.item.id === v.item.id) === i
@@ -94,7 +150,6 @@ const HomeScreen = ({ navigation }: any) => {
                 contentStore.setFeedList(uniqueData);
             }
 
-            // 保存下一页的 token
             const urlString = res.paging.next;
             try {
                 const url = new URL(urlString);
@@ -121,72 +176,6 @@ const HomeScreen = ({ navigation }: any) => {
     }, []);
 
 
-    const openItem = (id:string, type:string) => {
-        router.push(`/item?id=${id}&type=${type}`);
-    }
-
-    const renderItem = (item: any, type: string) => {
-        const title = type === 'answer' ? item.questionTitle : item.title;
-        return (
-            <Pressable
-                onPress={() => openItem(item.id, type)}
-                android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
-                style={{
-                    width: WindowWidth * 0.9,
-                    marginBottom: 10,
-                    borderRadius: 16,
-                    overflow: 'hidden',
-                    backgroundColor: '#F3EDF7'
-                }}
-            >
-                <Card
-                    mode="contained"
-                    style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: 'transparent' }}
-                >
-                    <Card.Content style={{ paddingVertical: 8 }}>
-                        <Text
-                            variant="titleMedium"
-                            style={{ fontWeight: 'bold', marginBottom: 8 }}
-                            numberOfLines={2}
-                        >
-                            {title}
-                        </Text>
-
-                        <Text
-                            variant="bodyMedium"
-                            style={{ color: '#49454F', marginBottom: 10, lineHeight: 20 }}
-                            numberOfLines={3}
-                        >
-                            {item.excerpt}
-                        </Text>
-
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
-                                <Icon source="thumb-up-outline" size={16} color="#49454F" />
-                                <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
-                                    {item.voteCount}
-                                </Text>
-                            </View>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
-                                <Icon source="star-outline" size={16} color="#49454F" />
-                                <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
-                                    {item.favoriteCount}
-                                </Text>
-                            </View>
-
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
-                                <Icon source="comment-outline" size={16} color="#49454F" />
-                                <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
-                                    {item.commentCount}
-                                </Text>
-                            </View>
-                        </View>
-                    </Card.Content>
-                </Card>
-            </Pressable>
-        );
-    };
-
     return (
         <View style={{ flex: 1, alignItems: 'center', marginTop: insets.top }}>
             <TextInput
@@ -197,7 +186,7 @@ const HomeScreen = ({ navigation }: any) => {
             />
             <FlatList
                 data={contentStore.feedList}
-                renderItem={({ item }) => renderItem(item.item, item.feedType)}
+                renderItem={({ item }) => renderItem(item.item, item.feedType, false)} // 传入 needToGet 参数
                 keyExtractor={(item) => item.item.id.toString()}
                 refreshing={isRefreshing} // 绑定下拉圈圈的显示状态
                 onRefresh={() => loadData(true)} // 触发下拉时执行的方法

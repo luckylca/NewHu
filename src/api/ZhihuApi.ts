@@ -67,6 +67,12 @@ export async function getAnswer(answerId: string) {
     return data;
 }
 
+// 获取文章详情。
+export async function getArticle(articleId: string) {
+    const data = await requireApiInstance().getArticle(articleId);
+    return data;
+}
+
 // 点赞回答。
 export async function voteupAnswer(answerId: string) {
     const data = await requireApiInstance().voteupAnswer(answerId);
@@ -120,7 +126,7 @@ export async function search(keyword: string, offset: number = 0, type: string =
 }
 
 // 添加阅读历史。
-export async function addReadHistory(contentToken: string, contentType = "article") {
+export async function addReadHistory(contentToken: string, contentType: string) {
     const data = await requireApiInstance().addReadHistory(contentToken, contentType);
     return data;
 }

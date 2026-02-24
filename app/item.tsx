@@ -1,13 +1,15 @@
+import ImageReanimatedModal from "@/src/components/ImageReanimatedModal";
 import { useContentStore } from "@/src/stores/useContentStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useRef,useState } from "react";
-import { Pressable, ScrollView, useWindowDimensions, View, TouchableOpacity, Image } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Image, Pressable, ScrollView, TouchableOpacity, useWindowDimensions, View } from "react-native";
 import { Appbar, Avatar, Divider, Portal, Text, useTheme } from "react-native-paper";
 import RenderHtml from 'react-native-render-html';
-import ImageReanimatedModal from "@/src/components/ImageReanimatedModal";
+import { getAnswer,getArticle,addReadHistory } from "@/src/api/ZhihuApi";
+import LoadingView from "@/src/components/LoadingView";
 
 export default function Item() {
-    const { id, type } = useLocalSearchParams();
+    const { id, type,needToGet } = useLocalSearchParams();
     const contentStore = useContentStore();
     const router = useRouter();
     const theme = useTheme();
@@ -15,14 +17,77 @@ export default function Item() {
     const [modalVisible, setModalVisible] = useState(false);
     const [imageUrl, setImageUrl] = useState("");
     const { width } = useWindowDimensions();
+    const [readData, setReadData] = useState<any>(null);
+    useEffect(() => {
+        addReadHistory(String(id), type === 'answer' ? 'answer' : 'article')
+        console.log('添加阅读历史：', { id, type });
+    }, [id, type]);
+    useEffect(() => {
+        if (needToGet==='true') {
+            if (type === 'answer') {
+                getAnswer(String(id)).then((data) => {
+                    console.log('获取的回答详情数据：', data);
+                    const tmpReadData = {
+                        id: data.id,
+                        title: data.title || '无标题',
+                        authorName: data.author?.name || '匿名用户',
+                        authorUrlToken: data.author?.url_token || '',
+                        authorAvatar: data.author?.avatar_url || '',
+                        excerpt: data.excerpt || '',
+                        updatedTime: data.updated_time || data.created || 0,
+                        voteCount: data.voteup_count || 0,
+                        favoriteCount: data.favorite_count || 0,
+                        commentCount: data.comment_count || 0,
 
-    const readData = contentStore.feedList.find((item) => String(item.item.id) === String(id))?.item;
+                        content: data.content || "",
+                        questionTitle: data.question?.title || '未知问题',
+                        questionId: data.question?.id || '',
+                        questionAuthorName: data.question?.author?.name || '匿名用户',
+                        questionAuthorAvatar: data.question?.author?.avatar_url || '',
+                        questionAuthorUrlToken: data.question?.author?.url_token || '',
+                        questionAnswerCount: data.question?.answer_count || 0,
+                        questionCreatedTime: data.question?.created || 0,
+                    };
+                    setReadData(tmpReadData);
+                });
+            } else if (type === 'article') {
+                getArticle(String(id)).then((data) => {
+                    const tmpReadData = {
+                        id: data.id,
+                        title: data.title || '无标题',
+                        authorName: data.author?.name || '匿名用户',
+                        authorUrlToken: data.author?.url_token || '',
+                        authorAvatar: data.author?.avatar_url || '',
+                        excerpt: data.excerpt || '',
+                        updatedTime: data.updated_time || data.created || 0,
+                        voteCount: data.voteup_count || 0,
+                        favoriteCount: data.favorite_count || 0,
+                        commentCount: data.comment_count || 0,
+
+                        content: data.content || "",
+                        questionTitle: data.question?.title || '未知问题',
+                        questionId: data.question?.id || '',
+                        questionAuthorName: data.question?.author?.name || '匿名用户',
+                        questionAuthorAvatar: data.question?.author?.avatar_url || '',
+                        questionAuthorUrlToken: data.question?.author?.url_token || '',
+                        questionAnswerCount: data.question?.answer_count || 0,
+                        questionCreatedTime: data.question?.created || 0,
+                    };
+                    setReadData(tmpReadData);
+                });
+            }
+        }else {
+            const tmpReadData = contentStore.feedList.find((item) => String(item.item.id) === String(id))?.item;
+            console.log('从 store 中获取的详情数据：', tmpReadData);
+            setReadData(tmpReadData);
+        }
+    }, [id, type, needToGet, contentStore.feedList]);
+
+    
 
     if (!readData) {
         return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
-                <Text>数据加载失败或不存在</Text>
-            </View>
+            <LoadingView />
         );
     }
 
@@ -36,45 +101,51 @@ export default function Item() {
         img: { borderRadius: 12 }
     };
 
-    const CustomImageRenderer = (props: any) => {
-        // 从 tnode 中提取 src 和样式
-        const imageRef = useRef<View>(null);
-        const { src } = props.tnode.attributes;
-        const { width: imgWidth, height: imgHeight } = props.tnode.attributes;
+const CustomImageRenderer = (props: any) => {
+    const imageRef = useRef<View>(null);
+    const attrs = props.tnode.attributes;
 
-        const openImage = () => {
-            if (imageRef.current) {
-                imageRef.current.measure((x, y, width, height, pageX, pageY) => {
-                    setOrigin({ x: pageX, y: pageY, width, height });
-                });
-            }
-        };
+    // 知乎懒加载：真实地址在 data-original 或 data-actualsrc，src 只是占位 SVG
+    const src = attrs['data-original'] || attrs['data-actualsrc'] || attrs['data-src'] || attrs.src;
+    const { width: imgWidth, height: imgHeight } = attrs;
 
-        return (
-            <View ref={imageRef} style={{ flex: 1, alignItems: 'center', marginVertical: 8 }}>
-                <TouchableOpacity
-                    activeOpacity={0.8}
-                    onPress={() => {
-                        console.log('图片地址:', src);
-                        openImage();
-                        setImageUrl(src);
-                        setModalVisible(true);
-                    }}
-                >
-                    <Image
-                        source={{ uri: src }}
-                        style={{
-                            width: '100%',
-                            // 如果 HTML 里没给高度，给个默认比例防止高度为 0
-                            aspectRatio: imgWidth && imgHeight ? imgWidth / imgHeight : 16 / 9,
-                            borderRadius: 8
-                        }}
-                        resizeMode="contain"
-                    />
-                </TouchableOpacity>
-            </View>
-        );
+    // 如果是占位 SVG 则不渲染
+    if (!src || src.startsWith('data:image/svg')) {
+        return null;
+    }
+
+    const openImage = () => {
+        if (imageRef.current) {
+            imageRef.current.measure((x, y, width, height, pageX, pageY) => {
+                setOrigin({ x: pageX, y: pageY, width, height });
+            });
+        }
     };
+
+    return (
+        <View ref={imageRef} style={{ flex: 1, alignItems: 'center', marginVertical: 8 }}>
+            <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                    console.log('图片地址:', src);
+                    openImage();
+                    setImageUrl(src);
+                    setModalVisible(true);
+                }}
+            >
+                <Image
+                    source={{ uri: src }}
+                    style={{
+                        width: '100%',
+                        aspectRatio: imgWidth && imgHeight ? imgWidth / imgHeight : 16 / 9,
+                        borderRadius: 8
+                    }}
+                    resizeMode="contain"
+                />
+            </TouchableOpacity>
+        </View>
+    );
+};
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.background }}>

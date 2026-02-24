@@ -46,11 +46,11 @@ const UserScreen = ({ navigation }: any) => {
                     >
                     <Text style={{ fontSize: 15,height: 60,textAlignVertical: 'center' }}>收藏列表</Text>
                 </Button>
-                <Button mode="elevated" onPress={() => { router.push('/browse'); }} 
+                <Button mode="elevated" onPress={() => { router.push('/history'); }} 
                     style={{ width: '80%', marginBottom: 20,height: 60,justifyContent: 'center' ,backgroundColor: theme.colors.primaryContainer }}
                     contentStyle={{ height: 60, justifyContent: 'center', alignItems: 'center',flexDirection: 'row',backgroundColor: theme.colors.primaryContainer }}
                     >
-                    <Text style={{ fontSize: 15,height: 60,textAlignVertical: 'center' }}>浏览列表</Text>
+                    <Text style={{ fontSize: 15,height: 60,textAlignVertical: 'center' }}>浏览历史</Text>
                 </Button>
                 <Button mode="elevated" onPress={() => { router.push('/settings'); }} 
                     style={{ width: '80%', marginBottom: 20 ,height: 60,justifyContent: 'center' ,backgroundColor: theme.colors.primaryContainer }}
