@@ -2,9 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, Dimensions, Animated, Keyboard } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {useRouter} from 'expo-router';
 
 interface tabRoute {
     key: string;

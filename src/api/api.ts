@@ -3,7 +3,7 @@
  * 提供常用的知乎 API 接口调用
  */
 
-import ZhihuClient from './client'
+import ZhihuClient from './client';
 
 interface ZhihuAPI {
     client: ZhihuClient;
@@ -19,11 +19,41 @@ interface ZhihuAPI {
     cancelVoteupAnswer(answerId: string): Promise<any>;
     getQuestion(questionId: string): Promise<any>;
     getQuestionAnswers(questionId: string, offset?: number, sort?: string): Promise<any>;
-    getComments(id: string, type: string, offset?: number): Promise<any>;
+    getRootComments(id: string, type: string, offset?: string, sort?: string): Promise<any>;
+    getChildComments(commentId: string, offset?: string, sort?: string): Promise<any>;
     favoriteAnswer(answerId: string): Promise<any>;
     unfavoriteAnswer(answerId: string): Promise<any>;
     search(keyword: string, offset?: number, type?: string): Promise<any>;
 
+}
+
+function normalizeCommentType(contentType:string) {
+    const type = String(contentType).toLowerCase();
+    switch (type) {
+        case 'answer':
+        case 'answers':
+            return 'answers';
+        case 'article':
+        case 'articles':
+            return 'articles';
+        case 'pin':
+        case 'pins':
+            return 'pins';
+        case 'question':
+        case 'questions':
+            return 'questions';
+        default:
+            throw new Error(`不支持的评论内容类型: ${contentType}`);
+    }
+}
+
+function escapeHtml(text:string) {
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 
@@ -164,10 +194,54 @@ class ZhihuAPI {
      * @param {string} type - 内容类型（answers/articles/pins等）
      * @param {number} offset - 偏移量
      */
-    async getComments(id: string, type: string, offset: number = 0) {
-        return this.client.get(`https://www.zhihu.com/api/v4/comment_v5/${type}/${id}/root_comment?limit=20&offset=${offset}&order=normal`);
+    async getRootComments(id: string, type: string, offset: string = "", sort: string = "score") {
+        return this.client.get(`https://www.zhihu.com/api/v4/comment_v5/${type}/${id}/root_comment?limit=20&offset=${offset}&order_by=${sort}`);
     }
 
+    /**
+     * 获取子评论列表
+     * @param {string} commentId - 父评论 ID
+     * @param {number} offset - 偏移量
+     * @param {string} sort - 排序方式（score/time）
+     */
+
+    async getChildComments(commentId: string, offset: string = "", sort: string = "score") {
+        return this.client.get(`https://www.zhihu.com/api/v4/comment_v5/${commentId}/child_comment?limit=20&offset=${offset}&order_by=${sort}`);
+    }
+    /**
+     * 构建评论请求参数
+     * @param {Object} options - 评论选项
+     * @param {string} options.contentType - 内容类型（answers/articles/pins等）
+     * @param {string} options.contentId - 内容 ID
+     * @param {string} options.text - 评论内容
+     * @param {string} [options.replyCommentId] - 回复评论 ID（可选）
+     */
+    buildCommentRequest(options: { contentType: string; contentId: string; text: string; replyCommentId?: string }) {
+        const { contentType, contentId, text, replyCommentId } = options || {};
+        if (!text || String(text).trim().length === 0) {
+            throw new Error('评论内容不能为空');
+        }
+
+        const type = normalizeCommentType(contentType);
+        const escapedText = escapeHtml(String(text));
+        const body: { content: string; reply_comment_id?: string } = {
+            content: `<p>${escapedText}</p>`
+        };
+        if (replyCommentId) {
+            body.reply_comment_id = replyCommentId;
+        }
+
+        const url = `https://www.zhihu.com/api/v4/comment_v5/${type}/${contentId}/comment`;
+        return { url, body };
+    }
+
+    /**
+     * 发送评论（调用 buildCommentRequest 生成请求）
+     */
+    async submitComment(options: { contentType: string; contentId: string; text: string; replyCommentId?: string }) {
+        const { url, body } = this.buildCommentRequest(options);
+        return this.client.post(url, body, true);
+    }
     // ==================== 收藏相关 ====================
 
     /**

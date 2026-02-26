@@ -7,9 +7,15 @@ import { Appbar, Avatar, Divider, Portal, Text, useTheme } from "react-native-pa
 import RenderHtml from 'react-native-render-html';
 import { getAnswer,getArticle,addReadHistory } from "@/src/api/ZhihuApi";
 import LoadingView from "@/src/components/LoadingView";
+import { CommentLayout } from "@/src/components/CommentLayout";
 
+export type ItemParams = {
+  id: string;
+  type: 'answer' | 'article';
+  needToGet?: 'true' | 'false';
+};
 export default function Item() {
-    const { id, type,needToGet } = useLocalSearchParams();
+    const { id, type,needToGet } = useLocalSearchParams<ItemParams>();
     const contentStore = useContentStore();
     const router = useRouter();
     const theme = useTheme();
@@ -26,7 +32,6 @@ export default function Item() {
         if (needToGet==='true') {
             if (type === 'answer') {
                 getAnswer(String(id)).then((data) => {
-                    console.log('获取的回答详情数据：', data);
                     const tmpReadData = {
                         id: data.id,
                         title: data.title || '无标题',
@@ -225,12 +230,13 @@ const CustomImageRenderer = (props: any) => {
                         img: CustomImageRenderer
                     }}
                     defaultTextProps={
-                        { selectable: true }
+                        { selectable: false  }
                     }
                 />
 
                 {/* 底部留白 */}
                 <View style={{ height: 40 }} />
+                <CommentLayout id={id} type={type} />
             </ScrollView>
         </View>
     );

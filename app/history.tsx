@@ -46,8 +46,8 @@ export default function HistoryScreen() {
                 excerpt: item?.content?.summary ?? "",
                 questionTitle: item?.header?.title ?? "",
                 title: item?.header?.title ?? "",
-                agreeCount: parsed?.agree ?? 0,
-                commentCountParsed: parsed?.comment ?? 0,
+                voteCount: parsed?.agree ?? 0,
+                commentCount: parsed?.comment ?? 0,
             };
         },
         [parseAgreeComment]

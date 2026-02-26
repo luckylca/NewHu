@@ -102,8 +102,18 @@ export async function getQuestionAnswers(
 }
 
 // 获取内容的根评论列表。
-export async function getComments(id: string, type: string, offset: number = 0) {
-    const data = await requireApiInstance().getComments(id, type, offset);
+export async function getRootComments(id: string, type: string, offset: string = "", sort: string = "score") {
+    const data = await requireApiInstance().getRootComments(id, type, offset, sort);
+    return data;
+}
+
+export async function getChildComments(commentId: string, offset: string = "", sort: string = "score") {
+    const data = await requireApiInstance().getChildComments(commentId, offset, sort);
+    return data;
+}
+
+export async function submitComment(params: { contentType: string; contentId: string; text: string; replyCommentId?: string }) {
+    const data = await requireApiInstance().submitComment(params);
     return data;
 }
 
