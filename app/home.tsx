@@ -13,7 +13,10 @@ const { width: WindowWidth } = Dimensions.get('window');
 export const renderItem = (item: any, type: string,needToGet: boolean) => {
     const title = type === 'answer' ? item.questionTitle : item.title;
     const openItem = (id: string, type: string) => {
-        router.push(`/item?id=${id}&type=${type}&needToGet=${needToGet}`);
+        router.push({
+            pathname: `/item/[type]/[id]`,
+            params: { id, type, needToGet: needToGet.toString() }
+        });
     }
     return (
         <Pressable
@@ -191,7 +194,7 @@ const HomeScreen = ({ navigation }: any) => {
                 refreshing={isRefreshing} // 绑定下拉圈圈的显示状态
                 onRefresh={() => loadData(true)} // 触发下拉时执行的方法
                 onEndReached={() => loadData(false)} // 列表滑动到底部时触发的方法
-                onEndReachedThreshold={0.8} // 距离底部还有 50% 列表长度时，提前触发加载（实现无感）
+                onEndReachedThreshold={0.8}
                 showsVerticalScrollIndicator={false}
             />
         </View>

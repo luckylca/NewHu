@@ -1,3 +1,4 @@
+// app/item/type/[id]/index.tsx
 import ImageReanimatedModal from "@/src/components/ImageReanimatedModal";
 import { useContentStore } from "@/src/stores/useContentStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -7,12 +8,12 @@ import { Appbar, Avatar, Divider, Portal, Text, useTheme } from "react-native-pa
 import RenderHtml from 'react-native-render-html';
 import { getAnswer,getArticle,addReadHistory } from "@/src/api/ZhihuApi";
 import LoadingView from "@/src/components/LoadingView";
-import { CommentLayout } from "@/src/components/CommentLayout";
+
 
 export type ItemParams = {
-  id: string;
-  type: 'answer' | 'article';
-  needToGet?: 'true' | 'false';
+    id: string;
+    type: 'answer' | 'article';
+    needToGet?: 'true' | 'false';
 };
 export default function Item() {
     const { id, type,needToGet } = useLocalSearchParams<ItemParams>();
@@ -236,7 +237,7 @@ const CustomImageRenderer = (props: any) => {
 
                 {/* 底部留白 */}
                 <View style={{ height: 40 }} />
-                <CommentLayout id={id} type={type} />
+                {/* <CommentLayout id={id} type={type} /> */}
             </ScrollView>
         </View>
     );
