@@ -4,7 +4,7 @@ import { useContentStore } from "@/src/stores/useContentStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Image, Pressable, ScrollView, TouchableOpacity, useWindowDimensions, View } from "react-native";
-import { Appbar, Avatar, Divider, Portal, Text, useTheme } from "react-native-paper";
+import { Appbar, Avatar, Divider, Portal, Text, useTheme,Menu,Icon } from "react-native-paper";
 import RenderHtml from 'react-native-render-html';
 import { getAnswer,getArticle,addReadHistory } from "@/src/api/ZhihuApi";
 import LoadingView from "@/src/components/LoadingView";
@@ -20,11 +20,12 @@ export default function Item() {
     const contentStore = useContentStore();
     const router = useRouter();
     const theme = useTheme();
-    const [orgin, setOrigin] = useState({ x: 0, y: 0, width: 0, height: 0 });
+    const [origin, setOrigin] = useState({ x: 0, y: 0, width: 0, height: 0 });
     const [modalVisible, setModalVisible] = useState(false);
     const [imageUrl, setImageUrl] = useState("");
     const { width } = useWindowDimensions();
     const [readData, setReadData] = useState<any>(null);
+    const [menuVisible, setMenuVisible] = useState(false);
     useEffect(() => {
         addReadHistory(String(id), type === 'answer' ? 'answer' : 'article')
         console.log('添加阅读历史：', { id, type });
@@ -84,7 +85,6 @@ export default function Item() {
             }
         }else {
             const tmpReadData = contentStore.feedList.find((item) => String(item.item.id) === String(id))?.item;
-            console.log('从 store 中获取的详情数据：', tmpReadData);
             setReadData(tmpReadData);
         }
     }, [id, type, needToGet, contentStore.feedList]);
@@ -107,51 +107,51 @@ export default function Item() {
         img: { borderRadius: 12 }
     };
 
-const CustomImageRenderer = (props: any) => {
-    const imageRef = useRef<View>(null);
-    const attrs = props.tnode.attributes;
+    const CustomImageRenderer = (props: any) => {
+        const imageRef = useRef<View>(null);
+        const attrs = props.tnode.attributes;
 
-    // 知乎懒加载：真实地址在 data-original 或 data-actualsrc，src 只是占位 SVG
-    const src = attrs['data-original'] || attrs['data-actualsrc'] || attrs['data-src'] || attrs.src;
-    const { width: imgWidth, height: imgHeight } = attrs;
+        // 知乎懒加载：真实地址在 data-original 或 data-actualsrc，src 只是占位 SVG
+        const src = attrs['data-original'] || attrs['data-actualsrc'] || attrs['data-src'] || attrs.src;
+        const { width: imgWidth, height: imgHeight } = attrs;
 
-    // 如果是占位 SVG 则不渲染
-    if (!src || src.startsWith('data:image/svg')) {
-        return null;
-    }
-
-    const openImage = () => {
-        if (imageRef.current) {
-            imageRef.current.measure((x, y, width, height, pageX, pageY) => {
-                setOrigin({ x: pageX, y: pageY, width, height });
-            });
+        // 如果是占位 SVG 则不渲染
+        if (!src || src.startsWith('data:image/svg')) {
+            return null;
         }
-    };
 
-    return (
-        <View ref={imageRef} style={{ flex: 1, alignItems: 'center', marginVertical: 8 }}>
-            <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => {
-                    console.log('图片地址:', src);
-                    openImage();
-                    setImageUrl(src);
-                    setModalVisible(true);
-                }}
-            >
-                <Image
-                    source={{ uri: src }}
-                    style={{
-                        width: '100%',
-                        aspectRatio: imgWidth && imgHeight ? imgWidth / imgHeight : 16 / 9,
-                        borderRadius: 8
+        const openImage = () => {
+            if (imageRef.current) {
+                imageRef.current.measure((x, y, width, height, pageX, pageY) => {
+                    setOrigin({ x: pageX, y: pageY, width, height });
+                });
+            }
+        };
+
+        return (
+            <View ref={imageRef} style={{ flex: 1, alignItems: 'center', marginVertical: 8 }}>
+                <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => {
+                        console.log('图片地址:', src);
+                        openImage();
+                        setImageUrl(src);
+                        setModalVisible(true);
                     }}
-                    resizeMode="contain"
-                />
-            </TouchableOpacity>
-        </View>
-    );
-};
+                >
+                    <Image
+                        source={{ uri: src }}
+                        style={{
+                            width: '100%',
+                            aspectRatio: imgWidth && imgHeight ? imgWidth / imgHeight : 16 / 9,
+                            borderRadius: 8
+                        }}
+                        resizeMode="contain"
+                    />
+                </TouchableOpacity>
+            </View>
+        );
+    };
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -159,7 +159,7 @@ const CustomImageRenderer = (props: any) => {
                 <ImageReanimatedModal
                     visible={modalVisible}
                     url={imageUrl}
-                    origin={orgin}
+                    origin={origin}
                     onClose={() => setModalVisible(false)}
                 />
             </Portal>
@@ -167,6 +167,21 @@ const CustomImageRenderer = (props: any) => {
             <Appbar.Header elevated>
                 <Appbar.BackAction onPress={() => router.back()} />
                 <Appbar.Content title={type === 'answer' ? '回答详情' : '文章详情'} />
+                <Menu
+                    visible={menuVisible}
+                    onDismiss={() => setMenuVisible(false)}
+                    anchor={<Appbar.Action icon="dots-vertical" onPress={() => setMenuVisible(true)} />}>
+                    <Menu.Item
+                        onPress={() => {console.log('复制内容');}}
+                        title="复制内容"
+                        leadingIcon={ () => <Icon source="content-copy" size={16} color="#49454F" /> }
+                    />
+                    <Menu.Item
+                        onPress={() => {}}
+                        title="通过名字锁定"
+                        leadingIcon={ () => <Icon source="account-outline" size={16} color="#49454F" /> }
+                    />
+                </Menu>
             </Appbar.Header>
 
             <ScrollView

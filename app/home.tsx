@@ -3,32 +3,56 @@ import { useContentStore } from '@/src/stores/useContentStore';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { router } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { Dimensions, FlatList, Pressable, View } from 'react-native';
+import { Dimensions, FlatList, Pressable, View,Animated } from 'react-native';
 import { Card, Icon, Text, TextInput } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
 const { width: WindowWidth } = Dimensions.get('window');
 
-export const renderItem = (item: any, type: string,needToGet: boolean) => {
+export const RenderItem = ({ item, type, needToGet }: any) => {
     const title = type === 'answer' ? item.questionTitle : item.title;
     const openItem = (id: string, type: string) => {
-        router.push({
-            pathname: `/item/[type]/[id]`,
-            params: { id, type, needToGet: needToGet.toString() }
-        });
+        setTimeout(() => {
+            router.push({
+                pathname: `/item/[type]/[id]`,
+                params: { id, type, needToGet: needToGet.toString() }
+            })
+        }, 100);
     }
+    const scale = useRef(new Animated.Value(1)).current;
+
+    const handlePressIn = () => {
+        Animated.spring(scale, {
+            toValue: 0.95,
+            useNativeDriver: true,
+            bounciness: 10,
+        }).start();
+    };
+
+    const handlePressOut = () => {
+        Animated.spring(scale, {
+            toValue: 1,
+            useNativeDriver: true,
+            bounciness: 10,
+        }).start();
+    };
     return (
-        <Pressable
-            onPress={() => {openItem(item.id, type);console.log('点击了项：', item, type);}}
+        <AnimatedPressable
+            onPress={() => {openItem(item.id, type);}}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
             android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
-            style={{
+            style={[{
                 width: WindowWidth * 0.9,
                 marginBottom: 10,
                 borderRadius: 16,
                 overflow: 'hidden',
-                backgroundColor: '#F3EDF7'
-            }}
+                backgroundColor: '#F3EDF7',
+            },
+            { transform: [{ scale }] }]}
         >
             <Card
                 mode="contained"
@@ -74,7 +98,7 @@ export const renderItem = (item: any, type: string,needToGet: boolean) => {
                     </View>
                 </Card.Content>
             </Card>
-        </Pressable>
+        </AnimatedPressable>
     );
 };
 
@@ -189,7 +213,7 @@ const HomeScreen = ({ navigation }: any) => {
             />
             <FlatList
                 data={contentStore.feedList}
-                renderItem={({ item }) => renderItem(item.item, item.feedType, false)} // 传入 needToGet 参数
+                renderItem={({ item }) => <RenderItem item={item.item} type={item.feedType} needToGet={false} />}
                 keyExtractor={(item) => item.item.id.toString()}
                 refreshing={isRefreshing} // 绑定下拉圈圈的显示状态
                 onRefresh={() => loadData(true)} // 触发下拉时执行的方法

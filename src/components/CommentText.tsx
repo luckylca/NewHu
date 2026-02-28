@@ -1,11 +1,15 @@
 import React, { useMemo } from "react";
-import { Image, Linking, Text as RNText } from "react-native";
+import { Image, Linking, Text as RNText,Dimensions,TouchableOpacity } from "react-native";
+import ImageReanimatedModal from "./ImageReanimatedModal";
 
 type Token =
     | { type: "text"; text: string }
     | { type: "newline" }
     | { type: "link"; text: string; href: string }
-    | { type: "emoji"; name: string };
+    | { type: "emoji"; name: string }
+    | { type: "image"; url: string ; width: number; height: number };
+
+const { width: WindowWidth } = Dimensions.get("window");
 
 function decodeHtmlEntities(s: string) {
     return s
@@ -55,8 +59,6 @@ function textToTokens(plain: string): Token[] {
     });
     return out;
 }
-
-// 轻量支持 <a href>...</a>，其余标签 strip 掉
 function htmlToTokens(html: string): Token[] {
     if (!html) return [];
     let tmp = html
@@ -70,12 +72,33 @@ function htmlToTokens(html: string): Token[] {
     let match: RegExpExecArray | null;
 
     while ((match = aRe.exec(tmp)) !== null) {
+        const fullTag = match[0]; // 拿到完整的标签字符串，例如：<a class="comment_img" href="...">[图片]</a>
         const before = tmp.slice(lastIndex, match.index);
         const href = (match[1] || "").trim();
-        const inner = match[2] || "";
+        const inner = stripLightHtml(match[2] || "").trim();
 
         tokens.push(...textToTokens(stripLightHtml(before)));
-        tokens.push({ type: "link", text: stripLightHtml(inner) || href, href });
+
+        // 核心修改：利用正则判断完整的 <a> 标签中是否包含 class="comment_img"
+        // 这样写可以兼容单引号/双引号，以及 class 里包含多个类名的情况
+        const isImageClass = /class=["'][^"']*comment_img[^"']*["']/i.test(fullTag);
+
+        // 之前的文本判断保留作为兜底
+        const imageTexts = ["图片", "查看图片", "[图片]", "[查看图片]"];
+
+        const wMatch = fullTag.match(/data-width=["'](\d+)["']/i);
+        const hMatch = fullTag.match(/data-height=["'](\d+)["']/i);
+        const originalWidth = wMatch ? parseInt(wMatch[1], 10) : 0;
+        const originalHeight = hMatch ? parseInt(hMatch[1], 10) : 0;
+
+        if (isImageClass || imageTexts.includes(inner)) {
+            tokens.push({
+                type: "image",
+                url: href,
+                width: originalWidth,   // <-- 存入宽度
+                height: originalHeight  // <-- 存入高度
+            });
+        }
 
         lastIndex = aRe.lastIndex;
     }
@@ -90,11 +113,15 @@ export default function CommentText({
     content,
     emojiMap,
 }: {
-    content: string; // ✅ 直接传 HTML/string
-    emojiMap: Record<string, any>; // require(...) 或 {uri}
+    content: string;
+    emojiMap: Record<string, any>;
 }) {
     const tokens = useMemo(() => htmlToTokens(content), [content]);
-
+    const [imageUrl, setImageUrl] = React.useState<string>("");
+    const [imageToken, setImageToken] = React.useState<{ width: number; height: number } | null>(null);
+    const [imageOrigin, setImageOrigin] = React.useState<{ x: number; y: number; width: number; height: number }>({ x: 0, y: 0, width: 0, height: 0 });
+    const imageRef = React.useRef<any>(null);
+    const [imageVisible, setImageVisible] = React.useState(false);
     const children = useMemo(() => {
         return tokens.map((t, idx) => {
             if (t.type === "newline") return <RNText key={idx}>{"\n"}</RNText>;
@@ -109,13 +136,17 @@ export default function CommentText({
                         {t.text}
                     </RNText>
                 );
-
+            if (t.type === "image") {
+                setImageUrl(t.url);
+                setImageToken({ width: t.width, height: t.height });
+                return null;
+            }
             const src = emojiMap[t.name];
             if (!src) return <RNText key={idx}>[{t.name}]</RNText>;
             return (
                 <Image
                     key={idx}
-                    source={src}
+                    source={{uri: src}}
                     style={{ width: 18, height: 18, transform: [{ translateY: 2 }] }}
                     resizeMode="contain"
                 />
@@ -123,9 +154,32 @@ export default function CommentText({
         });
     }, [tokens, emojiMap]);
 
+    const imagePressHandler = () => {
+        if (imageRef.current) {
+            imageRef.current.measure((fx: number, fy: number, width: number, height: number, px: number, py: number) => {                
+                setImageOrigin({ x: px, y: py, width, height });
+                setImageVisible(true);
+            })
+        }
+    }
+
     return (
-        <RNText selectable style={{ fontSize: 15, lineHeight: 22 }}>
-            {children}
-        </RNText>
+        <>
+            <RNText style={{ fontSize: 15, lineHeight: 22 }}>
+                {children}
+            </RNText>
+            {imageUrl && imageToken && (
+                <TouchableOpacity onPress={imagePressHandler}>
+                    <Image
+                        source={{ uri: imageUrl }}
+                        key={imageUrl}
+                        ref={imageRef}
+                        style={{ width: WindowWidth*0.8,aspectRatio: (imageToken.width && imageToken.height) ? (imageToken.width / imageToken.height) : 1.77, alignSelf: "center", marginVertical: 10 }}
+                        resizeMode="contain"
+                    />
+                </TouchableOpacity>
+            )}
+            <ImageReanimatedModal url={imageUrl} origin={imageOrigin} visible={imageVisible} onClose={() => setImageVisible(false)} />
+        </>
     );
 }

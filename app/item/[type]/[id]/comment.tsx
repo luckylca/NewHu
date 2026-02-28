@@ -1,19 +1,193 @@
 //app/item/[id]/comment.tsx
 import { useGlobalSearchParams } from "expo-router";
 import React, { useEffect } from "react";
-import { View, FlatList } from "react-native";
+import { View, FlatList, Pressable, Animated, Dimensions } from "react-native";
 import { getRootComments } from "@/src/api/ZhihuApi";
 import CommentText from "@/src/components/CommentText";
 import { EMOJI_URL_MAP } from "@/src/constants/emoji";
 import { useTheme, Avatar, IconButton, Text, Appbar } from "react-native-paper";
 import { useRouter } from "expo-router";
+// import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+
+const { width: WindowWidth } = Dimensions.get("window");
+
+const RenderCommentItem = ({ item, theme }: { item: any, theme: any }) => {
+
+    const scale = React.useRef(new Animated.Value(1)).current;
+    const handlePressIn = () => {
+        Animated.spring(scale, {
+            toValue: 0.95,
+            useNativeDriver: true,
+            speed: 20,
+            bounciness: 10,
+        }).start();
+    };
+
+    const handlePressOut = () => {
+        Animated.spring(scale, {
+            toValue: 1,
+            useNativeDriver: true,
+            speed: 20,
+            bounciness: 10,
+        }).start();
+    };
+    const formatTime = (ts: number) => {
+        const d = new Date(ts * 1000);
+        return d.toLocaleString();
+    };
+    const Tag = ({
+        label,
+        bg,
+        fg,
+    }: {
+        label: string;
+        bg: string;
+        fg: string;
+    }) => (
+        <View
+            style={{
+                paddingHorizontal: 8,
+                paddingVertical: 2,
+                borderRadius: 999,
+                alignSelf: "center",
+                marginLeft: 8,
+                backgroundColor: bg,
+            }}
+        >
+            <Text variant="labelSmall" style={{ color: fg }}>
+                {label}
+            </Text>
+        </View>
+    );
+
+
+
+    return (
+        <AnimatedPressable
+            onPress={() => { }}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
+            android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
+            style={[{
+                width: WindowWidth * 0.9,
+                marginLeft: WindowWidth * 0.05,
+                marginRight: WindowWidth * 0.05,
+                marginBottom: 10,
+                borderRadius: 16,
+                overflow: 'hidden',
+                backgroundColor: '#F3EDF7'
+            },
+            { transform: [{ scale }] }]}
+        >
+            <View style={{ paddingHorizontal: 12, paddingVertical: 12 }}>
+                {/* Header */}
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Avatar.Image
+                        size={36}
+                        source={{ uri: item.authorAvatar }}
+                        style={{
+                            backgroundColor: theme.colors.surfaceVariant,
+                            marginRight: 12,
+                        }}
+                    />
+
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text
+                            variant="titleSmall"
+                            numberOfLines={1}
+                            style={{ color: theme.colors.onSurface }}
+                        >
+                            {item.authorName}
+                        </Text>
+
+                        <View
+                            style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                marginTop: 2,
+                                flexWrap: "wrap",
+                            }}
+                        >
+                            <Text
+                                variant="labelSmall"
+                                style={{ color: theme.colors.onSurfaceVariant }}
+                            >
+                                {formatTime(item.createdTime)}
+                            </Text>
+
+                            {item.isTop ? (
+                                <Tag
+                                    label="置顶"
+                                    bg={theme.colors.tertiaryContainer}
+                                    fg={theme.colors.onTertiaryContainer}
+                                />
+                            ) : null}
+
+                            {item.isHot ? (
+                                <Tag
+                                    label="热"
+                                    bg={theme.colors.secondaryContainer}
+                                    fg={theme.colors.onSecondaryContainer}
+                                />
+                            ) : null}
+                        </View>
+                    </View>
+
+                    {/* Actions */}
+                    <View style={{ flexDirection: "row", alignItems: "center", marginLeft: 8 }}>
+                        <IconButton
+                            icon={item.isVote ? "thumb-up" : "thumb-up-outline"}
+                            size={18}
+                            onPress={() => { }}
+                            iconColor={
+                                item.isVote ? theme.colors.primary : theme.colors.onSurfaceVariant
+                            }
+                            style={{ margin: 0 }}
+                        />
+                        <Text
+                            variant="labelSmall"
+                            style={{
+                                color: theme.colors.onSurfaceVariant,
+                                minWidth: 20,
+                                textAlign: "right",
+                            }}
+                        >
+                            {item.voteCount}
+                        </Text>
+                    </View>
+                </View>
+
+                {/* Body */}
+                <View style={{ marginTop: 10 }}>
+                    <CommentText content={item.content} emojiMap={EMOJI_URL_MAP} />
+                </View>
+
+                {/* Footer */}
+                {item.childCommentCount > 0 ? (
+                    <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center" }}>
+                        <Text variant="labelMedium" style={{ color: theme.colors.primary }}>
+                            查看 {item.childCommentCount} 条回复
+                        </Text>
+                    </View>
+                ) : null}
+            </View>
+        </AnimatedPressable>
+    );
+};
+
+
+
+
+
 
 
 export default function Comment() {
     const p = useGlobalSearchParams<{
-        id?: string | string[];
-        type?: string | string[];
-        needToGet?: string | string[];
+        id?: string;
+        type?: string;
+        needToGet?: string;
     }>();
 
     const id = Array.isArray(p.id) ? p.id[0] : p.id;
@@ -87,153 +261,13 @@ export default function Comment() {
             } else {
                 setIsLoadingMore(false);
             }
-            if(commentCount > 0 && comments.length === 0){
+            if (commentCount > 0 && comments.length === 0) {
                 console.log("评论加载完成:", comments.length, commentCount);
                 setIsClosed(true);
             }
         }
     };
 
-
-
-
-    const RenderCommentItem = ({ item }: { item: any }) => {
-        const formatTime = (ts: number) => {
-            const d = new Date(ts * 1000);
-            return d.toLocaleString();
-        };
-
-        const Tag = ({
-            label,
-            bg,
-            fg,
-        }: {
-            label: string;
-            bg: string;
-            fg: string;
-        }) => (
-            <View
-                style={{
-                    paddingHorizontal: 8,
-                    paddingVertical: 2,
-                    borderRadius: 999,
-                    alignSelf: "center",
-                    marginLeft: 8,
-                    backgroundColor: bg,
-                }}
-            >
-                <Text variant="labelSmall" style={{ color: fg }}>
-                    {label}
-                </Text>
-            </View>
-        );
-
-        return (
-            <View
-                style={{
-                    borderRadius: 20,
-                    backgroundColor: theme.colors.surface,
-                    borderWidth: 1,
-                    borderColor: theme.colors.outlineVariant,
-                    overflow: "hidden",
-                    marginBottom: 12,
-                }}
-            >
-                <View style={{ paddingHorizontal: 12, paddingVertical: 12 }}>
-                    {/* Header */}
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <Avatar.Image
-                            size={36}
-                            source={{ uri: item.authorAvatar }}
-                            style={{
-                                backgroundColor: theme.colors.surfaceVariant,
-                                marginRight: 12,
-                            }}
-                        />
-
-                        <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text
-                                variant="titleSmall"
-                                numberOfLines={1}
-                                style={{ color: theme.colors.onSurface }}
-                            >
-                                {item.authorName}
-                            </Text>
-
-                            <View
-                                style={{
-                                    flexDirection: "row",
-                                    alignItems: "center",
-                                    marginTop: 2,
-                                    flexWrap: "wrap",
-                                }}
-                            >
-                                <Text
-                                    variant="labelSmall"
-                                    style={{ color: theme.colors.onSurfaceVariant }}
-                                >
-                                    {formatTime(item.createdTime)}
-                                </Text>
-
-                                {item.isTop ? (
-                                    <Tag
-                                        label="置顶"
-                                        bg={theme.colors.tertiaryContainer}
-                                        fg={theme.colors.onTertiaryContainer}
-                                    />
-                                ) : null}
-
-                                {item.isHot ? (
-                                    <Tag
-                                        label="热"
-                                        bg={theme.colors.secondaryContainer}
-                                        fg={theme.colors.onSecondaryContainer}
-                                    />
-                                ) : null}
-                            </View>
-                        </View>
-
-                        {/* Actions */}
-                        <View style={{ flexDirection: "row", alignItems: "center", marginLeft: 8 }}>
-                            <IconButton
-                                icon={item.isVote ? "thumb-up" : "thumb-up-outline"}
-                                size={18}
-                                onPress={() => { }}
-                                iconColor={
-                                    item.isVote ? theme.colors.primary : theme.colors.onSurfaceVariant
-                                }
-                                style={{ margin: 0 }}
-                            />
-                            <Text
-                                variant="labelSmall"
-                                style={{
-                                    color: theme.colors.onSurfaceVariant,
-                                    minWidth: 20,
-                                    textAlign: "right",
-                                }}
-                            >
-                                {item.voteCount}
-                            </Text>
-                        </View>
-                    </View>
-
-                    {/* Body */}
-                    <View style={{ marginTop: 10 }}>
-                        <CommentText content={item.content} emojiMap={EMOJI_URL_MAP} />
-                    </View>
-
-                    {/* Footer */}
-                    {item.childCommentCount > 0 ? (
-                        <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center" }}>
-                            <Text variant="labelMedium" style={{ color: theme.colors.primary }}>
-                                查看 {item.childCommentCount} 条回复
-                            </Text>
-                        </View>
-                    ) : null}
-                </View>
-            </View>
-        );
-    };
 
     return (
         <View style={{ flex: 1 }}>
@@ -249,7 +283,7 @@ export default function Comment() {
                 refreshing={isRefreshing}
                 scrollEnabled={true}
                 keyExtractor={(item) => item.id}
-                renderItem={RenderCommentItem}
+                renderItem={({ item }) => <RenderCommentItem item={item} theme={theme} />}
                 ListEmptyComponent={() => {
                     if (isClosed) {
                         return (

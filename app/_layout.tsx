@@ -41,6 +41,7 @@ export default function RootLayout() {
 		<GestureHandlerRootView style={{ flex: 1 }}>
 			<PaperProvider
 				theme={theme}
+				settings={{ rippleEffectEnabled: true }}
 			>
 
 				<ThemeProvider value={combinedTheme}>
