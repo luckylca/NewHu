@@ -4,7 +4,6 @@ import { Animated, Easing, ScrollView, View } from 'react-native';
 import { Appbar, Button, Card, Dialog, Portal, Text, useTheme, Switch } from 'react-native-paper';
 import Svg, { Path } from 'react-native-svg';
 import { useUserStore } from '../src/stores/useUserStore';
-import { transparent } from "react-native-paper/lib/typescript/styles/themes/v2/colors";
 import { router } from "expo-router";
 
 const CURRENT_VERSION = 'v1.0.0';

@@ -213,7 +213,7 @@ const HomeScreen = ({ navigation }: any) => {
             />
             <FlatList
                 data={contentStore.feedList}
-                renderItem={({ item }) => <RenderItem item={item.item} type={item.feedType} needToGet={false} />}
+                renderItem={({ item }) => <RenderItem item={item.item} type={item.feedType} needToGet={true} />}
                 keyExtractor={(item) => item.item.id.toString()}
                 refreshing={isRefreshing} // 绑定下拉圈圈的显示状态
                 onRefresh={() => loadData(true)} // 触发下拉时执行的方法

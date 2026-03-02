@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import React, { useCallback, useRef, useState } from "react";
 import { FlatList, View } from "react-native";
 import { Appbar, Text } from "react-native-paper";
-import { renderItem } from "./home";
+import { RenderItem } from "./home";
 import { useFocusEffect } from "@react-navigation/native";
 
 const PAGE_SIZE = 20;
@@ -115,7 +115,7 @@ export default function HistoryScreen() {
             <FlatList
                 data={historyData}
                 keyExtractor={(item) => item.id}
-                renderItem={({ item }) => renderItem(item, item.feedType, true)}
+                renderItem={({ item }) => <RenderItem item={item} type={item.feedType} needToGet={true} />}
                 contentContainerStyle={{ padding: 16 }}
                 onRefresh={() => fetchHistory("refresh")}
                 refreshing={isRefreshing}

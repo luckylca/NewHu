@@ -163,6 +163,20 @@ class ZhihuAPI {
     async cancelVoteupAnswer(answerId: string) {
         return this.client.post(`https://www.zhihu.com/api/v4/answers/${answerId}/voters`, { type: "neutral" }, true);
     }
+    /**
+     * 取消点赞文章
+     * @param {string} articleId - 文章 ID
+     */
+    async cancelVoteupArticle(articleId: string) {
+        return this.client.post(`https://www.zhihu.com/api/v4/articles/${articleId}/voters`, { voting: 0 }, true);
+    }
+    /**
+     * 点赞文章
+     * @param {string} articleId - 文章 ID
+     */
+    async voteupArticle(articleId: string) {
+        return this.client.post(`https://www.zhihu.com/api/v4/articles/${articleId}/voters`, { voting: 1 }, true);
+    }
 
     // ==================== 问题相关 ====================
 

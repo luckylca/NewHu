@@ -85,6 +85,17 @@ export async function cancelVoteupAnswer(answerId: string) {
     return data;
 }
 
+export async function voteupArticle(articleId: string) {
+    const data = await requireApiInstance().voteupArticle(articleId);
+    return data;
+}
+
+export async function cancelVoteupArticle(articleId: string) {
+    const data = await requireApiInstance().cancelVoteupArticle(articleId);
+    return data;
+}
+
+
 // 获取问题详情。
 export async function getQuestion(questionId: string) {
     const data = await requireApiInstance().getQuestion(questionId);
