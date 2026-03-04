@@ -12,6 +12,12 @@ interface SettingState {
     backgroundOpacity: number; // 背景图片的透明度
     setBackgroundOpacity: (opacity: number) => void; // 设置背景图片透明度的函数
 
+    disableAnimations: boolean; // 是否关闭动画
+    setDisableAnimations: (disabled: boolean) => void; // 设置是否关闭动画
+
+    cookie: string; // 自定义 cookie
+    setCookie: (cookie: string) => void; // 设置 cookie
+
     isAds: boolean; // 是否是广告
     isPaid: boolean; // 是否是付费内容
 }
@@ -28,6 +34,12 @@ export const useSettingStore = create<SettingState>((set) => ({
     setBackgroundImage: (url: string) => set({backgroundImage: url}),
     backgroundOpacity: 0.5, // 背景图片的透明度
     setBackgroundOpacity: (opacity: number) => set({backgroundOpacity: opacity}),
+
+    disableAnimations: false,
+    setDisableAnimations: (disabled) => set({disableAnimations: disabled}),
+
+    cookie: '',
+    setCookie: (cookie) => set({cookie}),
 
     isAds: false, // 是否是广告
     isPaid: false, // 是否是付费内容

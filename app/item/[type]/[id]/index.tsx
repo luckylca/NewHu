@@ -1,16 +1,17 @@
 // app/item/type/[id]/index.tsx
-import { addReadHistory, getAnswer, getArticle, voteupAnswer, voteupArticle } from "@/src/api/ZhihuApi";
+import { addReadHistory, cancelVoteupAnswer, cancelVoteupArticle, getAnswer, getArticle, voteupAnswer, voteupArticle } from "@/src/api/ZhihuApi";
 import ImageReanimatedModal from "@/src/components/ImageReanimatedModal";
 import LoadingView from "@/src/components/LoadingView";
 import { useContentStore } from "@/src/stores/useContentStore";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Image, Pressable, ScrollView, TouchableOpacity, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { Appbar, Avatar, Divider, Icon, Menu, Portal, Snackbar, Text, useTheme } from "react-native-paper";
 import RenderHtml from 'react-native-render-html';
 import { scheduleOnRN } from "react-native-worklets";
+
 
 export type ItemParams = {
     id: string;
@@ -28,9 +29,10 @@ type ArrowEffect = {
 };
 
 export default function Item() {
-    const { id, type,needToGet } = useLocalSearchParams<ItemParams>();
+    const { id, type, needToGet } = useLocalSearchParams<ItemParams>();
     const contentStore = useContentStore();
     const router = useRouter();
+    const navigation = useNavigation();
     const theme = useTheme();
     const [origin, setOrigin] = useState({ x: 0, y: 0, width: 0, height: 0 });
     const [modalVisible, setModalVisible] = useState(false);
@@ -49,7 +51,7 @@ export default function Item() {
         console.log('添加阅读历史：', { id, type });
     }, [id, type]);
     useEffect(() => {
-        if (needToGet==='true') {
+        if (needToGet === 'true') {
             if (type === 'answer') {
                 getAnswer(String(id)).then((data) => {
                     const tmpReadData = {
@@ -74,6 +76,7 @@ export default function Item() {
                         questionAnswerCount: data.question?.answer_count || 0,
                         questionCreatedTime: data.question?.created || 0,
                     };
+                    // console.log('获取到的回答详情数据：', tmpReadData);
                     setReadData(tmpReadData);
                 });
             } else if (type === 'article') {
@@ -103,7 +106,7 @@ export default function Item() {
                     setReadData(tmpReadData);
                 });
             }
-        }else {
+        } else {
             const tmpReadData = contentStore.feedList.find((item) => String(item.item.id) === String(id))?.item;
             setReadData(tmpReadData);
         }
@@ -116,6 +119,7 @@ export default function Item() {
     }, [readData]);
 
     const voteupAction = type === 'answer' ? voteupAnswer : voteupArticle;
+    const cancelVoteupActionv = type === 'answer' ? cancelVoteupAnswer : cancelVoteupArticle;
 
     const showSnack = (text: string) => {
         setSnackText(text);
@@ -169,21 +173,48 @@ export default function Item() {
             console.log('重复点赞，已忽略');
             return;
         }
-        console.log('执行点赞操作');
         voteupAction(String(id))
-            .then(() => {
-                setVoted(true);
-                setVoteCount((count: number) => {
-                    const nextCount = count + 1;
-                    showSnack(`点赞成功，当前已经有${nextCount}点赞`);
-                    return nextCount;
-                });
-            })
-            .catch((error) => {
-                console.log('点赞失败:', error);
-                showSnack('点赞失败，请稍后重试');
-            });
+        setVoted(true);
+        setVoteCount((count: number) => {
+            const nextCount = count + 1;
+            showSnack(`点赞成功，当前已经有${nextCount}点赞`);
+            return nextCount;
+        });
+        setReadData((prev: any) => ({
+            ...prev,
+            voted: true,
+            voteCount: Number(prev.voteCount || 0) + 1,
+        }));
     };
+
+    const pressVoteUp = () => {
+        if (voted) {
+            setVoted(false);
+            cancelVoteupActionv(String(id));
+            setVoteCount((count: number) => {
+                const nextCount = count - 1;
+                return nextCount;
+            });
+            setReadData((prev: any) => ({
+                ...prev,
+                voted: false,
+                voteCount: Number(prev.voteCount || 0) - 1,
+            }));
+            return;
+        }
+        setVoted(true);
+        voteupAction(String(id));
+        setVoteCount((count: number) => {
+            const nextCount = count + 1;
+            showSnack(`点赞成功，当前已经有${nextCount}点赞`);
+            return nextCount;
+        });
+        setReadData((prev: any) => ({
+            ...prev,
+            voted: true,
+            voteCount: Number(prev.voteCount || 0) + 1,
+        }));
+    }
 
     const handleDoubleTapAt = (absoluteX: number, absoluteY: number) => {
         playArrowAnimation(absoluteX, absoluteY);
@@ -275,21 +306,21 @@ export default function Item() {
                     onDismiss={() => setMenuVisible(false)}
                     anchor={<Appbar.Action icon="dots-vertical" onPress={() => setMenuVisible(true)} />}>
                     <Menu.Item
-                        onPress={() => {console.log('复制内容');}}
+                        onPress={() => { console.log('复制内容'); }}
                         title="复制内容"
-                        leadingIcon={ () => <Icon source="content-copy" size={16} color="#49454F" /> }
+                        leadingIcon={() => <Icon source="content-copy" size={16} color="#49454F" />}
                     />
                     <Menu.Item
                         onPress={() => {
                         }}
                         title="取消点赞"
-                        leadingIcon={ () => <Icon source="account-outline" size={16} color="#49454F" /> }
+                        leadingIcon={() => <Icon source="account-outline" size={16} color="#49454F" />}
                     />
                 </Menu>
             </Appbar.Header>
 
             <ScrollView
-                contentContainerStyle={{ padding: 10 }}
+                contentContainerStyle={{ padding: 10 ,flexGrow: 1}}
                 showsVerticalScrollIndicator={false}
             >
                 {/* 标题 */}
@@ -338,29 +369,77 @@ export default function Item() {
                     </View>
                 </Pressable>
                 {/* 分割线 */}
+                {/* 第一个分割线 */}
                 <Divider style={{ marginVertical: 16 }} />
 
-                {/* HTML 正文渲染 */}
+                {/* 用 GestureDetector 包裹下面所有的内容 */}
                 <GestureDetector gesture={doubleTab}>
+                    {/* 必须有一个 View 作为直接子节点，加上 collapsable={false} 确保在 Android 上手势正常 */}
                     <View style={{ flex: 1 }} collapsable={false}>
+
+                        {/* HTML 正文渲染 */}
                         <RenderHtml
                             contentWidth={width - 32}
                             source={{ html: htmlContent }}
                             tagsStyles={tagsStyles}
                             enableExperimentalMarginCollapsing={true}
-                            renderers={{
-                                img: CustomImageRenderer
-                            }}
-                            defaultTextProps={
-                                { selectable: false  }
-                            }
+                            renderers={{ img: CustomImageRenderer }}
+                            defaultTextProps={{ selectable: false }}
                         />
+
+                        {/* 第二个分割线 */}
+                        <Divider style={{ marginVertical: 16 }} />
+
+                        {/* 底部操作按钮区域 */}
+                        <View style={{ paddingLeft: 24, paddingRight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <Pressable
+                                onPress={pressVoteUp}
+                                style={{ borderRadius: 8 }}
+                                android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
+                            >
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    {(voted || readData.voted) ? (
+                                        <Icon source="thumb-up" size={26} color="#49454F" />
+                                    ) : (
+                                        <Icon source="thumb-up-outline" size={26} color="#49454F" />
+                                    )}
+                                    <Text variant="labelMedium" style={{ marginLeft: 6, color: "#49454F" }}>
+                                        {readData.voteCount}
+                                    </Text>
+                                </View>
+                            </Pressable>
+                            <Pressable
+                                onPress={() => console.log('点击了收藏')}
+                                style={{ borderRadius: 8 }}
+                                android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
+                            >
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <Icon source="star-outline" size={26} color="#49454F" />
+                                    {readData.favoriteCount > 0 &&
+                                        <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
+                                            {readData.favoriteCount}
+                                        </Text>}
+                                </View>
+                            </Pressable>
+                            <Pressable
+                                onPress={() => navigation.navigate('comment', { id: readData.id, type: type } as any)}
+                                style={{ borderRadius: 8 }}
+                                android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
+                            >
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <Icon source="comment-outline" size={26} color="#49454F" />
+                                    <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
+                                        {readData.commentCount}
+                                    </Text>
+                                </View>
+                            </Pressable>
+                        </View>
+
+                        {/* 底部留白区域 (现在双击这里也会触发点赞了) */}
+                        <View style={{ height: 40 }} />
                     </View>
                 </GestureDetector>
 
-                {/* 底部留白 */}
-                <View style={{ height: 40 }} />
-                {/* <CommentLayout id={id} type={type} /> */}
             </ScrollView>
 
             {arrowEffects.map((arrow) => (
@@ -369,13 +448,13 @@ export default function Item() {
                     pointerEvents="none"
                     style={{
                         position: 'absolute',
-                        left: arrow.x - 25,
-                        top: arrow.y - 25,
+                        left: arrow.x - 15,
+                        top: arrow.y - 15,
                         opacity: arrow.opacity,
                         transform: [{ translateY: arrow.translateY }, { scale: arrow.scale }],
                     }}
                 >
-                    <MaterialCommunityIcons name="arrow-up-bold" size={50} color={theme.colors.primary} />
+                    <MaterialCommunityIcons name="triangle" size={30} color={theme.colors.primary} />
                 </Animated.View>
             ))}
 

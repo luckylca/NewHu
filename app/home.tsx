@@ -120,6 +120,7 @@ const HomeScreen = ({ navigation }: any) => {
         if (isAds || isPaid) {
             return null; // 过滤掉广告和付费内容
         }
+        console.log('原始数据项：', item.target);
         if (target.type === 'answer' || target.type === 'article') {
             return {
                 feedType: target.type,
@@ -198,8 +199,7 @@ const HomeScreen = ({ navigation }: any) => {
 
     useEffect(() => {
         getApiInstance(userStore.cookies); // 确保 API 实例使用了最新的 Cookie
-        loadData(true);
-        loadData(false);
+        loadData(true).then(() => loadData(false));
     }, []);
 
 

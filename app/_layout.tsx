@@ -75,6 +75,7 @@ export default function RootLayout() {
 					>
 						<Stack.Screen name="(tabs)" />
 						<Stack.Screen name="settings" options={{ title: '设置' }} />
+						<Stack.Screen name="devmode" options={{ title: '开发者模式' }} />
 						<Stack.Screen name="like" options={{ title: '收藏列表' }} />
 						<Stack.Screen name="history" options={{ title: '浏览历史' }} />
 						<Stack.Screen name="webview" options={{ title: '登录' }} />

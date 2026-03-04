@@ -6,7 +6,7 @@ import { Avatar, Button, Card, Portal, Text, useTheme } from 'react-native-paper
 
 
 const { width: WindowWidth,height: WindowHeight } = Dimensions.get('window');
-const AnimatedButton = Animated.createAnimatedComponent(Button);
+// const AnimatedButton = Animated.createAnimatedComponent(Button);
 
 const UserScreen = ({ navigation }: any) => {
     const theme = useTheme();
@@ -54,36 +54,30 @@ const UserScreen = ({ navigation }: any) => {
                         </View>
                     </Card>
                 </TouchableOpacity>
-                <AnimatedButton 
+                <Button 
                     mode="elevated"
-                    onPressIn={() => handlePressIn(scale1)}
-                    onPressOut={() => handlePressOut(scale1)}
                     onPress={() => router.push('/like')}
-                    style={{ width: '80%', marginBottom: 20,height: 60,justifyContent: 'center', transform: [{ scale: scale1 }] ,backgroundColor: theme.colors.primaryContainer }}
+                    style={{ width: '80%', marginBottom: 20,height: 60,justifyContent: 'center' ,backgroundColor: theme.colors.primaryContainer }}
                     contentStyle={{ height: 60, justifyContent: 'center', alignItems: 'center',flexDirection: 'row',backgroundColor: theme.colors.primaryContainer }}
                     >
                     <Text style={{ fontSize: 15,height: 60,textAlignVertical: 'center' }}>收藏列表</Text>
-                </AnimatedButton>
-                <AnimatedButton 
+                </Button>
+                <Button 
                     mode="elevated"
-                    style={{ width: '80%', marginBottom: 20,height: 60,justifyContent: 'center' ,backgroundColor: theme.colors.primaryContainer,transform: [{ scale: scale2 }] }}
+                    style={{ width: '80%', marginBottom: 20,height: 60,justifyContent: 'center' ,backgroundColor: theme.colors.primaryContainer }}
                     contentStyle={{ height: 60, justifyContent: 'center', alignItems: 'center',flexDirection: 'row',backgroundColor: theme.colors.primaryContainer }}
-                    onPressIn={() => handlePressIn(scale2)}
-                    onPressOut={() => handlePressOut(scale2)}
                     onPress={() => router.push('/history')}
                     >
                     <Text style={{ fontSize: 15,height: 60,textAlignVertical: 'center' }}>浏览历史</Text>
-                </AnimatedButton>
-                <AnimatedButton
+                </Button>
+                <Button
                     mode="elevated"
-                    style={{ width: '80%', marginBottom: 20 ,height: 60,justifyContent: 'center' ,backgroundColor: theme.colors.primaryContainer,transform: [{ scale: scale3 }]  }}
+                    style={{ width: '80%', marginBottom: 20 ,height: 60,justifyContent: 'center' ,backgroundColor: theme.colors.primaryContainer }}
                     contentStyle={{ height: 60, justifyContent: 'center', alignItems: 'center',flexDirection: 'row',backgroundColor: theme.colors.primaryContainer }}
-                    onPressIn={() => handlePressIn(scale3)}
-                    onPressOut={() => handlePressOut(scale3)}
                     onPress={() => router.push('/settings')}
                     >
                     <Text style={{ fontSize: 15,height: 60,textAlignVertical: 'center' }}>设置</Text>
-                </AnimatedButton>
+                </Button>
             </ScrollView>
     );
 }

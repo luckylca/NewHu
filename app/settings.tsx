@@ -203,6 +203,7 @@ const SettingsScreen = ({ navigation: _navigation }: any) => {
                         style={{ width: '100%', borderRadius: 0, backgroundColor: 'transparent', elevation: 0, shadowColor: "transparent" }}
                         contentStyle={{ height: 80, justifyContent: 'flex-start' }}
                         labelStyle={{ marginHorizontal: 0 }}
+                        onPress={() => router.push('/devmode')}
                     >
                         <View style={{ justifyContent: 'center', alignItems: 'flex-start', paddingLeft: 20 }}>
                             <Svg width={36} height={36} viewBox="0 0 24 24">
