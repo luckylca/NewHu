@@ -1,38 +1,52 @@
 //app/item/[id]/comment.tsx
-import { useGlobalSearchParams } from "expo-router";
-import React, { useEffect } from "react";
-import { View, FlatList, Pressable, Animated, Dimensions } from "react-native";
 import { getRootComments } from "@/src/api/ZhihuApi";
 import CommentText from "@/src/components/CommentText";
 import { EMOJI_URL_MAP } from "@/src/constants/emoji";
-import { useTheme, Avatar, IconButton, Text, Appbar } from "react-native-paper";
-import { useRouter } from "expo-router";
-// import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
+import { useSettingStore } from "@/src/stores/useSettingStore";
+import { useGlobalSearchParams, useRouter } from "expo-router";
+import React, { memo, useCallback, useEffect } from "react";
+import { Animated, Dimensions, FlatList, Pressable, View } from "react-native";
+import { Appbar, Avatar, IconButton, Modal, Portal, Text, useTheme } from "react-native-paper";
+import ChildComment from "../../../../src/components/ChildComment";
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 
 const { width: WindowWidth } = Dimensions.get("window");
 
-const RenderCommentItem = ({ item, theme }: { item: any, theme: any }) => {
+export const RenderCommentItem = memo(({
+    item,
+    theme,
+    style,
+    handleChildComment,
+    disableAnimations,
+}: {
+    item: any;
+    theme: any;
+    style: any;
+    handleChildComment: (id: string) => void;
+    disableAnimations: boolean;
+}) => {
 
     const scale = React.useRef(new Animated.Value(1)).current;
-    const handlePressIn = () => {
+    const handlePressIn = useCallback(() => {
+        if (disableAnimations) return;
         Animated.spring(scale, {
             toValue: 0.95,
             useNativeDriver: true,
             speed: 20,
             bounciness: 10,
         }).start();
-    };
+    }, [disableAnimations, scale]);
 
-    const handlePressOut = () => {
+    const handlePressOut = useCallback(() => {
+        if (disableAnimations) return;
         Animated.spring(scale, {
             toValue: 1,
             useNativeDriver: true,
             speed: 20,
             bounciness: 10,
         }).start();
-    };
+    }, [disableAnimations, scale]);
     const formatTime = (ts: number) => {
         const d = new Date(ts * 1000);
         return d.toLocaleString();
@@ -66,7 +80,7 @@ const RenderCommentItem = ({ item, theme }: { item: any, theme: any }) => {
 
     return (
         <AnimatedPressable
-            onPress={() => { }}
+            onPress={() => { console.log("点击了评论:", item.id); handleChildComment(item.id); }}
             onPressIn={handlePressIn}
             onPressOut={handlePressOut}
             android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
@@ -79,7 +93,8 @@ const RenderCommentItem = ({ item, theme }: { item: any, theme: any }) => {
                 overflow: 'hidden',
                 backgroundColor: '#F3EDF7'
             },
-            { transform: [{ scale }] }]}
+            { transform: [{ scale }] }
+            , style]}
         >
             <View style={{ paddingHorizontal: 12, paddingVertical: 12 }}>
                 {/* Header */}
@@ -175,12 +190,12 @@ const RenderCommentItem = ({ item, theme }: { item: any, theme: any }) => {
             </View>
         </AnimatedPressable>
     );
-};
+}, (prevProps, nextProps) => {
+    return prevProps.item.id === nextProps.item.id &&
+        prevProps.disableAnimations === nextProps.disableAnimations;
+});
 
-
-
-
-
+RenderCommentItem.displayName = "RenderCommentItem";
 
 
 export default function Comment() {
@@ -194,12 +209,16 @@ export default function Comment() {
     const type = Array.isArray(p.type) ? p.type[0] : p.type;
     const needToGet = Array.isArray(p.needToGet) ? p.needToGet[0] : p.needToGet;
 
+    const [childVisible, setChildVisible] = React.useState(false);
+    const [childId, setChildId] = React.useState("");
+
     const offsetRef = React.useRef("");
     const [isRefreshing, setIsRefreshing] = React.useState(false);
     const [isLoadingMore, setIsLoadingMore] = React.useState(false);
 
     const theme = useTheme();
     const router = useRouter();
+    const disableAnimations = useSettingStore((state) => state.disableAnimations);
     const [sort, setSort] = React.useState("score");
     const [isClosed, setIsClosed] = React.useState(false);
     const [comments, setComments] = React.useState<any[]>([]);
@@ -268,9 +287,27 @@ export default function Comment() {
         }
     };
 
+    const handleChildComment = useCallback((id: string) => {
+        setChildId(id);
+        setChildVisible(true);
+    }, []);
+
+    const renderCommentItem = useCallback(({ item }: { item: any }) => (
+        <RenderCommentItem
+            item={item}
+            theme={theme}
+            handleChildComment={handleChildComment}
+            disableAnimations={disableAnimations}
+        />
+    ), [disableAnimations, handleChildComment, theme]);
 
     return (
         <View style={{ flex: 1 }}>
+            <Portal>
+                <Modal visible={childVisible} onDismiss={() => setChildVisible(false)} contentContainerStyle={{ flex: 1 }}>
+                    <ChildComment visible={childVisible} id={childId} onClose={() => setChildVisible(false)}/>
+                </Modal>
+            </Portal>
             <Appbar.Header>
                 <Appbar.BackAction onPress={() => { router.back() }} />
                 <Appbar.Content title={`评论 (${commentCount})`} />
@@ -283,7 +320,12 @@ export default function Comment() {
                 refreshing={isRefreshing}
                 scrollEnabled={true}
                 keyExtractor={(item) => item.id}
-                renderItem={({ item }) => <RenderCommentItem item={item} theme={theme} />}
+                renderItem={renderCommentItem}
+                initialNumToRender={6}
+                maxToRenderPerBatch={8}
+                windowSize={7}
+                updateCellsBatchingPeriod={16}
+                removeClippedSubviews={true}
                 ListEmptyComponent={() => {
                     if (isClosed) {
                         return (

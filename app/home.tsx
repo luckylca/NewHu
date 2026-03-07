@@ -2,57 +2,64 @@ import { getApiInstance, getRecommend } from '@/src/api/ZhihuApi';
 import { useContentStore } from '@/src/stores/useContentStore';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { router } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
-import { Dimensions, FlatList, Pressable, View,Animated } from 'react-native';
+import React, { useEffect, useRef, useState,useCallback,memo } from 'react';
+import { Dimensions, FlatList, Pressable, View, Animated } from 'react-native';
 import { Card, Icon, Text, TextInput } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
+import { useSettingStore } from '../src/stores/useSettingStore';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const { width: WindowWidth } = Dimensions.get('window');
 
-export const RenderItem = ({ item, type, needToGet }: any) => {
+export const RenderItem = memo(({ item, type, needToGet, disableAnimations }: any) => {
     const title = type === 'answer' ? item.questionTitle : item.title;
-    const openItem = (id: string, type: string) => {
+
+    const openItem = useCallback(() => {
         setTimeout(() => {
             router.push({
                 pathname: `/item/[type]/[id]`,
-                params: { id, type, needToGet: needToGet.toString() }
+                params: { id: item.id, type, needToGet: needToGet.toString() }
             })
         }, 100);
-    }
+    }, [item.id, type, needToGet]);
+
     const scale = useRef(new Animated.Value(1)).current;
 
-    const handlePressIn = () => {
+    const handlePressIn = useCallback(() => {
+        if (disableAnimations) return;
         Animated.spring(scale, {
             toValue: 0.95,
             useNativeDriver: true,
             bounciness: 10,
         }).start();
-    };
+    }, [disableAnimations]);
 
-    const handlePressOut = () => {
+    const handlePressOut = useCallback(() => {
+        if (disableAnimations) return;
         Animated.spring(scale, {
             toValue: 1,
             useNativeDriver: true,
             bounciness: 10,
         }).start();
-    };
+    }, [disableAnimations]);
+
     return (
         <AnimatedPressable
-            onPress={() => {openItem(item.id, type);}}
+            onPress={openItem}
             onPressIn={handlePressIn}
             onPressOut={handlePressOut}
             android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
-            style={[{
-                width: WindowWidth * 0.9,
-                marginBottom: 10,
-                borderRadius: 16,
-                overflow: 'hidden',
-                backgroundColor: '#F3EDF7',
-            },
-            { transform: [{ scale }] }]}
+            style={[
+                {
+                    width: WindowWidth * 0.9,
+                    marginBottom: 10,
+                    borderRadius: 16,
+                    overflow: 'hidden',
+                    backgroundColor: '#F3EDF7',
+                },
+                { transform: [{ scale }] }
+            ]}
         >
             <Card
                 mode="contained"
@@ -82,12 +89,14 @@ export const RenderItem = ({ item, type, needToGet }: any) => {
                                 {item.voteCount}
                             </Text>
                         </View>
-                        {item.favoriteCount > 0 && <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
-                            <Icon source="star-outline" size={16} color="#49454F" />
-                            <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
-                                {item.favoriteCount}
-                            </Text>
-                        </View>}
+                        {item.favoriteCount > 0 && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
+                                <Icon source="star-outline" size={16} color="#49454F" />
+                                <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
+                                    {item.favoriteCount}
+                                </Text>
+                            </View>
+                        )}
 
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
                             <Icon source="comment-outline" size={16} color="#49454F" />
@@ -100,12 +109,18 @@ export const RenderItem = ({ item, type, needToGet }: any) => {
             </Card>
         </AnimatedPressable>
     );
-};
+}, (prevProps: any, nextProps: any) => {
+    return prevProps.item.id === nextProps.item.id &&
+        prevProps.disableAnimations === nextProps.disableAnimations;
+});
+
+RenderItem.displayName = 'RenderItem';
 
 const HomeScreen = ({ navigation }: any) => {
     const insets = useSafeAreaInsets();
     const contentStore = useContentStore();
     const userStore = useUserStore();
+    const disableAnimations = useSettingStore((state) => state.disableAnimations); 
     // 1. 状态管理：是否正在下拉刷新，是否正在上拉加载
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -120,7 +135,7 @@ const HomeScreen = ({ navigation }: any) => {
         if (isAds || isPaid) {
             return null; // 过滤掉广告和付费内容
         }
-        console.log('原始数据项：', item.target);
+        // console.log('原始数据项：', item.target);
         if (target.type === 'answer' || target.type === 'article') {
             return {
                 feedType: target.type,
@@ -202,6 +217,14 @@ const HomeScreen = ({ navigation }: any) => {
         loadData(true).then(() => loadData(false));
     }, []);
 
+    const renderListItem = useCallback(({ item }: any) => (
+        <RenderItem 
+            item={item.item} 
+            type={item.feedType} 
+            needToGet={true} 
+            disableAnimations={disableAnimations} 
+        />
+    ), [disableAnimations]);
 
     return (
         <View style={{ flex: 1, alignItems: 'center', marginTop: insets.top }}>
@@ -213,13 +236,16 @@ const HomeScreen = ({ navigation }: any) => {
             />
             <FlatList
                 data={contentStore.feedList}
-                renderItem={({ item }) => <RenderItem item={item.item} type={item.feedType} needToGet={true} />}
+                renderItem={renderListItem}
                 keyExtractor={(item) => item.item.id.toString()}
                 refreshing={isRefreshing} // 绑定下拉圈圈的显示状态
                 onRefresh={() => loadData(true)} // 触发下拉时执行的方法
                 onEndReached={() => loadData(false)} // 列表滑动到底部时触发的方法
                 onEndReachedThreshold={0.8}
                 showsVerticalScrollIndicator={false}
+                maxToRenderPerBatch={10}     // 每次增量渲染的最多数量
+                windowSize={5}               // 渲染窗口大小（当前屏幕上下方渲染的屏幕数量，默认21太大了，容易卡）
+                initialNumToRender={8}  
             />
         </View>
     );

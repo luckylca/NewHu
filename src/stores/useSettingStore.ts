@@ -18,8 +18,8 @@ interface SettingState {
     cookie: string; // 自定义 cookie
     setCookie: (cookie: string) => void; // 设置 cookie
 
-    isAds: boolean; // 是否是广告
-    isPaid: boolean; // 是否是付费内容
+    isAds: boolean; // 是否开启广告过滤
+    isPaid: boolean; // 是否开启付费内容过滤
 }
 
 export const useSettingStore = create<SettingState>((set) => ({
@@ -41,7 +41,7 @@ export const useSettingStore = create<SettingState>((set) => ({
     cookie: '',
     setCookie: (cookie) => set({cookie}),
 
-    isAds: false, // 是否是广告
-    isPaid: false, // 是否是付费内容
+    isAds: false, // 是否开启广告过滤
+    isPaid: false, // 是否开启付费内容过滤
 
 }));

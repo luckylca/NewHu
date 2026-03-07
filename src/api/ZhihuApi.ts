@@ -118,7 +118,7 @@ export async function getRootComments(id: string, type: string, offset: string =
     return data;
 }
 
-export async function getChildComments(commentId: string, offset: string = "", sort: string = "score") {
+export async function getChildComments(commentId: string, offset: string = "", sort: string = "ts") {
     const data = await requireApiInstance().getChildComments(commentId, offset, sort);
     return data;
 }

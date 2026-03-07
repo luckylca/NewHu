@@ -5,13 +5,12 @@ import LoadingView from "@/src/components/LoadingView";
 import { useContentStore } from "@/src/stores/useContentStore";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Image, Pressable, ScrollView, TouchableOpacity, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { Appbar, Avatar, Divider, Icon, Menu, Portal, Snackbar, Text, useTheme } from "react-native-paper";
 import RenderHtml from 'react-native-render-html';
 import { scheduleOnRN } from "react-native-worklets";
-
 
 export type ItemParams = {
     id: string;
@@ -34,10 +33,12 @@ export default function Item() {
     const router = useRouter();
     const navigation = useNavigation();
     const theme = useTheme();
+    
     const [origin, setOrigin] = useState({ x: 0, y: 0, width: 0, height: 0 });
     const [modalVisible, setModalVisible] = useState(false);
     const [imageUrl, setImageUrl] = useState("");
     const { width } = useWindowDimensions();
+    
     const [readData, setReadData] = useState<any>(null);
     const [menuVisible, setMenuVisible] = useState(false);
     const [voted, setVoted] = useState(false);
@@ -46,10 +47,12 @@ export default function Item() {
     const [snackText, setSnackText] = useState('');
     const [arrowEffects, setArrowEffects] = useState<ArrowEffect[]>([]);
     const arrowIdRef = useRef(0);
+
     useEffect(() => {
-        addReadHistory(String(id), type === 'answer' ? 'answer' : 'article')
+        addReadHistory(String(id), type === 'answer' ? 'answer' : 'article');
         console.log('添加阅读历史：', { id, type });
     }, [id, type]);
+
     useEffect(() => {
         if (needToGet === 'true') {
             if (type === 'answer') {
@@ -66,7 +69,6 @@ export default function Item() {
                         voted: data.relationship?.voting === 1,
                         favoriteCount: data.favorite_count || 0,
                         commentCount: data.comment_count || 0,
-
                         content: data.content || "",
                         questionTitle: data.question?.title || '未知问题',
                         questionId: data.question?.id || '',
@@ -76,7 +78,6 @@ export default function Item() {
                         questionAnswerCount: data.question?.answer_count || 0,
                         questionCreatedTime: data.question?.created || 0,
                     };
-                    // console.log('获取到的回答详情数据：', tmpReadData);
                     setReadData(tmpReadData);
                 });
             } else if (type === 'article') {
@@ -93,7 +94,6 @@ export default function Item() {
                         voted: data.relationship?.voting === 1,
                         favoriteCount: data.favorite_count || 0,
                         commentCount: data.comment_count || 0,
-
                         content: data.content || "",
                         questionTitle: data.question?.title || '未知问题',
                         questionId: data.question?.id || '',
@@ -127,8 +127,8 @@ export default function Item() {
     };
 
     const playArrowAnimation = (absoluteX: number, absoluteY: number) => {
-        const id = arrowIdRef.current + 1;
-        arrowIdRef.current = id;
+        const arrowId = arrowIdRef.current + 1;
+        arrowIdRef.current = arrowId;
 
         const scale = new Animated.Value(0.6);
         const translateY = new Animated.Value(0);
@@ -136,7 +136,7 @@ export default function Item() {
 
         setArrowEffects((prev) => [
             ...prev,
-            { id, x: absoluteX, y: absoluteY, scale, translateY, opacity },
+            { id: arrowId, x: absoluteX, y: absoluteY, scale, translateY, opacity },
         ]);
 
         Animated.parallel([
@@ -163,7 +163,7 @@ export default function Item() {
                 useNativeDriver: true,
             }),
         ]).start(() => {
-            setArrowEffects((prev) => prev.filter((item) => item.id !== id));
+            setArrowEffects((prev) => prev.filter((item) => item.id !== arrowId));
         });
     };
 
@@ -173,7 +173,7 @@ export default function Item() {
             console.log('重复点赞，已忽略');
             return;
         }
-        voteupAction(String(id))
+        voteupAction(String(id));
         setVoted(true);
         setVoteCount((count: number) => {
             const nextCount = count + 1;
@@ -214,7 +214,7 @@ export default function Item() {
             voted: true,
             voteCount: Number(prev.voteCount || 0) + 1,
         }));
-    }
+    };
 
     const handleDoubleTapAt = (absoluteX: number, absoluteY: number) => {
         playArrowAnimation(absoluteX, absoluteY);
@@ -225,24 +225,17 @@ export default function Item() {
         scheduleOnRN(handleDoubleTapAt, e.absoluteX, e.absoluteY);
     });
 
-    if (!readData) {
-        return (
-            <LoadingView />
-        );
-    }
-
-    const title = type === 'answer' ? readData.questionTitle : (readData.title || '未知标题');
-    const htmlContent = readData.content || "<p>暂无正文内容</p>";
-
-    const tagsStyles = {
+    const imageRef = useRef<View>(null);
+    // 1. 缓存 tagsStyles
+    const tagsStyles = useMemo(() => ({
         body: { color: theme.colors.onSurface, fontSize: 16, lineHeight: 28 },
         p: { marginBottom: 16 },
         figure: { margin: 0, marginTop: 8, marginBottom: 8 },
         img: { borderRadius: 12 }
-    };
+    }), [theme.colors.onSurface]);
 
-    const CustomImageRenderer = (props: any) => {
-        const imageRef = useRef<View>(null);
+    // 2. 缓存图片渲染组件
+    const CustomImageRenderer = useCallback((props: any) => {
         const attrs = props.tnode.attributes;
 
         // 知乎懒加载：真实地址在 data-original 或 data-actualsrc，src 只是占位 SVG
@@ -256,8 +249,8 @@ export default function Item() {
 
         const openImage = () => {
             if (imageRef.current) {
-                imageRef.current.measure((x, y, width, height, pageX, pageY) => {
-                    setOrigin({ x: pageX, y: pageY, width, height });
+                imageRef.current.measure((x, y, componentWidth, componentHeight, pageX, pageY) => {
+                    setOrigin({ x: pageX, y: pageY, width: componentWidth, height: componentHeight });
                 });
             }
         };
@@ -277,7 +270,7 @@ export default function Item() {
                         source={{ uri: src }}
                         style={{
                             width: '100%',
-                            aspectRatio: imgWidth && imgHeight ? imgWidth / imgHeight : 16 / 9,
+                            aspectRatio: imgWidth && imgHeight ? Number(imgWidth) / Number(imgHeight) : 16 / 9,
                             borderRadius: 8
                         }}
                         resizeMode="contain"
@@ -285,7 +278,20 @@ export default function Item() {
                 </TouchableOpacity>
             </View>
         );
-    };
+    }, []); // 依赖项为空，保证 CustomImageRenderer 永远不重新创建
+
+    // 3. 缓存 renderers 对象
+    const renderers = useMemo(() => ({
+        img: CustomImageRenderer
+    }), [CustomImageRenderer]);
+
+
+    if (!readData) {
+        return <LoadingView />;
+    }
+
+    const title = type === 'answer' ? readData.questionTitle : (readData.title || '未知标题');
+    const htmlContent = readData.content || "<p>暂无正文内容</p>";
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -297,6 +303,7 @@ export default function Item() {
                     onClose={() => setModalVisible(false)}
                 />
             </Portal>
+
             {/* 顶部导航栏 */}
             <Appbar.Header elevated>
                 <Appbar.BackAction onPress={() => router.back()} />
@@ -311,8 +318,7 @@ export default function Item() {
                         leadingIcon={() => <Icon source="content-copy" size={16} color="#49454F" />}
                     />
                     <Menu.Item
-                        onPress={() => {
-                        }}
+                        onPress={() => { }}
                         title="取消点赞"
                         leadingIcon={() => <Icon source="account-outline" size={16} color="#49454F" />}
                     />
@@ -320,7 +326,7 @@ export default function Item() {
             </Appbar.Header>
 
             <ScrollView
-                contentContainerStyle={{ padding: 10 ,flexGrow: 1}}
+                contentContainerStyle={{ padding: 10, flexGrow: 1 }}
                 showsVerticalScrollIndicator={false}
             >
                 {/* 标题 */}
@@ -368,22 +374,19 @@ export default function Item() {
                         </View>
                     </View>
                 </Pressable>
-                {/* 分割线 */}
+                
                 {/* 第一个分割线 */}
                 <Divider style={{ marginVertical: 16 }} />
 
-                {/* 用 GestureDetector 包裹下面所有的内容 */}
                 <GestureDetector gesture={doubleTab}>
-                    {/* 必须有一个 View 作为直接子节点，加上 collapsable={false} 确保在 Android 上手势正常 */}
                     <View style={{ flex: 1 }} collapsable={false}>
-
                         {/* HTML 正文渲染 */}
                         <RenderHtml
                             contentWidth={width - 32}
                             source={{ html: htmlContent }}
                             tagsStyles={tagsStyles}
                             enableExperimentalMarginCollapsing={true}
-                            renderers={{ img: CustomImageRenderer }}
+                            renderers={renderers} 
                             defaultTextProps={{ selectable: false }}
                         />
 
@@ -435,11 +438,10 @@ export default function Item() {
                             </Pressable>
                         </View>
 
-                        {/* 底部留白区域 (现在双击这里也会触发点赞了) */}
+                        {/* 底部留白区域 */}
                         <View style={{ height: 40 }} />
                     </View>
                 </GestureDetector>
-
             </ScrollView>
 
             {arrowEffects.map((arrow) => (

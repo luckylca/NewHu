@@ -219,8 +219,8 @@ class ZhihuAPI {
      * @param {string} sort - 排序方式（score/time）
      */
 
-    async getChildComments(commentId: string, offset: string = "", sort: string = "score") {
-        return this.client.get(`https://www.zhihu.com/api/v4/comment_v5/${commentId}/child_comment?limit=20&offset=${offset}&order_by=${sort}`);
+    async getChildComments(commentId: string, offset: string = "", sort: string = "ts") {
+        return this.client.get(`https://www.zhihu.com/api/v4/comment_v5/comment/${commentId}/child_comment?limit=20&offset=${offset}&order_by=${sort}`);
     }
     /**
      * 构建评论请求参数
