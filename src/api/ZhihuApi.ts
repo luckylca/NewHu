@@ -157,3 +157,13 @@ export async function getReadHistory(offset: number = 0) {
     const data = await requireApiInstance().getReadHistory(offset);
     return data;
 }
+
+export async function likeComment(commentId: string) {
+    const data = await requireApiInstance().likeComment(commentId);
+    return data;
+}
+
+export async function cancelLikeComment(commentId: string) {
+    const data = await requireApiInstance().cancelLikeComment(commentId);
+    return data;
+}

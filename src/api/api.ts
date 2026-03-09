@@ -256,6 +256,23 @@ class ZhihuAPI {
         const { url, body } = this.buildCommentRequest(options);
         return this.client.post(url, body, true);
     }
+    /**
+     * 点赞评论
+     * @param commentId 
+     * @returns 
+     */
+    async likeComment(commentId: string) {
+        return this.client.post(`https://www.zhihu.com/api/v4/comments/${commentId}/like`, {}, true);
+    }
+    /**
+     * 取消点赞评论
+     * @param commentId 
+     * @returns 
+     */
+    async cancelLikeComment(commentId: string) {
+        return this.client.delete(`https://www.zhihu.com/api/v4/comments/${commentId}/like`);
+    }
+
     // ==================== 收藏相关 ====================
 
     /**

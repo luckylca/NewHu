@@ -1,33 +1,32 @@
 //app/item/[id]/comment.tsx
-import { getRootComments } from "@/src/api/ZhihuApi";
+import { getRootComments, likeComment,cancelLikeComment } from "@/src/api/ZhihuApi";
 import CommentText from "@/src/components/CommentText";
 import { EMOJI_URL_MAP } from "@/src/constants/emoji";
 import { useSettingStore } from "@/src/stores/useSettingStore";
 import { useGlobalSearchParams, useRouter } from "expo-router";
-import React, { memo, useCallback, useEffect } from "react";
-import { Animated, Dimensions, FlatList, Pressable, View } from "react-native";
+import React, { memo, use, useCallback, useEffect } from "react";
+import { Animated, FlatList, Pressable, View } from "react-native";
 import { Appbar, Avatar, IconButton, Modal, Portal, Text, useTheme } from "react-native-paper";
 import ChildComment from "../../../../src/components/ChildComment";
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
-
-const { width: WindowWidth } = Dimensions.get("window");
 
 export const RenderCommentItem = memo(({
     item,
     theme,
     style,
     handleChildComment,
+    id,
     disableAnimations,
 }: {
     item: any;
     theme: any;
-    style: any;
+    style?: any;
     handleChildComment: (id: string) => void;
+    id: string;
     disableAnimations: boolean;
 }) => {
-
     const scale = React.useRef(new Animated.Value(1)).current;
+    const [isLiked, setIsLiked] = React.useState(item.isVote);
     const handlePressIn = useCallback(() => {
         if (disableAnimations) return;
         Animated.spring(scale, {
@@ -47,10 +46,28 @@ export const RenderCommentItem = memo(({
             bounciness: 10,
         }).start();
     }, [disableAnimations, scale]);
+    
     const formatTime = (ts: number) => {
         const d = new Date(ts * 1000);
         return d.toLocaleString();
     };
+
+    useEffect(() => {
+        setIsLiked(item.isVote);
+    }, [item.isVote]);
+    
+    useEffect(() => {
+        if (isLiked) {
+            likeComment(item.id).catch(() => {
+                setIsLiked(false);
+            });
+        }else {
+            cancelLikeComment(item.id).catch(() => {
+                setIsLiked(true);
+            });
+        }
+    }, [isLiked, item.id]);
+
     const Tag = ({
         label,
         bg,
@@ -76,8 +93,6 @@ export const RenderCommentItem = memo(({
         </View>
     );
 
-
-
     return (
         <AnimatedPressable
             onPress={() => { console.log("点击了评论:", item.id); handleChildComment(item.id); }}
@@ -85,16 +100,17 @@ export const RenderCommentItem = memo(({
             onPressOut={handlePressOut}
             android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
             style={[{
-                width: WindowWidth * 0.9,
-                marginLeft: WindowWidth * 0.05,
-                marginRight: WindowWidth * 0.05,
+                // 这里我暂时把 WindowWidth 注释掉了，如果你有全局变量请保留你的写法
+                // width: WindowWidth * 0.9,
+                // marginLeft: WindowWidth * 0.05,
+                // marginRight: WindowWidth * 0.05,
                 marginBottom: 10,
                 borderRadius: 16,
                 overflow: 'hidden',
                 backgroundColor: '#F3EDF7'
             },
-            { transform: [{ scale }] }
-            , style]}
+            { transform: [{ scale }] },
+            style]}
         >
             <View style={{ paddingHorizontal: 12, paddingVertical: 12 }}>
                 {/* Header */}
@@ -115,6 +131,15 @@ export const RenderCommentItem = memo(({
                             style={{ color: theme.colors.onSurface }}
                         >
                             {item.authorName}
+                            {/* 如果存在 replyToAuthorName，则拼接 " 回复 XXX" */}
+                            {item.replyToAuthorName && (
+                                <Text style={{ color: theme.colors.onSurfaceVariant, fontWeight: 'normal' }}>
+                                    {' 回复 '}
+                                    <Text style={{ color: theme.colors.onSurface, fontWeight: 'bold' }}>
+                                        {item.replyToAuthorName}
+                                    </Text>
+                                </Text>
+                            )}
                         </Text>
 
                         <View
@@ -155,7 +180,7 @@ export const RenderCommentItem = memo(({
                         <IconButton
                             icon={item.isVote ? "thumb-up" : "thumb-up-outline"}
                             size={18}
-                            onPress={() => { }}
+                            onPress={() => { setIsLiked((prev: any) => !prev); item.isVote = !item.isVote; item.voteCount += item.isVote ? 1 : -1; }}
                             iconColor={
                                 item.isVote ? theme.colors.primary : theme.colors.onSurfaceVariant
                             }
@@ -176,6 +201,7 @@ export const RenderCommentItem = memo(({
 
                 {/* Body */}
                 <View style={{ marginTop: 10 }}>
+                    {/* 请确保 CommentText 和 EMOJI_URL_MAP 在你的文件里可以正常访问 */}
                     <CommentText content={item.content} emojiMap={EMOJI_URL_MAP} />
                 </View>
 
@@ -183,7 +209,7 @@ export const RenderCommentItem = memo(({
                 {item.childCommentCount > 0 ? (
                     <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center" }}>
                         <Text variant="labelMedium" style={{ color: theme.colors.primary }}>
-                            查看 {item.childCommentCount} 条回复
+                            共 {item.childCommentCount} 条回复
                         </Text>
                     </View>
                 ) : null}
@@ -191,7 +217,9 @@ export const RenderCommentItem = memo(({
         </AnimatedPressable>
     );
 }, (prevProps, nextProps) => {
+    // 增加对 replyToAuthorName 的比较，防止热更新或数据变动时不渲染
     return prevProps.item.id === nextProps.item.id &&
+        prevProps.item.replyToAuthorName === nextProps.item.replyToAuthorName &&
         prevProps.disableAnimations === nextProps.disableAnimations;
 });
 
@@ -297,6 +325,7 @@ export default function Comment() {
             item={item}
             theme={theme}
             handleChildComment={handleChildComment}
+            id={item.id}
             disableAnimations={disableAnimations}
         />
     ), [disableAnimations, handleChildComment, theme]);
