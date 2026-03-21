@@ -1,10 +1,11 @@
-import { withLayoutContext } from "expo-router";
 import { createMaterialTopTabNavigator } from "@react-navigation/material-top-tabs";
+import { useLocalSearchParams, withLayoutContext } from "expo-router";
 
 const { Navigator } = createMaterialTopTabNavigator();
 const Tabs = withLayoutContext(Navigator);
 
 export default function ItemLayout() {
+	const params = useLocalSearchParams();
 	return (
 		<Tabs
 			screenOptions={{
@@ -13,8 +14,8 @@ export default function ItemLayout() {
 			}}
 		>
 			{/* 这里的 name 对应同目录下的文件名 */}
-			<Tabs.Screen name="index" />
-			<Tabs.Screen name="comment" />
+			<Tabs.Screen name="index" initialParams={params as any} />
+			<Tabs.Screen name="comment" initialParams={params as any} />
 		</Tabs>
 	);
 }

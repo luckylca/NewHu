@@ -349,7 +349,7 @@ export default function Item() {
 
                 {/* 作者信息区域 */}
                 <Pressable
-                    onPress={() => console.log(readData.updatedTime)}
+                    onPress={() => router.push({ pathname: '/people', params: { urlToken: readData.authorUrlToken } })}
                     android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
                     style={{
                         width: '100%',

@@ -1,10 +1,10 @@
 //app/item/[id]/comment.tsx
-import { getRootComments, likeComment,cancelLikeComment } from "@/src/api/ZhihuApi";
+import { cancelLikeComment, getRootComments, likeComment } from "@/src/api/ZhihuApi";
 import CommentText from "@/src/components/CommentText";
 import { EMOJI_URL_MAP } from "@/src/constants/emoji";
 import { useSettingStore } from "@/src/stores/useSettingStore";
-import { useGlobalSearchParams, useRouter } from "expo-router";
-import React, { memo, use, useCallback, useEffect } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { memo, useCallback, useEffect } from "react";
 import { Animated, FlatList, Pressable, View } from "react-native";
 import { Appbar, Avatar, IconButton, Modal, Portal, Text, useTheme } from "react-native-paper";
 import ChildComment from "../../../../src/components/ChildComment";
@@ -227,7 +227,7 @@ RenderCommentItem.displayName = "RenderCommentItem";
 
 
 export default function Comment() {
-    const p = useGlobalSearchParams<{
+    const p = useLocalSearchParams<{
         id?: string;
         type?: string;
         needToGet?: string;
@@ -255,6 +255,9 @@ export default function Comment() {
 
 
     useEffect(() => {
+        if (!id || !normalizedType) {
+            return;
+        }
         loadComments();
     }, [id, normalizedType]);
 
