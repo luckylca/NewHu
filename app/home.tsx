@@ -169,7 +169,6 @@ const HomeScreen = ({ navigation }: any) => {
 
     // 3. 核心加载函数：isRefresh 区分是下拉刷新还是上拉加载
     const loadData = async (isRefresh = false) => {
-
         if (isRefresh) {
             setIsRefreshing(true);
             sessionTokenRef.current = ""; // 下拉刷新重置 token

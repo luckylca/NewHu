@@ -5,7 +5,7 @@ import LoadingView from "@/src/components/LoadingView";
 import { useContentStore } from "@/src/stores/useContentStore";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Image, Pressable, ScrollView, TouchableOpacity, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { Appbar, Avatar, Divider, Icon, Menu, Portal, Snackbar, Text, useTheme } from "react-native-paper";
@@ -26,6 +26,50 @@ type ArrowEffect = {
     translateY: Animated.Value;
     opacity: Animated.Value;
 };
+
+// 提取到组件外部的独立组件
+const CustomImageRenderer = React.memo(({ tnode, setOrigin, setImageUrl, setModalVisible }: any) => {
+    const attrs = tnode.attributes;
+    const localImageRef = useRef<View>(null);
+
+    // 知乎懒加载：真实地址在 data-original 或 data-actualsrc，src 只是占位 SVG
+    const src = attrs['data-original'] || attrs['data-actualsrc'] || attrs['data-src'] || attrs.src;
+    const { width: imgWidth, height: imgHeight } = attrs;
+
+    // 如果是占位 SVG 则不渲染
+    if (!src || src.startsWith('data:image/svg')) {
+        return null;
+    }
+
+    return (
+        <View ref={localImageRef} style={{ flex: 1, alignItems: 'center', marginVertical: 8 }}>
+            <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                    console.log('图片地址:', src);
+                    if (localImageRef.current) {
+                        localImageRef.current.measure((x, y, componentWidth, componentHeight, pageX, pageY) => {
+                            setOrigin({ x: pageX, y: pageY, width: componentWidth, height: componentHeight });
+                            setImageUrl(src);
+                            setModalVisible(true);
+                        });
+                    }
+                }}
+            >
+                <Image
+                    source={{ uri: src }}
+                    style={{
+                        width: '100%',
+                        aspectRatio: imgWidth && imgHeight ? Number(imgWidth) / Number(imgHeight) : 16 / 9,
+                        borderRadius: 8
+                    }}
+                    resizeMode="contain"
+                />
+            </TouchableOpacity>
+        </View>
+    );
+});
+CustomImageRenderer.displayName = 'CustomImageRenderer';
 
 export default function Item() {
     const { id, type, needToGet } = useLocalSearchParams<ItemParams>();
@@ -119,7 +163,7 @@ export default function Item() {
     }, [readData]);
 
     const voteupAction = type === 'answer' ? voteupAnswer : voteupArticle;
-    const cancelVoteupActionv = type === 'answer' ? cancelVoteupAnswer : cancelVoteupArticle;
+    const cancelVoteupAction = type === 'answer' ? cancelVoteupAnswer : cancelVoteupArticle;
 
     const showSnack = (text: string) => {
         setSnackText(text);
@@ -190,7 +234,7 @@ export default function Item() {
     const pressVoteUp = () => {
         if (voted) {
             setVoted(false);
-            cancelVoteupActionv(String(id));
+            cancelVoteupAction(String(id));
             setVoteCount((count: number) => {
                 const nextCount = count - 1;
                 return nextCount;
@@ -225,7 +269,6 @@ export default function Item() {
         scheduleOnRN(handleDoubleTapAt, e.absoluteX, e.absoluteY);
     });
 
-    const imageRef = useRef<View>(null);
     // 1. 缓存 tagsStyles
     const tagsStyles = useMemo(() => ({
         body: { color: theme.colors.onSurface, fontSize: 16, lineHeight: 28 },
@@ -234,56 +277,17 @@ export default function Item() {
         img: { borderRadius: 12 }
     }), [theme.colors.onSurface]);
 
-    // 2. 缓存图片渲染组件
-    const CustomImageRenderer = useCallback((props: any) => {
-        const attrs = props.tnode.attributes;
-
-        // 知乎懒加载：真实地址在 data-original 或 data-actualsrc，src 只是占位 SVG
-        const src = attrs['data-original'] || attrs['data-actualsrc'] || attrs['data-src'] || attrs.src;
-        const { width: imgWidth, height: imgHeight } = attrs;
-
-        // 如果是占位 SVG 则不渲染
-        if (!src || src.startsWith('data:image/svg')) {
-            return null;
-        }
-
-        const openImage = () => {
-            if (imageRef.current) {
-                imageRef.current.measure((x, y, componentWidth, componentHeight, pageX, pageY) => {
-                    setOrigin({ x: pageX, y: pageY, width: componentWidth, height: componentHeight });
-                });
-            }
-        };
-
-        return (
-            <View ref={imageRef} style={{ flex: 1, alignItems: 'center', marginVertical: 8 }}>
-                <TouchableOpacity
-                    activeOpacity={0.8}
-                    onPress={() => {
-                        console.log('图片地址:', src);
-                        openImage();
-                        setImageUrl(src);
-                        setModalVisible(true);
-                    }}
-                >
-                    <Image
-                        source={{ uri: src }}
-                        style={{
-                            width: '100%',
-                            aspectRatio: imgWidth && imgHeight ? Number(imgWidth) / Number(imgHeight) : 16 / 9,
-                            borderRadius: 8
-                        }}
-                        resizeMode="contain"
-                    />
-                </TouchableOpacity>
-            </View>
-        );
-    }, []); // 依赖项为空，保证 CustomImageRenderer 永远不重新创建
-
-    // 3. 缓存 renderers 对象
+    // 2. 缓存 renderers 对象
     const renderers = useMemo(() => ({
-        img: CustomImageRenderer
-    }), [CustomImageRenderer]);
+        img: (props: any) => (
+            <CustomImageRenderer
+                {...props}
+                setOrigin={setOrigin}
+                setImageUrl={setImageUrl}
+                setModalVisible={setModalVisible}
+            />
+        )
+    }), []);
 
 
     if (!readData) {
@@ -318,7 +322,7 @@ export default function Item() {
                         leadingIcon={() => <Icon source="content-copy" size={16} color="#49454F" />}
                     />
                     <Menu.Item
-                        onPress={() => { }}
+                        onPress={() => { cancelVoteupAction(String(id)); }}
                         title="取消点赞"
                         leadingIcon={() => <Icon source="account-outline" size={16} color="#49454F" />}
                     />

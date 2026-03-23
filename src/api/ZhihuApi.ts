@@ -167,3 +167,23 @@ export async function cancelLikeComment(commentId: string) {
     const data = await requireApiInstance().cancelLikeComment(commentId);
     return data;
 }
+
+export async function getUserAnswers(urlToken: string, offset: number = 0, limit: number = 20, sortBy: string = "created") {
+    const data = await requireApiInstance().getUserAnswers(urlToken, offset, limit, sortBy);
+    return data;
+}
+
+export async function getUserQuestions(urlToken: string, offset: number = 0, limit: number = 20) {
+    const data = await requireApiInstance().getUserQuestions(urlToken, offset, limit);
+    return data;
+}
+
+export async function getUserArticles(urlToken: string, offset: number = 0, limit: number = 20, sortBy: string = "created") {
+    const data = await requireApiInstance().getUserArticles(urlToken, offset, limit, sortBy);
+    return data;
+}
+
+export async function getUserActivities(urlToken: string, offset: string = "", pageNum: number = 1) {
+    const data = await requireApiInstance().getUserActivities(urlToken, offset, pageNum);
+    return data;
+}

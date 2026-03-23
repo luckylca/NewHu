@@ -325,6 +325,31 @@ class ZhihuAPI {
     async getReadHistory(offset: number = 0) {
         return this.client.get(`https://www.zhihu.com/api/v4/unify-consumption/read_history?offset=${offset}&limit=20`);
     }
+    /**
+     * 获取用户的回答列表
+     * @param {string} urlToken 用户的 URL token
+     * @param {number} offset 偏移量
+     * @param {number} limit 每页数量
+     * @param {string} sortBy 排序方式（created/updated/voteup_count等）
+     */
+    async getUserAnswers(urlToken: string, offset: number = 0, limit: number = 20, sortBy: string = "created") {
+        const include = "data[*].is_normal,admin_closed_comment,reward_info,is_collapsed,annotation_action,annotation_detail,collapse_reason,collapsed_by,suggest_edit,comment_count,can_comment,content,editable_content,attachment,voteup_count,reshipment_settings,comment_permission,created_time,updated_time,review_info,excerpt,paid_info,reaction_instruction,is_labeled,label_info,relationship.is_authorized,voting,is_author,is_thanked,is_nothelp,reaction,vessay_info;data[*].author.badge[?(type=best_answerer)].topics;data[*].author.kvip_info;data[*].author.vip_info;data[*].question.has_publishing_draft,relationship";
+        return this.client.get(`https://www.zhihu.com/api/v4/members/${urlToken}/answers?include=${encodeURIComponent(include)}&offset=${offset}&limit=${limit}&sort_by=${sortBy}&ws_qiangzhisafe=0`);
+    }
+
+    async getUserQuestions(urlToken: string, offset: number = 0, limit: number = 20) {
+        const include = "data[*].created,answer_count,follower_count,author,admin_closed_comment";
+        return this.client.get(`https://www.zhihu.com/api/v4/members/${urlToken}/questions?include=${encodeURIComponent(include)}&offset=${offset}&limit=${limit}&ws_qiangzhisafe=0`);
+    }
+
+    async getUserArticles(urlToken: string, offset: number = 0, limit: number = 20, sortBy: string = "created") {
+        const include = "data[*].comment_count,suggest_edit,is_normal,thumbnail_extra_info,thumbnail,can_comment,comment_permission,admin_closed_comment,content,voteup_count,created,updated,upvoted_followees,voting,review_info,reaction_instruction,is_labeled,label_info,reaction,vessay_info;data[*].author.badge[?(type=best_answerer)].topics;data[*].author.kvip_info;data[*].author.vip_info;";
+        return this.client.get(`https://www.zhihu.com/api/v4/members/${urlToken}/articles?include=${encodeURIComponent(include)}&offset=${offset}&limit=${limit}&sort_by=${sortBy}&ws_qiangzhisafe=0`);
+    }
+
+    async getUserActivities(urlToken: string, offset: string = "", pageNum: number = 1) {
+        return this.client.get(`https://www.zhihu.com/api/v3/moments/${urlToken}/activities?offset=${offset}&page_num=${pageNum}`);
+    }
 }
 
 // 导出

@@ -6,7 +6,7 @@ import { useSettingStore } from "@/src/stores/useSettingStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { memo, useCallback, useEffect } from "react";
 import { Animated, FlatList, Pressable, View } from "react-native";
-import { Appbar, Avatar, IconButton, Modal, Portal, Text, useTheme } from "react-native-paper";
+import { Appbar, Avatar, IconButton, Modal, Portal, Text, useTheme,Icon,Menu } from "react-native-paper";
 import ChildComment from "../../../../src/components/ChildComment";
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -15,6 +15,7 @@ export const RenderCommentItem = memo(({
     theme,
     style,
     handleChildComment,
+    setChildVisible,
     id,
     disableAnimations,
 }: {
@@ -22,11 +23,13 @@ export const RenderCommentItem = memo(({
     theme: any;
     style?: any;
     handleChildComment: (id: string) => void;
+    setChildVisible: (visible: boolean) => void;
     id: string;
     disableAnimations: boolean;
 }) => {
     const scale = React.useRef(new Animated.Value(1)).current;
     const [isLiked, setIsLiked] = React.useState(item.isVote);
+    const router = useRouter();
     const handlePressIn = useCallback(() => {
         if (disableAnimations) return;
         Animated.spring(scale, {
@@ -115,14 +118,16 @@ export const RenderCommentItem = memo(({
             <View style={{ paddingHorizontal: 12, paddingVertical: 12 }}>
                 {/* Header */}
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Avatar.Image
-                        size={36}
-                        source={{ uri: item.authorAvatar }}
-                        style={{
-                            backgroundColor: theme.colors.surfaceVariant,
-                            marginRight: 12,
-                        }}
-                    />
+                    <Pressable onPress={() => {router.push({ pathname: '/people', params: { urlToken: item.authorUrlToken } });setChildVisible(false);}}>
+                        <Avatar.Image
+                            size={36}
+                            source={{ uri: item.authorAvatar }}
+                            style={{
+                                backgroundColor: theme.colors.surfaceVariant,
+                                marginRight: 12,
+                            }}
+                        />
+                    </Pressable>
 
                     <View style={{ flex: 1, minWidth: 0 }}>
                         <Text
@@ -239,6 +244,7 @@ export default function Comment() {
 
     const [childVisible, setChildVisible] = React.useState(false);
     const [childId, setChildId] = React.useState("");
+    const [menuVisible, setMenuVisible] = React.useState(false);
 
     const offsetRef = React.useRef("");
     const [isRefreshing, setIsRefreshing] = React.useState(false);
@@ -323,11 +329,13 @@ export default function Comment() {
         setChildVisible(true);
     }, []);
 
+
     const renderCommentItem = useCallback(({ item }: { item: any }) => (
         <RenderCommentItem
             item={item}
             theme={theme}
             handleChildComment={handleChildComment}
+            setChildVisible={setChildVisible}
             id={item.id}
             disableAnimations={disableAnimations}
         />
@@ -343,6 +351,21 @@ export default function Comment() {
             <Appbar.Header>
                 <Appbar.BackAction onPress={() => { router.back() }} />
                 <Appbar.Content title={`评论 (${commentCount})`} />
+                <Menu
+                    visible={menuVisible}
+                    onDismiss={() => {setMenuVisible(false)}}
+                    anchor={<Appbar.Action icon="dots-vertical" onPress={() => setMenuVisible(true)} />}>
+                    <Menu.Item
+                        onPress={() => { console.log('复制内容'); }}
+                        title="回复评论"
+                        leadingIcon={() => <Icon source="content-copy" size={16} color="#49454F" />}
+                    />
+                    <Menu.Item
+                        onPress={() => {  }}
+                        title="取消点赞"
+                        leadingIcon={() => <Icon source="account-outline" size={16} color="#49454F" />}
+                    />
+                </Menu>
             </Appbar.Header>
             <FlatList
                 data={comments}

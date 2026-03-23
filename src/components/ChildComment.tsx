@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, BackHandler, FlatList, Pressable, StyleSheet, View,Dimensions } from "react-native";
-import { Text, useTheme,Divider } from "react-native-paper";
+import { Animated, BackHandler, Dimensions, FlatList, Pressable, StyleSheet, View } from "react-native";
+import { Divider, Text, useTheme } from "react-native-paper";
 import { RenderCommentItem } from "../../app/item/[type]/[id]/comment";
 import { getChildComments } from "../api/ZhihuApi";
 import { useSettingStore } from "../stores/useSettingStore";
@@ -153,11 +153,12 @@ export default function ChildComment({ visible, id, onClose }: { visible: boolea
             item={item}
             theme={theme}
             handleChildComment={handleChildComment}
+            setChildVisible={onClose} 
             id={item.id}
             disableAnimations={disableAnimations}
             style={{ marginLeft: 0, marginRight: 0, width: "100%" }}
         />
-    ), [disableAnimations, handleChildComment, theme]);
+    ), [disableAnimations, handleChildComment, theme, onClose]);
 
     if (!isMounted) return null;
 
@@ -212,6 +213,7 @@ export default function ChildComment({ visible, id, onClose }: { visible: boolea
                                     theme={theme}
                                     id={rootComment.id}
                                     handleChildComment={handleChildComment}
+                                    setChildVisible={onClose}
                                     disableAnimations={disableAnimations}
                                     style={{ marginLeft: 0, marginRight: 0, width: "100%" }}
                                 />
