@@ -123,6 +123,7 @@ export async function getChildComments(commentId: string, offset: string = "", s
     return data;
 }
 
+//发表评论
 export async function submitComment(params: { contentType: string; contentId: string; text: string; replyCommentId?: string }) {
     const data = await requireApiInstance().submitComment(params);
     return data;

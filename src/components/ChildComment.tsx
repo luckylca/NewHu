@@ -6,7 +6,7 @@ import { getChildComments } from "../api/ZhihuApi";
 import { useSettingStore } from "../stores/useSettingStore";
 const { width: WindowWidth } = Dimensions.get("window");
 
-export default function ChildComment({ visible, id, onClose }: { visible: boolean, id: string, onClose: () => void }) {
+export default function ChildComment({ visible, id, onClose, onReply }: { visible: boolean, id: string, onClose: () => void, onReply?: (id: string, name?: string) => void }) {
     const theme = useTheme();
     const disableAnimations = useSettingStore((state) => state.disableAnimations);
 
@@ -82,6 +82,7 @@ export default function ChildComment({ visible, id, onClose }: { visible: boolea
             authorAvatar: item.author?.avatar_url,
             voteCount: item.like_count,
             isVote: item.liked,
+            isAuthor: item.is_author, // 获取是否为本人评论字段
             isHot: item.hot,
             isTop: item.top,
             childCommentCount: item.child_comment_count ?? 0,
@@ -97,7 +98,8 @@ export default function ChildComment({ visible, id, onClose }: { visible: boolea
         }
 
         try {
-            const res = await getChildComments(id, offset.current, "ts");
+            const currentOffset = isRefresh ? "" : offset.current; // 修正同样可能发生的并发导致 ref 未清空
+            const res = await getChildComments(id, currentOffset, "ts");
             
             // 首屏刷新时，捕获 root 评论和总数量
             if (isRefresh) {
@@ -143,22 +145,24 @@ export default function ChildComment({ visible, id, onClose }: { visible: boolea
         }
     };
 
-    const handleChildComment = useCallback((childId: string) => {
+    const handleChildComment = useCallback((childId: string, authorName?: string) => {
         console.log("点击了子评论，id:", childId);
-        // 子评论弹窗内通常是回复某人，可以在这里触发回复框弹出
+        // 子评论内部直接点击暂不触发回复框弹出
+        // 如果你需要可以在这里做其他跳转或者直接留空
     }, []);
 
     const renderCommentItem = useCallback(({ item }: { item: any }) => (
         <RenderCommentItem
             item={item}
             theme={theme}
-            handleChildComment={handleChildComment}
+            handleChildComment={(id) => handleChildComment(id, item.authorName)}
             setChildVisible={onClose} 
             id={item.id}
             disableAnimations={disableAnimations}
+            onReply={(id) => onReply && onReply(id, item.authorName)}
             style={{ marginLeft: 0, marginRight: 0, width: "100%" }}
         />
-    ), [disableAnimations, handleChildComment, theme, onClose]);
+    ), [disableAnimations, handleChildComment, theme, onClose, onReply]);
 
     if (!isMounted) return null;
 
@@ -212,9 +216,10 @@ export default function ChildComment({ visible, id, onClose }: { visible: boolea
                                     item={rootComment}
                                     theme={theme}
                                     id={rootComment.id}
-                                    handleChildComment={handleChildComment}
+                                    handleChildComment={(id) => handleChildComment(id, rootComment.authorName)}
                                     setChildVisible={onClose}
                                     disableAnimations={disableAnimations}
+                                    onReply={(id) => onReply && onReply(id, rootComment.authorName)}
                                     style={{ marginLeft: 0, marginRight: 0, width: "100%" }}
                                 />
                                 <Divider style={{ marginVertical: 8 }} />

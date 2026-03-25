@@ -122,6 +122,7 @@ export default function Item() {
                         questionAnswerCount: data.question?.answer_count || 0,
                         questionCreatedTime: data.question?.created || 0,
                     };
+                    console.log(tmpReadData.voted)
                     setReadData(tmpReadData);
                 });
             } else if (type === 'article') {
@@ -322,7 +323,7 @@ export default function Item() {
                         leadingIcon={() => <Icon source="content-copy" size={16} color="#49454F" />}
                     />
                     <Menu.Item
-                        onPress={() => { cancelVoteupAction(String(id)); }}
+                        onPress={() => { cancelVoteupAction(String(id)); setVoted(false); setVoteCount((count: number) => count - 1); }}
                         title="取消点赞"
                         leadingIcon={() => <Icon source="account-outline" size={16} color="#49454F" />}
                     />
@@ -391,6 +392,7 @@ export default function Item() {
                             tagsStyles={tagsStyles}
                             enableExperimentalMarginCollapsing={true}
                             renderers={renderers} 
+                            ignoredDomTags={['noscript']}
                             defaultTextProps={{ selectable: false }}
                         />
 
@@ -406,9 +408,9 @@ export default function Item() {
                             >
                                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                     {(voted || readData.voted) ? (
-                                        <Icon source="thumb-up" size={26} color="#49454F" />
+                                        <Icon source="thumb-up" size={26} color={theme.colors.primary} />
                                     ) : (
-                                        <Icon source="thumb-up-outline" size={26} color="#49454F" />
+                                        <Icon source="thumb-up-outline" size={26} color={theme.colors.onSurfaceVariant} />
                                     )}
                                     <Text variant="labelMedium" style={{ marginLeft: 6, color: "#49454F" }}>
                                         {readData.voteCount}
