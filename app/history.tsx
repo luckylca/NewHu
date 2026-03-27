@@ -65,7 +65,6 @@ export default function HistoryScreen() {
             }
 
             const nextOffset = isRefresh ? 0 : offsetRef.current + PAGE_SIZE;
-
             try {
                 const res = await getReadHistory(nextOffset);
                 const raw = res.data as any[];

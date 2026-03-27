@@ -261,6 +261,13 @@ export default function Item() {
         }));
     };
 
+    const handleTitlePress = () => {
+        if (type === 'answer' && readData.questionId) {
+            console.log('跳转到问题详情，问题ID:', readData.questionId);
+            router.push({ pathname: '/question', params: { id: readData.questionId } });
+        }
+    };
+
     const handleDoubleTapAt = (absoluteX: number, absoluteY: number) => {
         playArrowAnimation(absoluteX, absoluteY);
         handleVoteUp();
@@ -336,7 +343,7 @@ export default function Item() {
             >
                 {/* 标题 */}
                 <Pressable
-                    onPress={() => console.log('点击了标题')}
+                    onPress={() => handleTitlePress()}
                     android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
                     style={{
                         width: '100%',

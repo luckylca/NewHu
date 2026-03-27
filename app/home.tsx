@@ -2,8 +2,8 @@ import { getApiInstance, getRecommend } from '@/src/api/ZhihuApi';
 import { useContentStore } from '@/src/stores/useContentStore';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { router } from 'expo-router';
-import React, { useEffect, useRef, useState,useCallback,memo } from 'react';
-import { Dimensions, FlatList, Pressable, View, Animated } from 'react-native';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Dimensions, FlatList, Pressable, View } from 'react-native';
 import { Card, Icon, Text, TextInput } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSettingStore } from '../src/stores/useSettingStore';
@@ -12,8 +12,8 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const { width: WindowWidth } = Dimensions.get('window');
 
-export const RenderItem = memo(({ item, type, needToGet, disableAnimations }: any) => {
-    const title = type === 'answer' ? item.questionTitle : item.title;
+export const RenderItem = memo(({ item, type, needToGet, disableAnimations, hideTitle }: any) => {
+    const title = (type === 'answer' && item.questionTitle) ? item.questionTitle : item.title;
 
     const openItem = useCallback(() => {
         setTimeout(() => {
@@ -66,13 +66,15 @@ export const RenderItem = memo(({ item, type, needToGet, disableAnimations }: an
                 style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: 'transparent' }}
             >
                 <Card.Content style={{ paddingVertical: 8 }}>
-                    <Text
-                        variant="titleMedium"
-                        style={{ fontWeight: 'bold', marginBottom: 8 }}
-                        numberOfLines={2}
-                    >
-                        {title}
-                    </Text>
+                    {!hideTitle && (
+                        <Text
+                            variant="titleMedium"
+                            style={{ fontWeight: 'bold', marginBottom: 8 }}
+                            numberOfLines={2}
+                        >
+                            {title}
+                        </Text>
+                    )}
 
                     <Text
                         variant="bodyMedium"

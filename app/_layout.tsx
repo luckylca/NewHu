@@ -83,6 +83,7 @@ export default function RootLayout() {
 						<Stack.Screen name="userinfo" options={{ title: '用户信息' }} />
 						<Stack.Screen name="item/[type]/[id]" options={{ title: '详情' }} />
 						<Stack.Screen name="people" options={{ title: '人物信息' }} />
+						<Stack.Screen name="question" options={{ title: '问题详情' }} />
 					</Stack>
 				</ThemeProvider>
 			</PaperProvider>
