@@ -1,16 +1,18 @@
 // Removed: /* eslint-disable react-native/no-inline-styles */
+import { router } from "expo-router";
 import React, { useRef } from "react";
 import { Animated, Easing, ScrollView, View } from 'react-native';
-import { Appbar, Button, Card, Dialog, Portal, Text, useTheme, Switch } from 'react-native-paper';
+import { Appbar, Button, Card, Dialog, Portal, Switch, Text, useTheme } from 'react-native-paper';
 import Svg, { Path } from 'react-native-svg';
+import { useSettingStore } from '../src/stores/useSettingStore';
 import { useUserStore } from '../src/stores/useUserStore';
-import { router } from "expo-router";
 
 const CURRENT_VERSION = 'v1.0.0';
 
 const SettingsScreen = ({ navigation: _navigation }: any) => {
 
     const theme = useTheme();
+    const disableAnimations = useSettingStore((state) => state.disableAnimations);
 
     const userStore = useUserStore();
     const [updataDialogVisible, setUpdataDialogVisible] = React.useState(false);
@@ -30,6 +32,14 @@ const SettingsScreen = ({ navigation: _navigation }: any) => {
     ).current;
 
     React.useEffect(() => {
+        if (disableAnimations) {
+            animaValues.forEach((anim) => {
+                anim.fade.setValue(1);
+                anim.slide.setValue(0);
+            });
+            return;
+        }
+
         const animations = animaValues.map((anim) => {
             return Animated.parallel([
                 Animated.timing(anim.fade, {
@@ -47,7 +57,7 @@ const SettingsScreen = ({ navigation: _navigation }: any) => {
             ])
         });
         Animated.stagger(100, animations).start();
-    }, [animaValues]);
+    }, [animaValues, disableAnimations]);
 
     const getAnimationStyle = (index: number) => ({
         opacity: animaValues[index].fade,

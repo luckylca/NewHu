@@ -1,21 +1,20 @@
 // app/_layout.tsx
+import { useAppTheme } from '@/src/hooks/useAppTheme';
+import {
+    DarkTheme as NavigationDarkTheme,
+    DefaultTheme as NavigationDefaultTheme,
+    ThemeProvider
+} from '@react-navigation/native'; // 引入 React Navigation 的默认主题
 import { Stack } from 'expo-router';
 import React from 'react';
-import {
-	ThemeProvider,
-	DarkTheme as NavigationDarkTheme,
-	DefaultTheme as NavigationDefaultTheme
-} from '@react-navigation/native'; // 引入 React Navigation 的默认主题
-import {
-	adaptNavigationTheme,
-	PaperProvider,
-	MD3DarkTheme,
-	MD3LightTheme
-} from 'react-native-paper'; // 引入适配器
+import { StatusBar } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { ImageBackground, StatusBar, View, StyleSheet } from 'react-native';
-import { useAppTheme } from '@/src/hooks/useAppTheme';
-import { useSettingStore } from '@/src/stores/useSettingStore';
+import {
+    adaptNavigationTheme,
+    MD3DarkTheme,
+    MD3LightTheme,
+    PaperProvider
+} from 'react-native-paper'; // 引入适配器
 const { LightTheme, DarkTheme } = adaptNavigationTheme({
 	reactNavigationLight: NavigationDefaultTheme,
 	reactNavigationDark: NavigationDarkTheme,
@@ -34,8 +33,6 @@ export default function RootLayout() {
 		},
 		fonts: navigationTheme.fonts // 关键：使用适配后的 fonts 避免报错
 	};
-	const backgroundImage = useSettingStore((state) => state.backgroundImage);
-	const backgroundOpacity = useSettingStore((state) => state.backgroundOpacity);
 
 	return (
 		<GestureHandlerRootView style={{ flex: 1 }}>
@@ -50,24 +47,13 @@ export default function RootLayout() {
 						backgroundColor='transparent'
 						translucent
 					/>
-					{backgroundImage && (
-						<View style={[StyleSheet.absoluteFill, { zIndex: -1, backgroundColor: theme.colors.background }]}>
-							<ImageBackground
-								source={{ uri: backgroundImage }}
-								style={{ width: '100%', height: '100%', opacity: backgroundOpacity }}
-								resizeMode="cover"
-							>
-								{/* <View style={{ flex: 1, backgroundColor: theme.colors.background, opacity: backgroundOpacity }} /> */}
-							</ImageBackground>
-						</View>
-					)}
 					<Stack
 						screenOptions={{
 							headerStyle: {
-								backgroundColor: backgroundImage ? `transparent` : theme.colors.background,
+								backgroundColor: theme.colors.background,
 							},
 							contentStyle: {
-								backgroundColor: backgroundImage ? `transparent` : theme.colors.background,
+								backgroundColor: theme.colors.background,
 							},
 							headerShown: false,
 							animation: 'fade',

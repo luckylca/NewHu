@@ -1,15 +1,17 @@
-import { useMemo } from 'react';
+import { AppDarkTheme, AppLightTheme } from '@/src/constants/theme';
 import { useSettingStore } from '@/src/stores/useSettingStore';
-import { AppLightTheme, AppDarkTheme } from '@/src/constants/theme';
-import { Theme } from '@react-navigation/native';
+import { useMemo } from 'react';
+import { useColorScheme } from 'react-native';
 
 export const useAppTheme = () => {
+    const systemColorScheme = useColorScheme();
+    const followSystemTheme = useSettingStore(state => state.followSystemTheme);
     const isDarkMode = useSettingStore(state => state.isDarkMode);
     const themeColor = useSettingStore(state => state.themeColor);
-    const backgroundImage = useSettingStore(state => state.backgroundImage);
 
     return useMemo(() => {
-        const baseTheme = isDarkMode ? AppDarkTheme : AppLightTheme;
+        const shouldUseDarkMode = followSystemTheme ? systemColorScheme === 'dark' : isDarkMode;
+        const baseTheme = shouldUseDarkMode ? AppDarkTheme : AppLightTheme;
 
         // 1. 处理颜色适配
         const adaptedColors = {
@@ -19,7 +21,7 @@ export const useAppTheme = () => {
             text: baseTheme.colors.onSurface,
             border: baseTheme.colors.outline,
             notification: baseTheme.colors.error,
-            background: backgroundImage ? 'transparent' : baseTheme.colors.background,
+            background: baseTheme.colors.background,
         };
 
         // 2. 处理字体适配 (关键修复)
@@ -41,5 +43,5 @@ export const useAppTheme = () => {
                 scale: 1.0, // 确保动画比例为 1，找回 Menu 的淡入淡出
             },
         };
-    }, [isDarkMode, themeColor, backgroundImage]);
+    }, [followSystemTheme, systemColorScheme, isDarkMode, themeColor]);
 };

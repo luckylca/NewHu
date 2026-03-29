@@ -3,8 +3,8 @@ import { useContentStore } from '@/src/stores/useContentStore';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { router } from 'expo-router';
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Dimensions, FlatList, Pressable, View } from 'react-native';
-import { Card, Icon, Text, TextInput } from 'react-native-paper';
+import { Animated, Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent, Pressable, View } from 'react-native';
+import { Card, Icon, Text, TextInput, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSettingStore } from '../src/stores/useSettingStore';
 
@@ -14,7 +14,10 @@ const { width: WindowWidth } = Dimensions.get('window');
 
 export const RenderItem = memo(({ item, type, needToGet, disableAnimations, hideTitle }: any) => {
     const title = (type === 'answer' && item.questionTitle) ? item.questionTitle : item.title;
-
+    const theme = useTheme();
+    const metaColor = theme.colors.onSurfaceVariant;
+    const cardBgColor = theme.colors.surfaceVariant;
+    
     const openItem = useCallback(() => {
         setTimeout(() => {
             router.push({
@@ -49,14 +52,15 @@ export const RenderItem = memo(({ item, type, needToGet, disableAnimations, hide
             onPress={openItem}
             onPressIn={handlePressIn}
             onPressOut={handlePressOut}
-            android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
+            android_ripple={{ color: theme.colors.surfaceDisabled, foreground: true }}
             style={[
                 {
                     width: WindowWidth * 0.9,
                     marginBottom: 10,
                     borderRadius: 16,
                     overflow: 'hidden',
-                    backgroundColor: '#F3EDF7',
+                    backgroundColor: cardBgColor,
+                    // backgroundColor: 'transparent',
                 },
                 { transform: [{ scale }] }
             ]}
@@ -78,7 +82,7 @@ export const RenderItem = memo(({ item, type, needToGet, disableAnimations, hide
 
                     <Text
                         variant="bodyMedium"
-                        style={{ color: '#49454F', marginBottom: 10, lineHeight: 20 }}
+                        style={{ color: metaColor, marginBottom: 10, lineHeight: 20 }}
                         numberOfLines={3}
                     >
                         {item.excerpt}
@@ -86,23 +90,23 @@ export const RenderItem = memo(({ item, type, needToGet, disableAnimations, hide
 
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
-                            <Icon source="thumb-up-outline" size={16} color="#49454F" />
-                            <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
+                            <Icon source="thumb-up-outline" size={16} color={metaColor} />
+                            <Text variant="labelMedium" style={{ marginLeft: 6, color: metaColor }}>
                                 {item.voteCount}
                             </Text>
                         </View>
                         {item.favoriteCount > 0 && (
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
-                                <Icon source="star-outline" size={16} color="#49454F" />
-                                <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
+                                <Icon source="star-outline" size={16} color={metaColor} />
+                                <Text variant="labelMedium" style={{ marginLeft: 6, color: metaColor }}>
                                     {item.favoriteCount}
                                 </Text>
                             </View>
                         )}
 
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
-                            <Icon source="comment-outline" size={16} color="#49454F" />
-                            <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
+                            <Icon source="comment-outline" size={16} color={metaColor} />
+                            <Text variant="labelMedium" style={{ marginLeft: 6, color: metaColor }}>
                                 {item.commentCount}
                             </Text>
                         </View>
@@ -118,8 +122,9 @@ export const RenderItem = memo(({ item, type, needToGet, disableAnimations, hide
 
 RenderItem.displayName = 'RenderItem';
 
-const HomeScreen = ({ navigation }: any) => {
+const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
     const insets = useSafeAreaInsets();
+    const theme = useTheme();
     const contentStore = useContentStore();
     const userStore = useUserStore();
     const disableAnimations = useSettingStore((state) => state.disableAnimations); 
@@ -129,6 +134,8 @@ const HomeScreen = ({ navigation }: any) => {
 
     // 2. 使用 useRef 保存 token，这样每次组件刷新它不会被清空重置
     const sessionTokenRef = useRef("");
+    const lastOffsetYRef = useRef(0);
+    const tabVisibleRef = useRef(true);
 
     const processFeedItem = (item: any) => {
         const target = item.target;
@@ -227,8 +234,36 @@ const HomeScreen = ({ navigation }: any) => {
         />
     ), [disableAnimations]);
 
+    const handleListScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const currentY = event.nativeEvent.contentOffset.y;
+        const deltaY = currentY - lastOffsetYRef.current;
+
+        if (currentY <= 0) {
+            if (!tabVisibleRef.current) {
+                tabVisibleRef.current = true;
+                onTabVisibilityChange?.(true);
+            }
+            lastOffsetYRef.current = currentY;
+            return;
+        }
+
+        if (Math.abs(deltaY) < 8) {
+            return;
+        }
+
+        if (deltaY > 0 && tabVisibleRef.current) {
+            tabVisibleRef.current = false;
+            onTabVisibilityChange?.(false);
+        } else if (deltaY < 0 && !tabVisibleRef.current) {
+            tabVisibleRef.current = true;
+            onTabVisibilityChange?.(true);
+        }
+
+        lastOffsetYRef.current = currentY;
+    }, [onTabVisibilityChange]);
+
     return (
-        <View style={{ flex: 1, alignItems: 'center', marginTop: insets.top }}>
+        <View style={{ flex: 1, alignItems: 'center', marginTop: insets.top, backgroundColor: theme.colors.background }}>
             <TextInput
                 label="搜索"
                 mode="flat"
@@ -246,7 +281,9 @@ const HomeScreen = ({ navigation }: any) => {
                 showsVerticalScrollIndicator={false}
                 maxToRenderPerBatch={10}     // 每次增量渲染的最多数量
                 windowSize={5}               // 渲染窗口大小（当前屏幕上下方渲染的屏幕数量，默认21太大了，容易卡）
-                initialNumToRender={8}  
+                initialNumToRender={8}
+                onScroll={handleListScroll}
+                scrollEventThrottle={16}
             />
         </View>
     );

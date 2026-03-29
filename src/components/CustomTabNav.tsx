@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Dimensions, Animated, Keyboard } from 'react-native';
-import { Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Dimensions, Keyboard, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface tabRoute {
@@ -14,6 +14,7 @@ interface customTabNavProps {
     activeIndex: number;
     onIndexChange: (index: number) => void;
     routes: tabRoute[];
+    visible?: boolean;
 }
 
 const { width } = Dimensions.get('window');
@@ -71,13 +72,14 @@ const TabItem = ({ route, index, activeIndex, onIndexChange, theme }: any) => {
     );
 };
 
-const CustomTabNav = ({ activeIndex, onIndexChange, routes }: customTabNavProps) => {
+const CustomTabNav = ({ activeIndex, onIndexChange, routes, visible = true }: customTabNavProps) => {
     const theme = useTheme();
     const insets = useSafeAreaInsets();
     const [keyboardVisible, setKeyboardVisible] = useState(false);
 
     // Animation for active tab indicator
     const translateValue = useRef(new Animated.Value(0)).current;
+    const visibilityAnim = useRef(new Animated.Value(1)).current;
 
     // Calculate tab width based on number of tabs
     const tabWidth = (width - 40) / routes.length;
@@ -108,10 +110,28 @@ const CustomTabNav = ({ activeIndex, onIndexChange, routes }: customTabNavProps)
         }).start();
     }, [activeIndex, tabWidth, translateValue]);
 
+    useEffect(() => {
+        Animated.timing(visibilityAnim, {
+            toValue: visible ? 1 : 0,
+            duration: 180,
+            useNativeDriver: true,
+        }).start();
+    }, [visible, visibilityAnim]);
+
     if (keyboardVisible) return null; // Hide tab bar when keyboard is open
 
     return (
-        <View style={[styles.container, { bottom: 20 + insets.bottom }]}>
+        <Animated.View
+            pointerEvents={visible ? 'auto' : 'none'}
+            style={[
+                styles.container,
+                {
+                    bottom: 20 + insets.bottom,
+                    opacity: visibilityAnim,
+                    transform: [{ translateY: visibilityAnim.interpolate({ inputRange: [0, 1], outputRange: [100, 0] }) }],
+                },
+            ]}
+        >
             <View style={[styles.tabBar, { backgroundColor: theme.colors.elevation.level3, shadowColor: theme.colors.shadow }]}>
                 {/* Animated Indicator */}
                 <Animated.View
@@ -136,7 +156,7 @@ const CustomTabNav = ({ activeIndex, onIndexChange, routes }: customTabNavProps)
                     />
                 ))}
             </View>
-        </View>
+        </Animated.View>
     );
 };
 
