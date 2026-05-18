@@ -36,6 +36,7 @@ const MainScreens = () => {
                 ref={pageViewRef}           // 挂上钩子
                 style={styles.pagerView} // 样式
                 initialPage={0}          // 初始在第 0 页
+                scrollEnabled={false}    // 暂时关闭左右滑动，只保留点击 tab 切页
                 onPageSelected={handlePageSelected} // 监听滑动结束事件
             >
                 {/* 第 0 页：首页 */}

@@ -3,15 +3,16 @@ import { useContentStore } from '@/src/stores/useContentStore';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { router } from 'expo-router';
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent, Pressable, View } from 'react-native';
+import { Animated, Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent, Pressable, View, StyleSheet } from 'react-native';
 import { Card, Icon, Text, TextInput, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSettingStore } from '../src/stores/useSettingStore';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-const { width: WindowWidth } = Dimensions.get('window');
+const { width: WindowWidth, height: WindowHeight } = Dimensions.get('window');
 
+// ==================== 普通模式 Item ====================
 export const RenderItem = memo(({ item, type, needToGet, disableAnimations, hideTitle }: any) => {
     const title = (type === 'answer' && item.questionTitle) ? item.questionTitle : item.title;
     const theme = useTheme();
@@ -60,55 +61,34 @@ export const RenderItem = memo(({ item, type, needToGet, disableAnimations, hide
                     borderRadius: 16,
                     overflow: 'hidden',
                     backgroundColor: cardBgColor,
-                    // backgroundColor: 'transparent',
                 },
                 { transform: [{ scale }] }
             ]}
         >
-            <Card
-                mode="contained"
-                style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: 'transparent' }}
-            >
+            <Card mode="contained" style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: 'transparent' }}>
                 <Card.Content style={{ paddingVertical: 8 }}>
                     {!hideTitle && (
-                        <Text
-                            variant="titleMedium"
-                            style={{ fontWeight: 'bold', marginBottom: 8 }}
-                            numberOfLines={2}
-                        >
+                        <Text variant="titleMedium" style={{ fontWeight: 'bold', marginBottom: 8 }} numberOfLines={2}>
                             {title}
                         </Text>
                     )}
-
-                    <Text
-                        variant="bodyMedium"
-                        style={{ color: metaColor, marginBottom: 10, lineHeight: 20 }}
-                        numberOfLines={3}
-                    >
+                    <Text variant="bodyMedium" style={{ color: metaColor, marginBottom: 10, lineHeight: 20 }} numberOfLines={3}>
                         {item.excerpt}
                     </Text>
-
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
                             <Icon source="thumb-up-outline" size={16} color={metaColor} />
-                            <Text variant="labelMedium" style={{ marginLeft: 6, color: metaColor }}>
-                                {item.voteCount}
-                            </Text>
+                            <Text variant="labelMedium" style={{ marginLeft: 6, color: metaColor }}>{item.voteCount}</Text>
                         </View>
                         {item.favoriteCount > 0 && (
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
                                 <Icon source="star-outline" size={16} color={metaColor} />
-                                <Text variant="labelMedium" style={{ marginLeft: 6, color: metaColor }}>
-                                    {item.favoriteCount}
-                                </Text>
+                                <Text variant="labelMedium" style={{ marginLeft: 6, color: metaColor }}>{item.favoriteCount}</Text>
                             </View>
                         )}
-
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
                             <Icon source="comment-outline" size={16} color={metaColor} />
-                            <Text variant="labelMedium" style={{ marginLeft: 6, color: metaColor }}>
-                                {item.commentCount}
-                            </Text>
+                            <Text variant="labelMedium" style={{ marginLeft: 6, color: metaColor }}>{item.commentCount}</Text>
                         </View>
                     </View>
                 </Card.Content>
@@ -119,20 +99,143 @@ export const RenderItem = memo(({ item, type, needToGet, disableAnimations, hide
     return prevProps.item.id === nextProps.item.id &&
         prevProps.disableAnimations === nextProps.disableAnimations;
 });
-
 RenderItem.displayName = 'RenderItem';
 
+// ==================== 卡片模式 Item (比例写死版) ====================
+export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimations, hideTitle }: any) => {
+    const title = (type === 'answer' && item.questionTitle) ? item.questionTitle : item.title;
+    
+    const theme = useTheme();
+    const metaColor = theme.colors.onSurfaceVariant;
+    const cardBgColor = theme.colors.surfaceVariant;
+    const textColor = theme.colors.onSurface; 
+    
+    const openItem = useCallback(() => {
+        setTimeout(() => {
+            router.push({
+                pathname: `/item/[type]/[id]`,
+                params: { id: item.id, type, needToGet: needToGet.toString() }
+            })
+        }, 100);
+    }, [item.id, type, needToGet]);
+
+    const scale = useRef(new Animated.Value(1)).current;
+
+    const handlePressIn = useCallback(() => {
+        if (disableAnimations) return;
+        Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, bounciness: 10 }).start();
+    }, [disableAnimations]);
+
+    const handlePressOut = useCallback(() => {
+        if (disableAnimations) return;
+        Animated.spring(scale, { toValue: 1, useNativeDriver: true, bounciness: 10 }).start();
+    }, [disableAnimations]);
+
+    // ====== 核心高度比例配置 ======
+    // 卡片高度占屏幕的 65%
+    const cardHeight = WindowHeight * 0.70; 
+    // 顶部留白占屏幕的 5% (你可以按需调整这个数字，比如 0.08 或 0.1)
+    // 剩下的 30% 都在底部，不用管它，正好留给你的 Tab 栏
+    const topSpacing = WindowHeight * 0.05; 
+
+    return (
+        <View style={{ 
+            width: WindowWidth, 
+            alignItems: 'center', 
+            paddingTop: topSpacing // 放弃 flex 垂直居中，直接写死顶部留白高度
+        }}>
+            <AnimatedPressable
+                onPress={openItem}
+                onPressIn={handlePressIn}
+                onPressOut={handlePressOut}
+                android_ripple={{ color: theme.colors.surfaceDisabled, foreground: true }}
+                style={[
+                    {
+                        width: WindowWidth * 0.88, 
+                        height: cardHeight, // 卡片固定高度
+                        borderRadius: 24,
+                        overflow: 'hidden',
+                        backgroundColor: cardBgColor,
+                        elevation: 4, 
+                        shadowColor: theme.colors.shadow,
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.1,
+                        shadowRadius: 10,
+                        padding: 24, 
+                        flexDirection: 'column', 
+                    },
+                    { transform: [{ scale }] }
+                ]}
+            >
+                {/* 标题 */}
+                {!hideTitle && (
+                    <Text 
+                        variant="titleLarge" 
+                        style={{ fontWeight: 'bold', marginBottom: 16, color: textColor, lineHeight: 32 }} 
+                        numberOfLines={4}
+                    >
+                        {title || '无标题'}
+                    </Text>
+                )}
+                
+                {/* 摘要 (自适应撑开) */}
+                <View style={{ flex: 1, marginTop: 4 }}>
+                    <Text 
+                        variant="bodyLarge" 
+                        style={{ color: metaColor, lineHeight: 26 }} 
+                        numberOfLines={12}
+                    >
+                        {item.excerpt || '暂无内容'}
+                    </Text>
+                </View>
+
+                {/* 底部数据统计栏 */}
+                <View style={{ 
+                    flexDirection: 'row', 
+                    alignItems: 'center', 
+                    marginTop: 20, 
+                    paddingTop: 20, 
+                    borderTopWidth: StyleSheet.hairlineWidth, 
+                    borderColor: theme.colors.outlineVariant 
+                }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
+                        <Icon source="thumb-up-outline" size={20} color={metaColor} />
+                        <Text variant="labelLarge" style={{ marginLeft: 6, color: metaColor }}>{item.voteCount}</Text>
+                    </View>
+                    {item.favoriteCount > 0 && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
+                            <Icon source="star-outline" size={20} color={metaColor} />
+                            <Text variant="labelLarge" style={{ marginLeft: 6, color: metaColor }}>{item.favoriteCount}</Text>
+                        </View>
+                    )}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
+                        <Icon source="comment-outline" size={20} color={metaColor} />
+                        <Text variant="labelLarge" style={{ marginLeft: 6, color: metaColor }}>{item.commentCount}</Text>
+                    </View>
+                </View>
+            </AnimatedPressable>
+        </View>
+    );
+}, (prevProps: any, nextProps: any) => {
+    return prevProps.item.id === nextProps.item.id &&
+        prevProps.disableAnimations === nextProps.disableAnimations;
+});
+RenderCardModeItem.displayName = 'RenderCardModeItem';
+
+// ==================== 主屏幕 ====================
 const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
     const insets = useSafeAreaInsets();
     const theme = useTheme();
     const contentStore = useContentStore();
     const userStore = useUserStore();
     const disableAnimations = useSettingStore((state) => state.disableAnimations); 
-    // 1. 状态管理：是否正在下拉刷新，是否正在上拉加载
+    
+    // 1. 获取当前模式
+    const displayMode = useSettingStore((state) => state.mode); 
+
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-    // 2. 使用 useRef 保存 token，这样每次组件刷新它不会被清空重置
     const sessionTokenRef = useRef("");
     const lastOffsetYRef = useRef(0);
     const tabVisibleRef = useRef(true);
@@ -141,10 +244,8 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
         const target = item.target;
         const isAds = !!item.promotion_extra;
         const isPaid = !!(target.paid_info || target.answer_type === 'paid');
-        if (isAds || isPaid) {
-            return null; // 过滤掉广告和付费内容
-        }
-        // console.log('原始数据项：', item.target);
+        if (isAds || isPaid) return null; 
+
         if (target.type === 'answer' || target.type === 'article') {
             return {
                 feedType: target.type,
@@ -161,7 +262,6 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
                     voteCount: target.voteup_count || 0,
                     favoriteCount: target.favorite_count || 0,
                     commentCount: target.comment_count || 0,
-
                     content: target.content || "",
                     questionTitle: target.question?.title || '未知问题',
                     questionId: target.question?.id || '',
@@ -176,11 +276,10 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
         return null;
     };
 
-    // 3. 核心加载函数：isRefresh 区分是下拉刷新还是上拉加载
     const loadData = async (isRefresh = false) => {
         if (isRefresh) {
             setIsRefreshing(true);
-            sessionTokenRef.current = ""; // 下拉刷新重置 token
+            sessionTokenRef.current = ""; 
         } else {
             setIsLoadingMore(true);
         }
@@ -189,10 +288,11 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
             const res = await getRecommend(sessionTokenRef.current);
             const data = res.data as any[];
             const cleanData = data.filter((item) => item.target && (item.target.type === 'answer' || item.target.type === 'article'));
-            const processedItems = cleanData.map(processFeedItem).filter(Boolean); // 过滤掉 null
+            const processedItems = cleanData.map(processFeedItem).filter(Boolean); 
 
             if (isRefresh) {
                 contentStore.setFeedList(processedItems);
+                console.log('刷新数据', processedItems);
             } else {
                 const mergedData = [...contentStore.feedList, ...processedItems];
                 const uniqueData = mergedData.filter((v, i, a) =>
@@ -205,10 +305,7 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
             try {
                 const url = new URL(urlString);
                 const token = url.searchParams.get('session_token');
-
-                if (token) {
-                    sessionTokenRef.current = token;
-                }
+                if (token) sessionTokenRef.current = token;
             } catch (e) {
                 console.error('URL 格式不正确', e);
             }
@@ -221,12 +318,24 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
     };
 
     useEffect(() => {
-        getApiInstance(userStore.cookies); // 确保 API 实例使用了最新的 Cookie
-        loadData(true).then(() => loadData(false));
+        getApiInstance(userStore.cookies); 
+        // loadData(true).then(() => loadData(false));
+        loadData(true);
     }, []);
 
+    // 普通模式渲染器
     const renderListItem = useCallback(({ item }: any) => (
         <RenderItem 
+            item={item.item} 
+            type={item.feedType} 
+            needToGet={true} 
+            disableAnimations={disableAnimations} 
+        />
+    ), [disableAnimations]);
+
+    // 卡片模式渲染器
+    const renderCardListItem = useCallback(({ item }: any) => (
+        <RenderCardModeItem 
             item={item.item} 
             type={item.feedType} 
             needToGet={true} 
@@ -247,9 +356,7 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
             return;
         }
 
-        if (Math.abs(deltaY) < 8) {
-            return;
-        }
+        if (Math.abs(deltaY) < 8) return;
 
         if (deltaY > 0 && tabVisibleRef.current) {
             tabVisibleRef.current = false;
@@ -267,25 +374,44 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
             <TextInput
                 label="搜索"
                 mode="flat"
-                style={{ width: '90%', marginBottom: 20, borderRadius: 5 }}
+                style={{ width: '90%', marginBottom: 10, borderRadius: 5 }}
                 left={<TextInput.Icon icon="magnify" />}
             />
-            <FlatList
-                data={contentStore.feedList}
-                renderItem={renderListItem}
-                keyExtractor={(item) => item.item.id.toString()}
-                refreshing={isRefreshing} // 绑定下拉圈圈的显示状态
-                onRefresh={() => loadData(true)} // 触发下拉时执行的方法
-                onEndReached={() => loadData(false)} // 列表滑动到底部时触发的方法
-                onEndReachedThreshold={0.8}
-                showsVerticalScrollIndicator={false}
-                maxToRenderPerBatch={10}     // 每次增量渲染的最多数量
-                windowSize={5}               // 渲染窗口大小（当前屏幕上下方渲染的屏幕数量，默认21太大了，容易卡）
-                initialNumToRender={8}
-                onScroll={handleListScroll}
-                scrollEventThrottle={16}
-            />
+            
+            {/* 2. 条件渲染 FlatList */}
+            {displayMode === 'card' ? (
+                <FlatList
+                    data={contentStore.feedList}
+                    renderItem={renderCardListItem}
+                    keyExtractor={(item) => item.item.id.toString()}
+                    horizontal={true}             // 开启横向滑动
+                    pagingEnabled={true}          // 开启吸附分页
+                    showsHorizontalScrollIndicator={false}
+                    onEndReached={() => loadData(false)}
+                    onEndReachedThreshold={0.8}
+                    maxToRenderPerBatch={10}
+                    windowSize={3}
+                    initialNumToRender={3}
+                />
+            ) : (
+                <FlatList
+                    data={contentStore.feedList}
+                    renderItem={renderListItem}
+                    keyExtractor={(item) => item.item.id.toString()}
+                    refreshing={isRefreshing}
+                    onRefresh={() => loadData(true)}
+                    onEndReached={() => loadData(false)}
+                    onEndReachedThreshold={0.8}
+                    showsVerticalScrollIndicator={false}
+                    maxToRenderPerBatch={10}
+                    windowSize={5}
+                    initialNumToRender={8}
+                    onScroll={handleListScroll}
+                    scrollEventThrottle={16}
+                />
+            )}
         </View>
     );
 }
+
 export default HomeScreen;

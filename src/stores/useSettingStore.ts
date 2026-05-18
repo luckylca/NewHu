@@ -18,6 +18,9 @@ interface SettingState {
 
     isAds: boolean; // 是否开启广告过滤
     isPaid: boolean; // 是否开启付费内容过滤
+
+    mode: 'normal' | 'card' ; 
+    setMode: (mode: 'normal' | 'card') => void; // 设置模式的函数
 }
 
 export const useSettingStore = create<SettingState>((set) => ({
@@ -38,5 +41,8 @@ export const useSettingStore = create<SettingState>((set) => ({
 
     isAds: false, // 是否开启广告过滤
     isPaid: false, // 是否开启付费内容过滤
+
+    mode: 'normal', // 默认模式
+    setMode: (mode: 'normal' | 'card') => set({mode}),
 
 }));
