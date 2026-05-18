@@ -2,15 +2,21 @@ import { getApiInstance, getRecommend } from '@/src/api/ZhihuApi';
 import { useContentStore } from '@/src/stores/useContentStore';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { router } from 'expo-router';
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Animated, Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent, Pressable, View, StyleSheet } from 'react-native';
 import { Card, Icon, Text, TextInput, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSettingStore } from '../src/stores/useSettingStore';
+import RenderHtml from 'react-native-render-html';
+import { Image, useWindowDimensions } from 'react-native';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const { width: WindowWidth, height: WindowHeight } = Dimensions.get('window');
+
+// ====== Paging 模式下的比例参数 ======
+const ITEM_WIDTH = WindowWidth * 0.88; // FlatList 容器的物理宽度 = 每次翻页滑动的严格距离
+const CARD_WIDTH = WindowWidth * 0.82; // 卡片实际的物理宽度，两边自然留出空隙
 
 // ==================== 普通模式 Item ====================
 export const RenderItem = memo(({ item, type, needToGet, disableAnimations, hideTitle }: any) => {
@@ -101,11 +107,36 @@ export const RenderItem = memo(({ item, type, needToGet, disableAnimations, hide
 });
 RenderItem.displayName = 'RenderItem';
 
-// ==================== 卡片模式 Item (比例写死版) ====================
+// ==================== 卡片模式专用图片渲染器 ====================
+const CardImageRenderer = React.memo(({ tnode }: any) => {
+    const attrs = tnode.attributes;
+    const src = attrs['data-original'] || attrs['data-actualsrc'] || attrs['data-src'] || attrs.src;
+    const { width: imgWidth, height: imgHeight } = attrs;
+
+    if (!src || src.startsWith('data:image/svg')) return null;
+
+    return (
+        <View style={{ width: '100%', alignItems: 'center', marginVertical: 8 }}>
+            <Image
+                source={{ uri: src }}
+                style={{
+                    width: '100%',
+                    aspectRatio: imgWidth && imgHeight ? Number(imgWidth) / Number(imgHeight) : 16 / 9,
+                    borderRadius: 8,
+                }}
+                resizeMode="cover"
+            />
+        </View>
+    );
+});
+CardImageRenderer.displayName = 'CardImageRenderer';
+
+// ==================== 卡片模式 Item ====================
 export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimations, hideTitle }: any) => {
     const title = (type === 'answer' && item.questionTitle) ? item.questionTitle : item.title;
     
     const theme = useTheme();
+    const { height: WindowHeight } = useWindowDimensions();
     const metaColor = theme.colors.onSurfaceVariant;
     const cardBgColor = theme.colors.surfaceVariant;
     const textColor = theme.colors.onSurface; 
@@ -131,18 +162,31 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
         Animated.spring(scale, { toValue: 1, useNativeDriver: true, bounciness: 10 }).start();
     }, [disableAnimations]);
 
-    // ====== 核心高度比例配置 ======
-    // 卡片高度占屏幕的 65%
-    const cardHeight = WindowHeight * 0.70; 
-    // 顶部留白占屏幕的 5% (你可以按需调整这个数字，比如 0.08 或 0.1)
-    // 剩下的 30% 都在底部，不用管它，正好留给你的 Tab 栏
+    const cardHeight = WindowHeight * 0.65; 
     const topSpacing = WindowHeight * 0.05; 
+    const cardContentWidth = CARD_WIDTH - 48; 
+
+    const tagsStyles = useMemo(() => ({
+        body: { color: metaColor, fontSize: 16, lineHeight: 26 },
+        p: { marginBottom: 10 },
+        figure: { margin: 0, marginTop: 8, marginBottom: 8 },
+        h1: { fontSize: 20, color: textColor, marginVertical: 10 },
+        h2: { fontSize: 18, color: textColor, marginVertical: 8 },
+        img: { borderRadius: 8 }
+    }), [metaColor, textColor]);
+
+    const renderers = useMemo(() => ({
+        img: (props: any) => <CardImageRenderer {...props} />
+    }), []);
+
+    const htmlContent = item.content || `<p>${item.excerpt || '暂无内容'}</p>`;
 
     return (
         <View style={{ 
-            width: WindowWidth, 
+            width: ITEM_WIDTH,     
+            height: cardHeight + topSpacing + 10, // 【核心修复 1】必须给外层 View 一个写死的高度，加上阴影冗余空间，防止动态测量崩溃成 0
             alignItems: 'center', 
-            paddingTop: topSpacing // 放弃 flex 垂直居中，直接写死顶部留白高度
+            paddingTop: topSpacing 
         }}>
             <AnimatedPressable
                 onPress={openItem}
@@ -151,8 +195,8 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                 android_ripple={{ color: theme.colors.surfaceDisabled, foreground: true }}
                 style={[
                     {
-                        width: WindowWidth * 0.88, 
-                        height: cardHeight, // 卡片固定高度
+                        width: CARD_WIDTH,  
+                        height: cardHeight, 
                         borderRadius: 24,
                         overflow: 'hidden',
                         backgroundColor: cardBgColor,
@@ -172,21 +216,23 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                     <Text 
                         variant="titleLarge" 
                         style={{ fontWeight: 'bold', marginBottom: 16, color: textColor, lineHeight: 32 }} 
-                        numberOfLines={4}
+                        numberOfLines={3}
                     >
                         {title || '无标题'}
                     </Text>
                 )}
                 
-                {/* 摘要 (自适应撑开) */}
-                <View style={{ flex: 1, marginTop: 4 }}>
-                    <Text 
-                        variant="bodyLarge" 
-                        style={{ color: metaColor, lineHeight: 26 }} 
-                        numberOfLines={12}
-                    >
-                        {item.excerpt || '暂无内容'}
-                    </Text>
+                {/* 富文本正文区域 */}
+                <View style={{ flex: 1, marginTop: 4, overflow: 'hidden' }} pointerEvents="none">
+                    <RenderHtml
+                        contentWidth={cardContentWidth}
+                        source={{ html: htmlContent }}
+                        tagsStyles={tagsStyles}
+                        renderers={renderers} 
+                        ignoredDomTags={['noscript']}
+                        enableExperimentalMarginCollapsing={true}
+                        defaultTextProps={{ selectable: false }}
+                    />
                 </View>
 
                 {/* 底部数据统计栏 */}
@@ -230,7 +276,6 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
     const userStore = useUserStore();
     const disableAnimations = useSettingStore((state) => state.disableAnimations); 
     
-    // 1. 获取当前模式
     const displayMode = useSettingStore((state) => state.mode); 
 
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -319,11 +364,9 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
 
     useEffect(() => {
         getApiInstance(userStore.cookies); 
-        // loadData(true).then(() => loadData(false));
-        loadData(true);
+        loadData(true).finally(() => {loadData(false)});
     }, []);
 
-    // 普通模式渲染器
     const renderListItem = useCallback(({ item }: any) => (
         <RenderItem 
             item={item.item} 
@@ -333,7 +376,6 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
         />
     ), [disableAnimations]);
 
-    // 卡片模式渲染器
     const renderCardListItem = useCallback(({ item }: any) => (
         <RenderCardModeItem 
             item={item.item} 
@@ -370,31 +412,46 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
     }, [onTabVisibilityChange]);
 
     return (
-        <View style={{ flex: 1, alignItems: 'center', marginTop: insets.top, backgroundColor: theme.colors.background }}>
-            <TextInput
-                label="搜索"
-                mode="flat"
-                style={{ width: '90%', marginBottom: 10, borderRadius: 5 }}
-                left={<TextInput.Icon icon="magnify" />}
-            />
-            
-            {/* 2. 条件渲染 FlatList */}
-            {displayMode === 'card' ? (
-                <FlatList
-                    data={contentStore.feedList}
-                    renderItem={renderCardListItem}
-                    keyExtractor={(item) => item.item.id.toString()}
-                    horizontal={true}             // 开启横向滑动
-                    pagingEnabled={true}          // 开启吸附分页
-                    showsHorizontalScrollIndicator={false}
-                    onEndReached={() => loadData(false)}
-                    onEndReachedThreshold={0.8}
-                    maxToRenderPerBatch={10}
-                    windowSize={3}
-                    initialNumToRender={3}
+        <View style={{ flex: 1, marginTop: insets.top, backgroundColor: theme.colors.background }}>
+            <View style={{ width: '100%', alignItems: 'center' }}>
+                <TextInput
+                    label="搜索"
+                    mode="flat"
+                    style={{ width: '90%', marginBottom: 10, borderRadius: 5 }}
+                    left={<TextInput.Icon icon="magnify" />}
                 />
+            </View>
+            
+            {displayMode === 'card' ? (
+                <View style={{ flex: 1, alignItems: 'center', width: '100%' }}>
+                    <FlatList
+                        style={[{ width: ITEM_WIDTH, flex: 1 }, { overflow: 'visible' }]}
+                        data={contentStore.feedList}
+                        renderItem={renderCardListItem}
+                        keyExtractor={(item) => item.item.id.toString()}
+                        horizontal={true}             
+                        pagingEnabled={true}          
+                        showsHorizontalScrollIndicator={false}
+                        onEndReached={() => loadData(false)}
+                        onEndReachedThreshold={0.8}
+                        maxToRenderPerBatch={10}
+                        windowSize={3}
+                        initialNumToRender={3}
+                        
+                        // 【核心修复 2】强制显式定义几何跨度，彻底解决首帧初始化白屏问题
+                        getItemLayout={(data, index) => ({
+                            length: ITEM_WIDTH,
+                            offset: ITEM_WIDTH * index,
+                            index,
+                        })}
+                        // 配合 overflow: 'visible' 确保屏幕外的切片在两侧不被系统自动隐删
+                        removeClippedSubviews={false}
+                    />
+                </View>
             ) : (
                 <FlatList
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ alignItems: 'center' }}
                     data={contentStore.feedList}
                     renderItem={renderListItem}
                     keyExtractor={(item) => item.item.id.toString()}
