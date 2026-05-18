@@ -17,12 +17,16 @@ interface ZhihuAPI {
     getAnswer(answerId: string): Promise<any>;
     voteupAnswer(answerId: string): Promise<any>;
     cancelVoteupAnswer(answerId: string): Promise<any>;
+    dislikeAnswer(answerId: string): Promise<any>;
+    cancelDislikeAnswer(answerId: string): Promise<any>;
     getQuestion(questionId: string): Promise<any>;
     getQuestionAnswers(questionId: string, offset?: number, sort?: string): Promise<any>;
     getRootComments(id: string, type: string, offset?: string, sort?: string): Promise<any>;
     getChildComments(commentId: string, offset?: string, sort?: string): Promise<any>;
     favoriteAnswer(answerId: string): Promise<any>;
     unfavoriteAnswer(answerId: string): Promise<any>;
+    dislikeArticle(articleId: string): Promise<any>;
+    cancelDislikeArticle(articleId: string): Promise<any>;
     search(keyword: string, offset?: number, type?: string): Promise<any>;
 
 }
@@ -164,6 +168,21 @@ class ZhihuAPI {
         return this.client.post(`https://www.zhihu.com/api/v4/answers/${answerId}/voters`, { type: "neutral" }, true);
     }
     /**
+     * 不喜欢（踩）回答
+     * @param {string} answerId - 回答 ID
+     */
+    async dislikeAnswer(answerId: string) {
+        return this.client.post(`https://www.zhihu.com/api/v4/answers/${answerId}/voters`, { type: "down" }, true);
+    }
+
+    /**
+     * 取消不喜欢（恢复中立）
+     * @param {string} answerId - 回答 ID
+     */
+    async cancelDislikeAnswer(answerId: string) {
+        return this.client.post(`https://www.zhihu.com/api/v4/answers/${answerId}/voters`, { type: "neutral" }, true);
+    }
+    /**
      * 取消点赞文章
      * @param {string} articleId - 文章 ID
      */
@@ -176,6 +195,22 @@ class ZhihuAPI {
      */
     async voteupArticle(articleId: string) {
         return this.client.post(`https://www.zhihu.com/api/v4/articles/${articleId}/voters`, { voting: 1 }, true);
+    }
+
+    /**
+     * 不喜欢（踩）文章
+     * @param {string} articleId - 文章 ID
+     */
+    async dislikeArticle(articleId: string) {
+        return this.client.post(`https://www.zhihu.com/api/v4/articles/${articleId}/voters`, { voting: -1 }, true);
+    }
+
+    /**
+     * 取消不喜欢（恢复中立）文章
+     * @param {string} articleId - 文章 ID
+     */
+    async cancelDislikeArticle(articleId: string) {
+        return this.client.post(`https://www.zhihu.com/api/v4/articles/${articleId}/voters`, { voting: 0 }, true);
     }
 
     // ==================== 问题相关 ====================

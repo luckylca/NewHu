@@ -9,6 +9,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Image, Pressable, ScrollView, TouchableOpacity, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { Appbar, Avatar, Divider, Icon, Menu, Portal, Snackbar, Text, useTheme } from "react-native-paper";
+import { runOnJS } from 'react-native-reanimated';
 import RenderHtml from 'react-native-render-html';
 import { scheduleOnRN } from "react-native-worklets";
 
@@ -277,6 +278,21 @@ export default function Item() {
         scheduleOnRN(handleDoubleTapAt, e.absoluteX, e.absoluteY);
     });
 
+    // 右滑返回：只在水平向右并且水平位移显著且垂直位移较小时触发
+    const rightSwipe = Gesture.Pan()
+        .onEnd((e) => {
+            const translationX = (e as any).translationX ?? 0;
+            const translationY = (e as any).translationY ?? 0;
+            // 阈值可根据需要调整
+            if (translationX > 120 && Math.abs(translationY) < 80) {
+                console.log('检测到右滑返回手势');
+                runOnJS(router.back)();
+            }
+        });
+
+    // 双击和右滑互斥：优先尝试双击，失败则尝试右滑
+    const combinedGesture = Gesture.Exclusive(doubleTab, rightSwipe);
+
     // 1. 缓存 tagsStyles
     const tagsStyles = useMemo(() => ({
         body: { color: theme.colors.onSurface, fontSize: 16, lineHeight: 28 },
@@ -390,7 +406,7 @@ export default function Item() {
                 {/* 第一个分割线 */}
                 <Divider style={{ marginVertical: 16 }} />
 
-                <GestureDetector gesture={doubleTab}>
+                <GestureDetector gesture={combinedGesture}>
                     <View style={{ flex: 1 }} collapsable={false}>
                         {/* HTML 正文渲染 */}
                         <RenderHtml
