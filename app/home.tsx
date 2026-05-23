@@ -133,15 +133,15 @@ const CardImageRenderer = React.memo(({ tnode }: any) => {
 CardImageRenderer.displayName = 'CardImageRenderer';
 
 // ==================== 卡片模式 Item ====================
-export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimations, hideTitle, onDislike }: any) => {
+export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimations, hideTitle, onDislike, onCardDragChange }: any) => {
     const title = (type === 'answer' && item.questionTitle) ? item.questionTitle : item.title;
-    
+
     const theme = useTheme();
     const { height: WindowHeight } = useWindowDimensions();
     const metaColor = theme.colors.onSurfaceVariant;
     const cardBgColor = theme.colors.surfaceVariant;
-    const textColor = theme.colors.onSurface; 
-    
+    const textColor = theme.colors.onSurface;
+
     const openItem = useCallback(() => {
         setTimeout(() => {
             router.push({
@@ -154,28 +154,46 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
     const scale = useRef(new Animated.Value(1)).current;
     const translateY = useRef(new Animated.Value(0)).current;
 
-    const handlePressIn = useCallback(() => {
-        if (disableAnimations) return;
-        Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, bounciness: 10 }).start();
-    }, [disableAnimations]);
+    // 长按计时器（0.5s 按住 → 提前禁用 FlatList 滚动，防止手势被抢）
+    const touchStartTimeRef = useRef(0);
+    const isDragModeRef = useRef(false);
+    const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const handlePressOut = useCallback(() => {
-        if (disableAnimations) return;
-        Animated.spring(scale, { toValue: 1, useNativeDriver: true, bounciness: 10 }).start();
-    }, [disableAnimations]);
+    const cleanupLongPress = () => {
+        if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+        }
+    };
 
     const panResponder = useRef(
         PanResponder.create({
-            onMoveShouldSetPanResponder: (_, gestureState) => {
-                return Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 10;
+            onStartShouldSetPanResponder: () => false,
+            onMoveShouldSetPanResponder: (_, gs) => {
+                if (isDragModeRef.current) return true;
+                const elapsed = Date.now() - touchStartTimeRef.current;
+                // 快速滑动（200ms 内）→ 取消定时器，让 FlatList 翻页
+                if (elapsed < 200 && (Math.abs(gs.dx) > 5 || Math.abs(gs.dy) > 5)) {
+                    cleanupLongPress();
+                    return false;
+                }
+                // 按住超过 100ms + 竖向位移 > 3px → 抢手势
+                if (elapsed > 100 && Math.abs(gs.dy) > 3) {
+                    isDragModeRef.current = true;
+                    return true;
+                }
+                return false;
             },
-            onPanResponderMove: (_, gestureState) => {
-                translateY.setValue(gestureState.dy);
+            onPanResponderGrant: () => {},
+            onPanResponderMove: (_, gs) => {
+                translateY.setValue(gs.dy);
             },
-            onPanResponderRelease: (_, gestureState) => {
-                if (gestureState.dy > 150) {
+            onPanResponderRelease: (_, gs) => {
+                cleanupLongPress();
+                isDragModeRef.current = false;
+                onCardDragChange?.(false);
+                if (gs.dy > 150) {
                     short();
-                    // 下滑飞出
                     Animated.timing(translateY, {
                         toValue: WindowHeight,
                         duration: 220,
@@ -183,26 +201,24 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                     }).start(() => {
                         onDislike?.(item.id);
                     });
-                } else if (gestureState.dy < -150) {
+                } else if (gs.dy < -150) {
                     short();
-                    // 上滑飞出复位
                     Animated.timing(translateY, {
                         toValue: -WindowHeight,
                         duration: 220,
                         useNativeDriver: true,
                     }).start(() => {
-                        Animated.spring(translateY, {
-                            toValue: 0,
-                            useNativeDriver: true,
-                        }).start();
+                        Animated.spring(translateY, { toValue: 0, useNativeDriver: true }).start();
                     });
                 } else {
-                    Animated.spring(translateY, {
-                        toValue: 0,
-                        useNativeDriver: true,
-                        bounciness: 8,
-                    }).start();
+                    Animated.spring(translateY, { toValue: 0, useNativeDriver: true, bounciness: 8 }).start();
                 }
+            },
+            onPanResponderTerminate: () => {
+                cleanupLongPress();
+                isDragModeRef.current = false;
+                onCardDragChange?.(false);
+                translateY.setValue(0);
             },
         })
     ).current;
@@ -241,14 +257,35 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
         }}>
             <Animated.View
                 {...panResponder.panHandlers}
+                onTouchStart={() => {
+                    touchStartTimeRef.current = Date.now();
+                    isDragModeRef.current = false;
+                    cleanupLongPress();
+                    longPressTimerRef.current = setTimeout(() => {
+                        onCardDragChange?.(true);
+                    }, 500);
+                }}
+                onTouchEnd={() => {
+                    if (longPressTimerRef.current) {
+                        cleanupLongPress();
+                    } else if (!isDragModeRef.current) {
+                        onCardDragChange?.(false);
+                    }
+                }}
+                onTouchCancel={() => {
+                    cleanupLongPress();
+                    if (!isDragModeRef.current) {
+                        onCardDragChange?.(false);
+                    }
+                }}
                 style={[
                     {
-                        width: CARD_WIDTH,  
-                        height: cardHeight, 
+                        width: CARD_WIDTH,
+                        height: cardHeight,
                         borderRadius: 24,
                         overflow: 'hidden',
                         backgroundColor: cardBgColor,
-                        elevation: 4, 
+                        elevation: 4,
                         shadowColor: theme.colors.shadow,
                         shadowOffset: { width: 0, height: 4 },
                         shadowOpacity: 0.1,
@@ -259,8 +296,6 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
             >
                 <Pressable
                     onPress={openItem}
-                    onPressIn={handlePressIn}
-                    onPressOut={handlePressOut}
                     android_ripple={{ color: theme.colors.surfaceDisabled, foreground: true }}
                     style={{ flex: 1, padding: 24, flexDirection: 'column' }}
                 >
@@ -279,9 +314,10 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                             contentWidth={cardContentWidth}
                             source={{ html: htmlContent }}
                             tagsStyles={tagsStyles}
-                            renderers={renderers} 
+                            renderers={renderers}
                             ignoredDomTags={['noscript']}
                             enableExperimentalMarginCollapsing={true}
+                            enableCSSInlineProcessing={false}
                             defaultTextProps={{ selectable: false }}
                         />
                     </View>
@@ -315,7 +351,8 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
     );
 }, (prevProps: any, nextProps: any) => {
     return prevProps.item.id === nextProps.item.id &&
-        prevProps.disableAnimations === nextProps.disableAnimations;
+        prevProps.disableAnimations === nextProps.disableAnimations &&
+        prevProps.onCardDragChange === nextProps.onCardDragChange;
 });
 RenderCardModeItem.displayName = 'RenderCardModeItem';
 
@@ -340,9 +377,17 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
     const sessionTokenRef = useRef("");
     const lastOffsetYRef = useRef(0);
     const tabVisibleRef = useRef(true);
-    
+    const feedListRef = useRef(feedList);
+    feedListRef.current = feedList;
+    const loadDataRef = useRef<any>(null);
+
     const flatListRef = useRef<FlatList>(null);
     const currentIndexRef = useRef(0);
+    // 卡片模式：FlatList 横向滚动保持原生的 scrollEnabled
+    const [cardDragging, setCardDragging] = useState(false);
+    const onCardDragChange = useCallback((dragging: boolean) => {
+        setCardDragging(dragging);
+    }, []);
 
     const processFeedItem = (item: any) => {
         const target = item.target;
@@ -397,7 +442,7 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
             if (isRefresh) {
                 setFeedList(processedItems);
             } else {
-                const mergedData = [...feedList, ...processedItems];
+                const mergedData = [...feedListRef.current, ...processedItems];
                 const uniqueData = mergedData.filter((v, i, a) =>
                     a.findIndex(t => t.item.id === v.item.id) === i
                 );
@@ -420,18 +465,21 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
         }
     };
 
+    loadDataRef.current = loadData;
+
     useEffect(() => {
-        getApiInstance(cookies); 
-        loadData(true);
+        getApiInstance(cookies);
+        loadData(true).then(() => loadData(false));
     }, []);
 
     // 联动优化：不喜欢（移除+网络请求+本地状态）统一处理器
     const handleDislikeItem = useCallback((id: string, feedType: 'answer' | 'article') => {
-        const targetIndex = feedList.findIndex((f) => f.item.id.toString() === id.toString());
+        const list = feedListRef.current;
+        const targetIndex = list.findIndex((f) => f.item.id.toString() === id.toString());
         if (targetIndex === -1) return;
 
         // 1. 视窗安全回弹：如果飞走的是列表中最后一个，提前让列表向前翻动一页，避免卡死在空白溢出区
-        if (targetIndex === feedList.length - 1 && feedList.length > 1) {
+        if (targetIndex === list.length - 1 && list.length > 1) {
             flatListRef.current?.scrollToIndex({
                 index: targetIndex - 1,
                 animated: true
@@ -456,7 +504,7 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
 
         // 4. 从当前的动态推荐流中剔除，引发重绘与完美贴合补位
         removeFeedItem(id);
-    }, [feedList, removeFeedItem, addUnlikeItem]);
+    }, [removeFeedItem, addUnlikeItem]);
 
     const renderListItem = useCallback(({ item }: any) => (
         <RenderItem 
@@ -469,19 +517,31 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
 
     // 关键改动：在这里把 item.feedType 作为形参绑定闭包传给 RenderCardModeItem
     const renderCardListItem = useCallback(({ item }: any) => (
-        <RenderCardModeItem 
-            item={item.item} 
-            type={item.feedType} 
-            needToGet={true} 
-            disableAnimations={disableAnimations} 
+        <RenderCardModeItem
+            item={item.item}
+            type={item.feedType}
+            needToGet={true}
+            disableAnimations={disableAnimations}
             onDislike={(id: string) => handleDislikeItem(id, item.feedType)}
+            onCardDragChange={onCardDragChange}
         />
-    ), [disableAnimations, handleDislikeItem]);
+    ), [disableAnimations, handleDislikeItem, onCardDragChange]);
 
     const handleMomentumScrollEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
         const offsetX = event.nativeEvent.contentOffset.x;
-        currentIndexRef.current = Math.round(offsetX / ITEM_WIDTH);
+        const index = Math.round(offsetX / ITEM_WIDTH);
+        currentIndexRef.current = index;
+
+        if (feedListRef.current.length - index <= 5) {
+            loadDataRef.current?.(false);
+        }
     }, []);
+
+    const cardItemLayout = useCallback((_data: any, index: number) => ({
+        length: ITEM_WIDTH,
+        offset: ITEM_WIDTH * index,
+        index,
+    }), []);
 
     const handleListScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
         const currentY = event.nativeEvent.contentOffset.y;
@@ -523,33 +583,33 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
             {displayMode === 'card' ? (
                 <View style={{ flex: 1, alignItems: 'center', width: '100%' }}>
                     <FlatList
-                        ref={flatListRef} 
+                        ref={flatListRef}
                         style={[{ width: ITEM_WIDTH, flex: 1 }, { overflow: 'visible' }]}
-                        data={feedList} 
+                        data={feedList}
                         renderItem={renderCardListItem}
                         keyExtractor={(item) => item.item.id.toString()}
-                        horizontal={true}             
-                        pagingEnabled={true}          
+                        horizontal={true}
+                        snapToInterval={ITEM_WIDTH}
+                        snapToAlignment="center"
+                        decelerationRate="fast"
+                        disableIntervalMomentum={true}
+                        scrollEnabled={!cardDragging}
                         showsHorizontalScrollIndicator={false}
                         onEndReached={() => loadData(false)}
                         onEndReachedThreshold={0.8}
-                        maxToRenderPerBatch={10}
-                        windowSize={3}
+                        maxToRenderPerBatch={5}
+                        windowSize={2}
                         initialNumToRender={3}
-                        onMomentumScrollEnd={handleMomentumScrollEnd} 
-                        getItemLayout={(data, index) => ({
-                            length: ITEM_WIDTH,
-                            offset: ITEM_WIDTH * index,
-                            index,
-                        })}
-                        removeClippedSubviews={false}
+                        onMomentumScrollEnd={handleMomentumScrollEnd}
+                        getItemLayout={cardItemLayout}
+                        removeClippedSubviews={true}
                     />
                 </View>
             ) : (
                 <FlatList
                     style={{ flex: 1 }}
                     contentContainerStyle={{ alignItems: 'center' }}
-                    data={feedList} 
+                    data={feedList}
                     renderItem={renderListItem}
                     keyExtractor={(item) => item.item.id.toString()}
                     refreshing={isRefreshing}
@@ -557,9 +617,10 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
                     onEndReached={() => loadData(false)}
                     onEndReachedThreshold={0.8}
                     showsVerticalScrollIndicator={false}
-                    maxToRenderPerBatch={10}
+                    maxToRenderPerBatch={5}
                     windowSize={5}
-                    initialNumToRender={8}
+                    initialNumToRender={6}
+                    removeClippedSubviews={true}
                     onScroll={handleListScroll}
                     scrollEventThrottle={16}
                 />
