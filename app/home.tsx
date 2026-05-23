@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSettingStore } from '../src/stores/useSettingStore';
 import RenderHtml from 'react-native-render-html';
 import { Image, useWindowDimensions } from 'react-native';
+import { short } from '@/src/utils/haptics';
 
 const { width: WindowWidth, height: WindowHeight } = Dimensions.get('window');
 
@@ -173,6 +174,7 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
             },
             onPanResponderRelease: (_, gestureState) => {
                 if (gestureState.dy > 150) {
+                    short();
                     // 下滑飞出
                     Animated.timing(translateY, {
                         toValue: WindowHeight,
@@ -182,6 +184,7 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                         onDislike?.(item.id);
                     });
                 } else if (gestureState.dy < -150) {
+                    short();
                     // 上滑飞出复位
                     Animated.timing(translateY, {
                         toValue: -WindowHeight,

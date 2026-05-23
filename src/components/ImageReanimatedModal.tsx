@@ -1,16 +1,16 @@
-import React,{ useEffect } from 'react';
-import { StyleSheet, Dimensions, TouchableOpacity, Image } from 'react-native';
+import ImageLayout from "@/src/components/ImageLayout";
+import React, { useEffect } from 'react';
+import { BackHandler, Dimensions, StyleSheet } from 'react-native';
 import { Portal } from 'react-native-paper';
 import Animated, {
-    useSharedValue,
-    useAnimatedStyle,
-    withSpring,
-    withTiming,
+    Extrapolation,
     interpolate,
-    Extrapolation
+    useAnimatedStyle,
+    useSharedValue,
+    withSpring,
+    withTiming
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import ImageLayout from "@/src/components/ImageLayout";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const ImageReanimatedModal = ({origin, visible, url, onClose}: {origin: { x: number; y: number; width: number; height: number }, visible: boolean, url: string, onClose: () => void}) => {
@@ -35,7 +35,7 @@ const ImageReanimatedModal = ({origin, visible, url, onClose}: {origin: { x: num
         }
     }, [visible, progress]);
     useEffect(() => {
-        const backAction = (e: any) => {
+        const backAction = () => {
             if (visible) {
                 onClose();
                 return true;
@@ -43,7 +43,7 @@ const ImageReanimatedModal = ({origin, visible, url, onClose}: {origin: { x: num
             return false;
         };
 
-        const backHandler = require('react-native').BackHandler.addEventListener(
+        const backHandler = BackHandler.addEventListener(
             'hardwareBackPress',
             backAction
         );
@@ -78,7 +78,7 @@ const ImageReanimatedModal = ({origin, visible, url, onClose}: {origin: { x: num
         <Portal>
             <Animated.View style={[styles.backdrop, backStyle]} />
             <Animated.View style={[styles.animatedContainer, containerStyle]}>
-                <ImageLayout uri={url} />
+                <ImageLayout uri={url} onClose={onClose} />
             </Animated.View>
         </Portal>
     );

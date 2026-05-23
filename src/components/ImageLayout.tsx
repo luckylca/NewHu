@@ -1,17 +1,17 @@
 import React from 'react';
-import { StyleSheet, View, Dimensions } from 'react-native';
-import { GestureDetector, Gesture } from 'react-native-gesture-handler';
+import { Dimensions, StyleSheet, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Menu, Portal } from 'react-native-paper';
 import Animated, {
-    useSharedValue,
     useAnimatedStyle,
-    withTiming,
-    useDerivedValue
+    useDerivedValue,
+    useSharedValue,
+    withTiming
 } from 'react-native-reanimated';
-import { Portal,Menu } from 'react-native-paper';
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 import { scheduleOnRN } from 'react-native-worklets';
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-export default function ImageLayout({ uri }: { uri: string }) {
+export default function ImageLayout({ uri, onClose }: { uri: string, onClose: () => void }) {
     // 定义缩放比例的共享变量
     const scale = useSharedValue(1);
     const savedScale = useSharedValue(1); // 用于保存上一次的缩放比例
@@ -35,6 +35,13 @@ export default function ImageLayout({ uri }: { uri: string }) {
                 // 如果当前是原状，双击放大到 2 倍
                 scale.value = withTiming(2);
                 savedScale.value = 2;
+            }
+        });
+    const singleTap = Gesture.Tap()
+        .maxDistance(12)
+        .onEnd((_, success) => {
+            if (success) {
+                scheduleOnRN(onClose);
             }
         });
     const pinchGesture = Gesture.Pinch()
@@ -80,7 +87,12 @@ export default function ImageLayout({ uri }: { uri: string }) {
             scheduleOnRN(setShowMenu,true)
         });
     // 使用 Gesture.Exclusive 或 Gesture.Race 组合
-    const composedGesture = Gesture.Simultaneous(doubleTap, pinchGesture, panGesture,longPressGesture);
+    const composedGesture = Gesture.Simultaneous(
+        Gesture.Exclusive(doubleTap, singleTap),
+        pinchGesture,
+        panGesture,
+        longPressGesture
+    );
     // 将缩放应用到样式
     const animatedStyle = useAnimatedStyle(() => ({
         transform: [

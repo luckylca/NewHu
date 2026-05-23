@@ -6,6 +6,7 @@ import { EMOJI_URL_MAP } from "@/src/constants/emoji";
 import { useSettingStore } from "@/src/stores/useSettingStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { memo, useCallback, useEffect, useRef } from "react";
+import { short } from "@/src/utils/haptics";
 import { Animated, FlatList, Pressable, View } from "react-native";
 import { Swipeable } from 'react-native-gesture-handler';
 import { Appbar, Avatar, Icon, IconButton, Menu, Modal, Portal, Text, useTheme } from "react-native-paper";
@@ -98,6 +99,7 @@ export const RenderCommentItem = memo(({
 
     const handleSwipeableOpen = (direction: string) => {
         if (direction === 'right') {
+            short();
             swipeableRef.current?.close(); // 马上合上
             if (onReply) onReply(item.id); // 触发回复逻辑
         }

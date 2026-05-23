@@ -284,7 +284,7 @@ export default function Item() {
             const translationX = (e as any).translationX ?? 0;
             const translationY = (e as any).translationY ?? 0;
             // 阈值可根据需要调整
-            if (translationX > 120 && Math.abs(translationY) < 80) {
+            if (translationX > 50 && Math.abs(translationY) < 80) {
                 console.log('检测到右滑返回手势');
                 runOnJS(router.back)();
             }
