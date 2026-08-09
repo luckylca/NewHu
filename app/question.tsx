@@ -1,13 +1,11 @@
 import { getQuestion, getQuestionAnswers } from "@/src/api/ZhihuApi";
-import { Appbar, Divider, Text } from "@/src/components/ui";
-import { useTheme } from "@/src/theme/ThemeProvider";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Divider, Icon, ListRow, TopAppBar } from "@/src/ui";
+import { Text } from "@/src/ui/primitives";
+import { useTheme } from "@/src/ui/theme";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
-import { Animated, FlatList, Image, Pressable, View } from "react-native";
+import { FlatList, Image, View } from "react-native";
 import { RenderItem } from "./home";
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export type QuestionParams = {
     id:string
@@ -21,7 +19,7 @@ const QuestionScreen = () => {
     const [questionInfo, setQuestionInfo] = React.useState<any>(null)
     const [offsetString, setOffsetString] = React.useState(0)
     const [pageNum, setPageNum] = React.useState(1)
-    
+
     // 动态列表状态
     const [activities, setActivities] = React.useState<any[]>([])
     const [isLoadingActivities, setIsLoadingActivities] = React.useState(false)
@@ -36,7 +34,7 @@ const QuestionScreen = () => {
             }).catch((error) => {
                 console.error("Failed to fetch question info:", error)
             })
-            
+
             // 初始加载动态
             setActivities([]);
             setOffsetString(0);
@@ -52,17 +50,17 @@ const QuestionScreen = () => {
     const fetchActivities = async (isRefresh = false) => {
         // 如果不是刷新，且已经在加载或是没有更多数据了，则直接返回
         if (!isRefresh && (isLoadingActivities || !hasMoreActivities)) return;
-        
+
         const currentOffset = isRefresh ? 0 : offsetString;
         const currentPage = isRefresh ? 1 : pageNum;
-        
+
         setIsLoadingActivities(true);
         if (isRefresh) setActivities([]);
-        
+
         try {
             const data = await getQuestionAnswers(id, currentOffset, "default");
             console.log("Question answers data retrieved");
-            
+
             if (data && data.data && data.data.length > 0) {
                 // 清洗活动数据，将其转换为类似于 home.tsx 的 feedList 结构
                 const processedActivities = data.data.map((answer: any) => {
@@ -87,7 +85,7 @@ const QuestionScreen = () => {
                 }).filter((item: any) => item !== null);
 
                 setActivities(prev => isRefresh ? processedActivities : [...prev, ...processedActivities]);
-                
+
                 if (data.paging && data.paging.is_end === false) {
                     const nextUrl = data.paging.next;
                     try {
@@ -114,17 +112,14 @@ const QuestionScreen = () => {
 
     const renderStats = (label: string, value: number) => (
         <View style={{ alignItems: 'center', flex: 1 }}>
-            <Text variant="titleMedium" style={{ fontWeight: 'bold' }}>{value || 0}</Text>
-            <Text variant="labelMedium" style={{ color: theme.colors.outline }}>{label}</Text>
+            <Text type="title4" weight="bold">{value || 0}</Text>
+            <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>{label}</Text>
         </View>
     );
 
-    return (        
+    return (
         <View style={{ flex: 1 ,backgroundColor: theme.colors.background}}>
-            <Appbar.Header style={{ backgroundColor: theme.colors.surface }}>
-                <Appbar.BackAction onPress={() => router.back()} />
-                <Appbar.Content title={questionInfo ? questionInfo.title : "问题信息"} />
-            </Appbar.Header>
+            <TopAppBar title={questionInfo ? questionInfo.title : "问题信息"} back={() => router.back()} />
             {questionInfo ? (
                 <FlatList
                     data={activities}
@@ -132,48 +127,40 @@ const QuestionScreen = () => {
                     contentContainerStyle={{ paddingBottom: 40 }}
                     ListHeaderComponent={() => (
                         <View style={{ padding: 16, backgroundColor: theme.colors.surface }}>
-                            <Text variant="headlineSmall" style={{ fontWeight: 'bold', marginBottom: 12 }}>
+                            <Text type="title2" weight="bold" style={{ marginBottom: 12 }}>
                                 {questionInfo.title}
                             </Text>
 
                             {questionInfo.author && (
-                                <AnimatedPressable 
-                                    style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}
+                                <ListRow
+                                    icon={
+                                        <Image
+                                            source={{ uri: questionInfo.author.avatar_url }}
+                                            style={{ width: 40, height: 40, borderRadius: theme.radius.full, backgroundColor: theme.colors.secondaryContainer }}
+                                        />
+                                    }
+                                    title={questionInfo.author.name}
+                                    summary={questionInfo.author.headline}
                                     onPress={() => {
                                         if (questionInfo.author.url_token) {
                                             router.push({ pathname: '/people', params: { urlToken: questionInfo.author.url_token } });
                                         }
                                     }}
-                                    android_ripple={{ color: 'rgba(0,0,0,0.1)', borderless: true }}
-                                >
-                                    <Image 
-                                        source={{ uri: questionInfo.author.avatar_url }} 
-                                        style={{ width: 40, height: 40, borderRadius: 20, marginRight: 12, backgroundColor: theme.colors.surfaceVariant }} 
-                                    />
-                                    <View style={{ flex: 1 }}>
-                                        <Text variant="titleMedium" style={{ fontSize: 15, fontWeight: 'bold' }}>
-                                            {questionInfo.author.name}
-                                        </Text>
-                                        {questionInfo.author.headline ? (
-                                            <Text variant="bodySmall" style={{ color: theme.colors.outline, marginTop: 2 }} numberOfLines={1}>
-                                                {questionInfo.author.headline}
-                                            </Text>
-                                        ) : null}
-                                    </View>
-                                </AnimatedPressable>
+                                    style={{ paddingHorizontal: 0, marginBottom: 4 }}
+                                />
                             )}
 
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginVertical: 12, paddingVertical: 12, backgroundColor: theme.colors.surfaceVariant, borderRadius: 8 }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginVertical: 12, paddingVertical: 12, backgroundColor: theme.colors.secondaryContainer, borderRadius: theme.radius.tabContour }}>
                                 {renderStats("关注者", questionInfo.follower_count)}
                                 {renderStats("浏览量", questionInfo.visit_count)}
                                 {renderStats("回答", questionInfo.answer_count)}
                             </View>
-                            
+
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                                <Text variant="labelMedium" style={{ color: theme.colors.outline }}>
+                                <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
                                     提问于 {new Date(questionInfo.created * 1000).toLocaleDateString()}
                                 </Text>
-                                <Text variant="labelMedium" style={{ color: theme.colors.outline }}>
+                                <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
                                     {questionInfo.comment_count} 条评论
                                 </Text>
                             </View>
@@ -183,14 +170,14 @@ const QuestionScreen = () => {
                     renderItem={({ item }) => (
                         <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 4 }}>
-                                <MaterialCommunityIcons name="history" size={16} color={theme.colors.onSurfaceVariant} />
-                                <Text variant="labelMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+                                <Icon name="history" size={16} color={theme.colors.onSurfaceVariantSummary} />
+                                <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
                                     {item.actionText} · {new Date(item.createdTime * 1000).toLocaleString()}
                                 </Text>
                             </View>
-                            <RenderItem 
-                                item={item.item} 
-                                type={item.feedType} 
+                            <RenderItem
+                                item={item.item}
+                                type={item.feedType}
                                 needToGet={true}
                                 hideTitle={true}
                             />
@@ -204,14 +191,14 @@ const QuestionScreen = () => {
                     onEndReachedThreshold={0.5}
                     ListFooterComponent={() => (
                         <View style={{ marginVertical: 20, alignItems: 'center' }}>
-                            {isLoadingActivities && <Text style={{ color: theme.colors.onSurfaceVariant }}>加载中...</Text>}
-                            {!hasMoreActivities && activities.length > 0 && <Text style={{ color: theme.colors.onSurfaceVariant }}>没有更多了</Text>}
+                            {isLoadingActivities && <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>加载中...</Text>}
+                            {!hasMoreActivities && activities.length > 0 && <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>没有更多了</Text>}
                         </View>
                     )}
                 />
             ) : (
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                    <Text>Loading...</Text>
+                    <Text type="body1">Loading...</Text>
                 </View>
             )}
         </View>

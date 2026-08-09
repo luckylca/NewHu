@@ -2,144 +2,93 @@ import { getApiInstance, getRecommend, dislikeAnswer, dislikeArticle } from '@/s
 import { useContentStore } from '@/src/stores/useContentStore';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { router } from 'expo-router';
-import React, { memo, useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { Animated, Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent, Pressable, View, StyleSheet, PanResponder } from 'react-native';
-import { Card, Icon, Text } from '@/src/components/ui';
-import { useTheme } from '@/src/theme/ThemeProvider';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent, View, StyleSheet, PanResponder } from 'react-native';
+import { Card, Icon, SearchBar, Text } from '@/src/ui';
+import { useTheme } from '@/src/ui/theme';
 import { useSettingStore } from '../src/stores/useSettingStore';
 import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
 import type { FeedItem, FeedItemInfo, FeedType } from '@/src/types/zhihu';
-import RenderHtml from 'react-native-render-html';
-import { Image, useWindowDimensions } from 'react-native';
 import { short } from '@/src/utils/haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const { width: WindowWidth, height: WindowHeight } = Dimensions.get('window');
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const { width: WindowWidth } = Dimensions.get('window');
 
 // ====== Paging 模式下的比例参数 ======
 const ITEM_WIDTH = WindowWidth * 0.88; 
 const CARD_WIDTH = WindowWidth * 0.82; 
 
+function getContentPreview(item: FeedItem) {
+    const content = item.content
+        ?.replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return content || item.excerpt || '暂无内容';
+}
+
 // ==================== 普通模式 Item ====================
-export const RenderItem = memo(({ item, type, needToGet, disableAnimations, hideTitle }: {
+export const RenderItem = memo(({ item, type, needToGet, hideTitle }: {
     item: FeedItem;
     type: FeedType;
     needToGet: boolean;
-    disableAnimations?: boolean;
     hideTitle?: boolean;
 }) => {
     const title = (type === 'answer' && item.questionTitle) ? item.questionTitle : item.title;
     const theme = useTheme();
-    const metaColor = theme.colors.onSurfaceVariant;
-    const cardBgColor = theme.colors.surfaceVariant;
-    
+    const metaColor = theme.colors.onSurfaceVariantSummary;
+    const cardBgColor = theme.colors.surfaceContainer;
+
     const openItem = useCallback(() => {
-        setTimeout(() => {
-            router.push({
-                pathname: `/item/[type]/[id]`,
-                params: { id: item.id, type, needToGet: needToGet.toString() }
-            })
-        }, 100);
+        router.push({
+            pathname: `/item/[type]/[id]`,
+            params: { id: item.id, type, needToGet: needToGet.toString() }
+        });
     }, [item.id, type, needToGet]);
 
-    const scale = useRef(new Animated.Value(1)).current;
-
-    const handlePressIn = useCallback(() => {
-        if (disableAnimations) return;
-        Animated.spring(scale, {
-            toValue: 0.95,
-            useNativeDriver: true,
-            bounciness: 10,
-        }).start();
-    }, [disableAnimations]);
-
-    const handlePressOut = useCallback(() => {
-        if (disableAnimations) return;
-        Animated.spring(scale, {
-            toValue: 1,
-            useNativeDriver: true,
-            bounciness: 10,
-        }).start();
-    }, [disableAnimations]);
-
     return (
-        <AnimatedPressable
+        <Card
+            feedback="none"
+            showIndication
             onPress={openItem}
-            onPressIn={handlePressIn}
-            onPressOut={handlePressOut}
-            android_ripple={{ color: theme.colors.surfaceDisabled, foreground: true }}
-            style={[
-                {
-                    width: WindowWidth * 0.9,
-                    marginBottom: 10,
-                    borderRadius: 16,
-                    overflow: 'hidden',
-                    backgroundColor: cardBgColor,
-                },
-                { transform: [{ scale }] }
-            ]}
+            style={{ width: WindowWidth * 0.9, marginBottom: 10 }}
+            contentStyle={{ backgroundColor: cardBgColor, paddingHorizontal: 16, paddingVertical: 14 }}
         >
-            <Card mode="contained" style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: 'transparent' }}>
-                <Card.Content style={{ paddingVertical: 8 }}>
-                    {!hideTitle && (
-                        <Text variant="titleMedium" style={{ fontWeight: 'bold', marginBottom: 8 }} numberOfLines={2}>
-                            {title}
-                        </Text>
-                    )}
-                    <Text variant="bodyMedium" style={{ color: metaColor, marginBottom: 10, lineHeight: 20 }} numberOfLines={3}>
-                        {item.excerpt}
-                    </Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
-                            <Icon source="thumb-up-outline" size={16} color={metaColor} />
-                            <Text variant="labelMedium" style={{ marginLeft: 6, color: metaColor }}>{item.voteCount}</Text>
-                        </View>
-                        {item.favoriteCount > 0 && (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
-                                <Icon source="star-outline" size={16} color={metaColor} />
-                                <Text variant="labelMedium" style={{ marginLeft: 6, color: metaColor }}>{item.favoriteCount}</Text>
-                            </View>
-                        )}
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
-                            <Icon source="comment-outline" size={16} color={metaColor} />
-                            <Text variant="labelMedium" style={{ marginLeft: 6, color: metaColor }}>{item.commentCount}</Text>
-                        </View>
+            {!hideTitle && (
+                <Text type="headline1" weight="bold" color={theme.colors.onBackground} style={{ marginBottom: 8 }} numberOfLines={2}>
+                    {title}
+                </Text>
+            )}
+            <Text type="body2" color={metaColor} style={{ marginBottom: 10, lineHeight: 20 }} numberOfLines={3}>
+                {item.excerpt}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
+                    <Icon name="thumb-up-outline" size={16} color={metaColor} />
+                    <Text type="footnote1" style={{ marginLeft: 6, color: metaColor }}>{item.voteCount}</Text>
+                </View>
+                {item.favoriteCount > 0 && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
+                        <Icon name="star-outline" size={16} color={metaColor} />
+                        <Text type="footnote1" style={{ marginLeft: 6, color: metaColor }}>{item.favoriteCount}</Text>
                     </View>
-                </Card.Content>
-            </Card>
-        </AnimatedPressable>
+                )}
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
+                    <Icon name="comment-outline" size={16} color={metaColor} />
+                    <Text type="footnote1" style={{ marginLeft: 6, color: metaColor }}>{item.commentCount}</Text>
+                </View>
+            </View>
+        </Card>
     );
 }, (prevProps, nextProps) => {
     return prevProps.item.id === nextProps.item.id &&
-        prevProps.disableAnimations === nextProps.disableAnimations;
+        prevProps.type === nextProps.type &&
+        prevProps.hideTitle === nextProps.hideTitle;
 });
 RenderItem.displayName = 'RenderItem';
-
-// ==================== 卡片模式专用图片渲染器 ====================
-const CardImageRenderer = React.memo(({ tnode }: any) => {
-    const attrs = tnode.attributes;
-    const src = attrs['data-original'] || attrs['data-actualsrc'] || attrs['data-src'] || attrs.src;
-    const { width: imgWidth, height: imgHeight } = attrs;
-
-    if (!src || src.startsWith('data:image/svg')) return null;
-
-    return (
-        <View style={{ width: '100%', alignItems: 'center', marginVertical: 8 }}>
-            <Image
-                source={{ uri: src }}
-                style={{
-                    width: '100%',
-                    aspectRatio: imgWidth && imgHeight ? Number(imgWidth) / Number(imgHeight) : 16 / 9,
-                    borderRadius: 8,
-                }}
-                resizeMode="cover"
-            />
-        </View>
-    );
-});
-CardImageRenderer.displayName = 'CardImageRenderer';
 
 // ==================== 卡片模式 Item ====================
 export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimations, hideTitle, onDislike, onCardDragChange }: {
@@ -154,21 +103,18 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
     const title = (type === 'answer' && item.questionTitle) ? item.questionTitle : item.title;
 
     const theme = useTheme();
-    const { height: WindowHeight } = useWindowDimensions();
-    const metaColor = theme.colors.onSurfaceVariant;
-    const cardBgColor = theme.colors.surfaceVariant;
-    const textColor = theme.colors.onSurface;
+    const WindowHeight = Dimensions.get('window').height;
+    const metaColor = theme.colors.onSurfaceVariantSummary;
+    const cardBgColor = theme.colors.surfaceContainer;
+    const textColor = theme.colors.onBackground;
 
     const openItem = useCallback(() => {
-        setTimeout(() => {
-            router.push({
-                pathname: `/item/[type]/[id]`,
-                params: { id: item.id, type, needToGet: needToGet.toString() }
-            })
-        }, 100);
+        router.push({
+            pathname: `/item/[type]/[id]`,
+            params: { id: item.id, type, needToGet: needToGet.toString() }
+        });
     }, [item.id, type, needToGet]);
 
-    const scale = useRef(new Animated.Value(1)).current;
     const translateY = useRef(new Animated.Value(0)).current;
 
     // 长按计时器（0.5s 按住 → 提前禁用 FlatList 滚动，防止手势被抢）
@@ -248,23 +194,7 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
 
     const cardHeight = WindowHeight * 0.65; 
     const topSpacing = WindowHeight * 0.05; 
-    const cardContentWidth = CARD_WIDTH - 48; 
-
-    const tagsStyles = useMemo(() => ({
-        body: { color: metaColor, fontSize: 16, lineHeight: 26 },
-        p: { marginBottom: 10 },
-        figure: { margin: 0, marginTop: 8, marginBottom: 8 },
-        h1: { fontSize: 20, color: textColor, marginVertical: 10 },
-        h2: { fontSize: 18, color: textColor, marginVertical: 8 },
-        img: { borderRadius: 8 }
-    }), [metaColor, textColor]);
-
-    const renderers = useMemo(() => ({
-        img: (props: any) => <CardImageRenderer {...props} />
-    }), []);
-
-    const htmlContent = item.content || `<p>${item.excerpt || '暂无内容'}</p>`;
-
+    const preview = getContentPreview(item);
     return (
         <View style={{ 
             width: ITEM_WIDTH,     
@@ -279,15 +209,13 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                     isDragModeRef.current = false;
                     cleanupLongPress();
                     longPressTimerRef.current = setTimeout(() => {
+                        longPressTimerRef.current = null;
                         onCardDragChange?.(true);
                     }, 500);
                 }}
                 onTouchEnd={() => {
-                    if (longPressTimerRef.current) {
-                        cleanupLongPress();
-                    } else if (!isDragModeRef.current) {
-                        onCardDragChange?.(false);
-                    }
+                    cleanupLongPress();
+                    if (!isDragModeRef.current) onCardDragChange?.(false);
                 }}
                 onTouchCancel={() => {
                     cleanupLongPress();
@@ -302,24 +230,22 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                         borderRadius: 24,
                         overflow: 'hidden',
                         backgroundColor: cardBgColor,
-                        elevation: 4,
-                        shadowColor: theme.colors.shadow,
-                        shadowOffset: { width: 0, height: 4 },
-                        shadowOpacity: 0.1,
-                        shadowRadius: 10,
                     },
-                    { transform: [{ scale }, { translateY }], opacity: cardOpacity }
+                    { transform: [{ translateY }], opacity: cardOpacity }
                 ]}
             >
-                <Pressable
+                <Card
+                    feedback="none"
+                    showIndication
                     onPress={openItem}
-                    android_ripple={{ color: theme.colors.surfaceDisabled, foreground: true }}
-                    style={{ flex: 1, padding: 24, flexDirection: 'column' }}
+                    style={{ flex: 1 }}
+                    contentStyle={{ backgroundColor: 'transparent', borderRadius: 24, padding: 24, flex: 1 }}
                 >
                     {!hideTitle && (
-                        <Text 
-                            variant="titleLarge" 
-                            style={{ fontWeight: 'bold', marginBottom: 16, color: textColor, lineHeight: 32 }} 
+                        <Text
+                            type="title3"
+                            weight="bold"
+                            style={{ marginBottom: 16, color: textColor, lineHeight: 32 }}
                             numberOfLines={3}
                         >
                             {title || '无标题'}
@@ -327,42 +253,40 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                     )}
                     
                     <View style={{ flex: 1, marginTop: 4, overflow: 'hidden' }} pointerEvents="none">
-                        <RenderHtml
-                            contentWidth={cardContentWidth}
-                            source={{ html: htmlContent }}
-                            tagsStyles={tagsStyles}
-                            renderers={renderers}
-                            ignoredDomTags={['noscript']}
-                            enableExperimentalMarginCollapsing={true}
-                            enableCSSInlineProcessing={false}
-                            defaultTextProps={{ selectable: false }}
-                        />
+                        <Text
+                            type="body1"
+                            color={metaColor}
+                            style={{ lineHeight: 27 }}
+                            numberOfLines={12}
+                        >
+                            {preview}
+                        </Text>
                     </View>
 
-                    <View style={{ 
-                        flexDirection: 'row', 
-                        alignItems: 'center', 
-                        marginTop: 20, 
-                        paddingTop: 20, 
-                        borderTopWidth: StyleSheet.hairlineWidth, 
-                        borderColor: theme.colors.outlineVariant 
+                    <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        marginTop: 20,
+                        paddingTop: 20,
+                        borderTopWidth: StyleSheet.hairlineWidth,
+                        borderColor: theme.colors.dividerLine
                     }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
-                            <Icon source="thumb-up-outline" size={20} color={metaColor} />
-                            <Text variant="labelLarge" style={{ marginLeft: 6, color: metaColor }}>{item.voteCount}</Text>
+                            <Icon name="thumb-up-outline" size={20} color={metaColor} />
+                            <Text type="body2" style={{ marginLeft: 6, color: metaColor }}>{item.voteCount}</Text>
                         </View>
                         {item.favoriteCount > 0 && (
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
-                                <Icon source="star-outline" size={20} color={metaColor} />
-                                <Text variant="labelLarge" style={{ marginLeft: 6, color: metaColor }}>{item.favoriteCount}</Text>
+                                <Icon name="star-outline" size={20} color={metaColor} />
+                                <Text type="body2" style={{ marginLeft: 6, color: metaColor }}>{item.favoriteCount}</Text>
                             </View>
                         )}
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
-                            <Icon source="comment-outline" size={20} color={metaColor} />
-                            <Text variant="labelLarge" style={{ marginLeft: 6, color: metaColor }}>{item.commentCount}</Text>
+                            <Icon name="comment-outline" size={20} color={metaColor} />
+                            <Text type="body2" style={{ marginLeft: 6, color: metaColor }}>{item.commentCount}</Text>
                         </View>
                     </View>
-                </Pressable>
+                </Card>
             </Animated.View>
         </View>
     );
@@ -374,9 +298,9 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
 RenderCardModeItem.displayName = 'RenderCardModeItem';
 
 // ==================== 主屏幕 ====================
-const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
-    const insets = useSafeAreaInsets();
+const HomeScreen = () => {
     const theme = useTheme();
+    const insets = useSafeAreaInsets();
     
     // 从 store 中通过精细选择器拉取所需的状态和方法
     const feedList = useContentStore((state) => state.feedList);
@@ -387,14 +311,14 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
     const cookies = useUserStore((state) => state.cookies);
     const disableAnimations = useSettingStore((state) => state.disableAnimations);
     const displayMode = useSettingStore((state) => state.mode);
+    const filterAds = useSettingStore((state) => state.isAds);
+    const filterPaid = useSettingStore((state) => state.isPaid);
     const userHydrated = useStoreHydrated(useUserStore); // 等用户 store 完成水合再初始化 API
 
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const requestInFlightRef = useRef(false);
 
     const sessionTokenRef = useRef("");
-    const lastOffsetYRef = useRef(0);
-    const tabVisibleRef = useRef(true);
     const feedListRef = useRef(feedList);
     feedListRef.current = feedList;
     const loadDataRef = useRef<any>(null);
@@ -411,7 +335,7 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
         const target = item.target;
         const isAds = !!item.promotion_extra;
         const isPaid = !!(target.paid_info || target.answer_type === 'paid');
-        if (isAds || isPaid) return null; 
+        if ((filterAds && isAds) || (filterPaid && isPaid)) return null;
 
         if (target.type === 'answer' || target.type === 'article') {
             return {
@@ -444,11 +368,12 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
     };
 
     const loadData = async (isRefresh = false) => {
+        if (requestInFlightRef.current) return;
+        requestInFlightRef.current = true;
+
         if (isRefresh) {
             setIsRefreshing(true);
             sessionTokenRef.current = ""; 
-        } else {
-            setIsLoadingMore(true);
         }
 
         try {
@@ -478,8 +403,8 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
         } catch (error) {
             console.error('获取数据失败:', error);
         } finally {
+            requestInFlightRef.current = false;
             setIsRefreshing(false);
-            setIsLoadingMore(false);
         }
     };
 
@@ -532,9 +457,8 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
             item={item.item}
             type={item.feedType}
             needToGet={true}
-            disableAnimations={disableAnimations}
         />
-    ), [disableAnimations]);
+    ), []);
 
     // 关键改动：在这里把 item.feedType 作为形参绑定闭包传给 RenderCardModeItem
     const renderCardListItem = useCallback(({ item }: { item: FeedItemInfo }) => (
@@ -564,40 +488,16 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
         index,
     }), []);
 
-    const handleListScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-        const currentY = event.nativeEvent.contentOffset.y;
-        const deltaY = currentY - lastOffsetYRef.current;
-
-        if (currentY <= 0) {
-            if (!tabVisibleRef.current) {
-                tabVisibleRef.current = true;
-                onTabVisibilityChange?.(true);
-            }
-            lastOffsetYRef.current = currentY;
-            return;
-        }
-
-        if (Math.abs(deltaY) < 8) return;
-
-        if (deltaY > 0 && tabVisibleRef.current) {
-            tabVisibleRef.current = false;
-            onTabVisibilityChange?.(false);
-        } else if (deltaY < 0 && !tabVisibleRef.current) {
-            tabVisibleRef.current = true;
-            onTabVisibilityChange?.(true);
-        }
-
-        lastOffsetYRef.current = currentY;
-    }, [onTabVisibilityChange]);
-
     return (
-        <View style={{ flex: 1, marginTop: insets.top, backgroundColor: theme.colors.background }}>
-            <View style={{ width: '100%', alignItems: 'center' }}>
-                <View style={{ width: '90%', marginBottom: 10, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: theme.colors.surfaceVariant, borderRadius: 5 }}>
-                    <Icon source="magnify" size={20} color={theme.colors.onSurfaceVariant} />
-                    <Text style={{ marginLeft: 8, color: theme.colors.onSurfaceVariant }}>搜索</Text>
-                </View>
-            </View>
+        <View style={{ flex: 1, paddingTop: insets.top + theme.spacing.xs, backgroundColor: theme.colors.surface }}>
+            <SearchBar
+                label="搜索知乎内容"
+                onPress={() => router.push('/search')}
+                inputProps={{
+                    editable: false,
+                    showSoftInputOnFocus: false,
+                }}
+            />
             
             {displayMode === 'card' ? (
                 <View style={{ flex: 1, alignItems: 'center', width: '100%' }}>
@@ -616,9 +516,9 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
                         showsHorizontalScrollIndicator={false}
                         onEndReached={() => loadData(false)}
                         onEndReachedThreshold={0.8}
-                        maxToRenderPerBatch={5}
-                        windowSize={2}
-                        initialNumToRender={3}
+                        maxToRenderPerBatch={3}
+                        windowSize={3}
+                        initialNumToRender={2}
                         onMomentumScrollEnd={handleMomentumScrollEnd}
                         getItemLayout={cardItemLayout}
                         removeClippedSubviews={true}
@@ -627,7 +527,7 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
             ) : (
                 <FlatList
                     style={{ flex: 1 }}
-                    contentContainerStyle={{ alignItems: 'center' }}
+                    contentContainerStyle={{ alignItems: 'center', paddingTop: 4, paddingBottom: theme.spacing.md }}
                     data={feedList}
                     renderItem={renderListItem}
                     keyExtractor={(item) => item.item.id.toString()}
@@ -636,12 +536,11 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
                     onEndReached={() => loadData(false)}
                     onEndReachedThreshold={0.8}
                     showsVerticalScrollIndicator={false}
-                    maxToRenderPerBatch={5}
+                    maxToRenderPerBatch={4}
+                    updateCellsBatchingPeriod={48}
                     windowSize={5}
-                    initialNumToRender={6}
+                    initialNumToRender={4}
                     removeClippedSubviews={true}
-                    onScroll={handleListScroll}
-                    scrollEventThrottle={16}
                 />
             )}
         </View>

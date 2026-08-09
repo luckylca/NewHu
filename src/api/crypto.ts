@@ -298,4 +298,3 @@ function generateSignature(url: string, cookie: string): { url: string; headers:
 }
 
 export { generateSignature, XZSE96V3 };
-

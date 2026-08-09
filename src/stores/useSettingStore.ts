@@ -10,6 +10,13 @@ interface SettingState {
     isDarkMode: boolean;
     setDarkMode: (isDark: boolean) => void;
 
+    wallpaperUri: string | null;
+    setWallpaperUri: (uri: string | null) => void;
+    wallpaperOpacity: number;
+    setWallpaperOpacity: (opacity: number) => void;
+    wallpaperBlur: number;
+    setWallpaperBlur: (blur: number) => void;
+
     disableAnimations: boolean; // 是否关闭动画
     setDisableAnimations: (disabled: boolean) => void; // 设置是否关闭动画
 
@@ -18,6 +25,8 @@ interface SettingState {
 
     isAds: boolean; // 是否开启广告过滤
     isPaid: boolean; // 是否开启付费内容过滤
+    setAds: (enabled: boolean) => void;
+    setPaid: (enabled: boolean) => void;
 
     mode: 'normal' | 'card';
     setMode: (mode: 'normal' | 'card') => void; // 设置模式的函数
@@ -32,6 +41,12 @@ export const useSettingStore = create<SettingState>()(
             setFollowSystemTheme: (follow) => set({ followSystemTheme: follow }),
             isDarkMode: false, // 默认不是暗黑模式
             setDarkMode: (isDark) => set({ isDarkMode: isDark }),
+            wallpaperUri: null,
+            setWallpaperUri: (uri) => set({ wallpaperUri: uri }),
+            wallpaperOpacity: 0.82,
+            setWallpaperOpacity: (opacity) => set({ wallpaperOpacity: opacity }),
+            wallpaperBlur: 8,
+            setWallpaperBlur: (blur) => set({ wallpaperBlur: blur }),
 
             disableAnimations: false,
             setDisableAnimations: (disabled) => set({ disableAnimations: disabled }),
@@ -39,8 +54,10 @@ export const useSettingStore = create<SettingState>()(
             cookie: '',
             setCookie: (cookie) => set({ cookie }),
 
-            isAds: false, // 是否开启广告过滤
-            isPaid: false, // 是否开启付费内容过滤
+            isAds: true,
+            isPaid: true,
+            setAds: (enabled) => set({ isAds: enabled }),
+            setPaid: (enabled) => set({ isPaid: enabled }),
 
             mode: 'normal', // 默认模式
             setMode: (mode) => set({ mode }),

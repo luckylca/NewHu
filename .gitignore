@@ -3,6 +3,9 @@
 # dependencies
 node_modules/
 
+# reference sources (miuix-vue, ported into src/ui)
+.reference/
+
 # Expo
 .expo/
 dist/

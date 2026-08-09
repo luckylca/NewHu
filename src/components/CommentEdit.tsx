@@ -1,97 +1,85 @@
-import { Appbar, Button } from "@/src/components/ui";
-import { useTheme } from "@/src/theme/ThemeProvider";
-import React, { useEffect, useRef, useState } from "react";
-import { Animated, Dimensions, KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from "react-native";
-import { submitComment } from "../api/ZhihuApi";
+import { submitComment } from '@/src/api/ZhihuApi';
+import { notify } from '@/src/stores/useNotificationStore';
+import { Button, Icon, Input, TopAppBar } from '@/src/ui';
+import { useTheme } from '@/src/ui/theme';
+import React, { useEffect, useState } from 'react';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, View } from 'react-native';
 
-const { height } = Dimensions.get("window");
-
-interface CommentEditProps {
+type CommentEditProps = {
     visible: boolean;
     name: string;
     contentType: string;
     contentId: string;
     replyCommentId: string;
     onClose: () => void;
-}
+    onSubmitted?: () => void;
+};
 
-export default function CommentEdit({ visible, name, contentType, contentId, replyCommentId, onClose }: CommentEditProps) {
+export default function CommentEdit({ visible, name, contentType, contentId, replyCommentId, onClose, onSubmitted }: CommentEditProps) {
     const theme = useTheme();
-    const [content, setContent] = useState("");
-    const slideAnim = useRef(new Animated.Value(height)).current;
+    const [content, setContent] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+    const pageBackground = theme.dark ? '#161616' : '#F7F7F7';
 
     useEffect(() => {
-        if (visible) {
-            Animated.spring(slideAnim, {
-                toValue: 0,
-                useNativeDriver: true,
-                speed: 14,
-                bounciness: 4,
-            }).start();
-        } else {
-            // onClose 时可以加退出动画，但通常父组件立刻销毁，所以直接设回
-            slideAnim.setValue(height);
-        }
-    }, [visible, slideAnim]);
+        if (!visible) setContent('');
+    }, [visible]);
 
-    if (!visible) return null;
-
-    const handleSend = () => {
-        if (!content.trim()) return;
-        console.log("Submit comment:", content);
-        // 调用发表评论的 API
-        submitComment({
-            contentType: contentType,
-            contentId: contentId,
-            text: content,
-            replyCommentId: replyCommentId || undefined // 发送被回复的评论 ID
-        }).then((res) => {
-            console.log("Comment submitted successfully:", res);
-            setContent("");
+    const handleSend = async () => {
+        const text = content.trim();
+        if (!text || submitting) return;
+        setSubmitting(true);
+        try {
+            await submitComment({
+                contentType,
+                contentId,
+                text,
+                replyCommentId: replyCommentId || undefined,
+            });
+            setContent('');
             onClose();
-        });
+            onSubmitted?.();
+            notify('评论已发表');
+        } catch (error) {
+            console.error('发表评论失败:', error);
+            notify('发表失败，请稍后重试');
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     return (
-        <Animated.View style={{ flex: 1, transform: [{ translateY: slideAnim }] }}>
-            <KeyboardAvoidingView
-                style={{ flex: 1, backgroundColor: theme.colors.background }}
-                behavior={Platform.OS === "ios" ? "padding" : undefined}
-            >
-                <Appbar.Header style={{ backgroundColor: theme.colors.surface }}>
-                    <Appbar.Action icon="close" onPress={onClose} />
-                    <Appbar.Content title={name ? `回复 ${name}` : "回复回答"} />
-                    <Button
-                        mode="contained"
-                        onPress={handleSend}
-                        disabled={!content.trim()}
-                        style={{ marginRight: 16 }}
-                    >
-                        发表
-                    </Button>
-                </Appbar.Header>
-
-                <View style={{ flex: 1, padding: 16 }}>
-                    <TextInput
-                        style={[styles.input, { color: theme.colors.onSurface }]}
-                        placeholder={name ? `回复 ${name}...` : "撰写你的评论..."}
-                        placeholderTextColor={theme.colors.onSurfaceVariant}
-                        multiline
-                        autoFocus
+        <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+            <KeyboardAvoidingView style={{ flex: 1, backgroundColor: pageBackground }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+                <TopAppBar
+                    title={name ? `回复 ${name}` : '发表评论'}
+                    navigation={
+                        <Pressable onPress={onClose} hitSlop={8} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 20 }}>
+                            <Icon name="close" size={24} color={theme.colors.onBackground} />
+                        </Pressable>
+                    }
+                    actions={
+                        <Button type="primary" onPress={handleSend} disabled={!content.trim() || submitting} style={{ marginRight: theme.spacing.lg }}>
+                            {submitting ? '发表中' : '发表'}
+                        </Button>
+                    }
+                />
+                <View style={{ flex: 1, padding: theme.spacing.lg }}>
+                    <Input
                         value={content}
                         onChangeText={setContent}
-                        textAlignVertical="top"
+                        singleLine={false}
+                        placeholder={name ? `回复 ${name}…` : '友善地写下你的评论…'}
+                        inputProps={{
+                            autoFocus: true,
+                            textAlignVertical: 'top',
+                            style: { flex: 1, minHeight: 180 },
+                            maxLength: 5000,
+                        }}
+                        style={{ flex: 1, alignItems: 'stretch' }}
                     />
                 </View>
             </KeyboardAvoidingView>
-        </Animated.View>
+        </Modal>
     );
 }
-
-const styles = StyleSheet.create({
-    input: {
-        flex: 1,
-        fontSize: 16,
-        lineHeight: 24,
-    },
-});

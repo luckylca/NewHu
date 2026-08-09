@@ -123,7 +123,7 @@ class ZhihuAPI {
     async getRecommend(session_token = '') {
         let url = 'https://www.zhihu.com/api/v3/feed/topstory/recommend?limit=10&action=down&after_id=5&desktop=true';
         if (session_token) {
-            url += `?session_token=${session_token}`;
+            url += `&session_token=${encodeURIComponent(session_token)}`;
         }
         return this.client.get(url);
     }

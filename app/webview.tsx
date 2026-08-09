@@ -3,7 +3,9 @@ import { ActivityIndicator, Modal, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import CookieManager from '@react-native-cookies/cookies';
 import { useUserStore } from '@/src/stores/useUserStore';
-import { Appbar, Text } from '@/src/components/ui';
+import { TopAppBar } from '@/src/ui';
+import { Text } from '@/src/ui/primitives';
+import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import { getApiInstance } from '@/src/api/ZhihuApi';
 const ZhihuLoginWebView = () => {
@@ -41,18 +43,17 @@ const ZhihuLoginWebView = () => {
         }
     };
 
+    const theme = useTheme();
+
     return (
         <View style={{ flex: 1 }}>
             <Modal visible={modalVisible} transparent>
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-                    <ActivityIndicator animating={true} size="large" color="#FFFFFF" />
-                    <Text style={{ marginTop: 10, color: '#FFFFFF' }}>{statueText}</Text>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.windowDimming }}>
+                    <ActivityIndicator animating={true} size="large" color={theme.colors.onPrimary} />
+                    <Text type="body1" style={{ marginTop: theme.spacing.sm, color: theme.colors.onPrimary }}>{statueText}</Text>
                 </View>
             </Modal>
-            <Appbar.Header>
-                <Appbar.BackAction onPress={() => router.back()} />
-                <Appbar.Content title="登录知乎" />
-            </Appbar.Header>
+            <TopAppBar title="登录知乎" back={() => router.back()} />
             <WebView
                 source={{ uri: 'https://www.zhihu.com/signin' }}
                 incognito={true} // 使用隐身模式，确保不使用之前的 Cookie

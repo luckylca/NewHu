@@ -26,6 +26,8 @@ interface ZhihuClient {
 }
 
 class ZhihuClient {
+    private useSignedGet = true;
+
     constructor(cookie: string) {
         if (!cookie) {
             throw new Error('请提供知乎 Cookie');
@@ -39,6 +41,8 @@ class ZhihuClient {
      */
     setCookie(cookie: string) {
         this.cookie = cookie;
+        this.canLoad = true;
+        this.useSignedGet = true;
     }
 
     /**
@@ -84,12 +88,28 @@ class ZhihuClient {
 
         // 生成签名
         const { url: finalUrl, headers } = generateSignature(url, this.cookie);
+        const browserHeaders = {
+            cookie: this.cookie,
+            'user-agent': headers['user-agent'],
+        };
 
         try {
-            const response = await fetch(finalUrl, {
+            let response = await fetch(finalUrl, {
                 method: 'GET',
-                headers: headers
+                headers: this.useSignedGet ? headers : browserHeaders,
+                credentials: 'omit',
             });
+
+            // 知乎会拒绝过期的本地 x-zse 算法，但同一 Cookie 仍可正常访问
+            // Web GET 接口。仅在签名请求返回 401 时回退一次，保留原请求行为。
+            if (response.status === 401 && this.useSignedGet) {
+                this.useSignedGet = false;
+                response = await fetch(finalUrl, {
+                    method: 'GET',
+                    headers: browserHeaders,
+                    credentials: 'omit',
+                });
+            }
 
             const content = await response.text();
 
@@ -134,7 +154,8 @@ class ZhihuClient {
             const response = await fetch(finalUrl, {
                 method: 'POST',
                 headers: headers,
-                body: body
+                body: body,
+                credentials: 'omit',
             });
 
             const content = await response.text();
@@ -175,7 +196,8 @@ class ZhihuClient {
             const response = await fetch(finalUrl, {
                 method: 'PUT',
                 headers: headers,
-                body: typeof data === 'string' ? data : new URLSearchParams(data).toString()
+                body: typeof data === 'string' ? data : new URLSearchParams(data).toString(),
+                credentials: 'omit',
             });
 
             const content = await response.text();
@@ -204,7 +226,8 @@ class ZhihuClient {
         try {
             const response = await fetch(finalUrl, {
                 method: 'DELETE',
-                headers: headers
+                headers: headers,
+                credentials: 'omit',
             });
 
             const content = await response.text();
@@ -255,4 +278,3 @@ class ZhihuClient {
 
 // 导出
 export default ZhihuClient;
-

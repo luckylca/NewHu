@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(npx tsc *)",
-      "Bash(node -e \"const rngh = require\\('react-native-gesture-handler'\\); console.log\\('FlatList' in rngh, 'ScrollView' in rngh\\)\")"
+      "Bash(node -e \"const rngh = require\\('react-native-gesture-handler'\\); console.log\\('FlatList' in rngh, 'ScrollView' in rngh\\)\")",
+      "Bash(npx expo *)"
     ]
   }
 }

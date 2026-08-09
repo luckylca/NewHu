@@ -1,0 +1,152 @@
+import { PressIndication } from '@/src/ui/primitives';
+import { cardSink, cardTilt } from '@/src/ui/motion';
+import { useTheme } from '@/src/ui/theme';
+import React, { useCallback, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { Pressable } from 'react-native';
+import type { GestureResponderEvent, LayoutChangeEvent, StyleProp, ViewStyle } from 'react-native';
+import Animated, { useAnimatedStyle, useDerivedValue, useSharedValue, withSpring } from 'react-native-reanimated';
+
+/**
+ * Design System Card.
+ *
+ * Visual reference:
+ *   miuix-vue/src/components/card/Card.vue (Card.kt + PressFeedback.kt)
+ *
+ * radius 16, bg surfaceContainer, content onSurfaceContainer, overflow hidden.
+ * Feedback:
+ *   none — inert container.
+ *   sink — scale 1.0 → 0.94, folmeSpring(0.8, 600).
+ *   tilt — rotateX/Y ±8°, folmeSpring(0.6, 400), pivot follows the touch
+ *          quadrant (perspective ≈ width × 1.6).
+ * Long-press after 500ms emits onLongPress and swallows the following click.
+ * No default heavy shadow.
+ */
+
+export type CardFeedback = 'none' | 'sink' | 'tilt';
+
+export interface AppCardProps {
+    feedback?: CardFeedback;
+    /** Draw the MiuixIndication alpha overlay on press. */
+    showIndication?: boolean;
+    /** Latch the press feedback on (e.g. while a long-press dialog is open). */
+    holdDown?: boolean;
+    onPress?: () => void;
+    onLongPress?: () => void;
+    style?: StyleProp<ViewStyle>;
+    contentStyle?: StyleProp<ViewStyle>;
+    children?: ReactNode;
+}
+
+const SINK_AMOUNT = 0.94;
+const TILT_AMOUNT = 8;
+const TILT_PERSPECTIVE_FACTOR = 1.6;
+
+export function Card({ feedback = 'none', showIndication, holdDown, onPress, onLongPress, style, contentStyle, children }: AppCardProps) {
+    const theme = useTheme();
+    const radius = theme.components.card.radius;
+    const pressed = useSharedValue(0);
+    const tiltX = useSharedValue(0);
+    const tiltY = useSharedValue(0);
+
+    const [cardWidth, setCardWidth] = useState(0);
+    const [cardHeight, setCardHeight] = useState(0);
+    const [tiltOrigin, setTiltOrigin] = useState('50% 50%');
+
+    const longPressFired = useRef(false);
+
+    const interactive = feedback !== 'none' || !!onPress || !!onLongPress;
+
+    const engaged = useDerivedValue(() => (pressed.value === 1 || holdDown ? 1 : 0));
+
+    const animatedStyle = useAnimatedStyle(() => {
+        if (feedback === 'sink') {
+            return {
+                transform: [{ scale: withSpring(engaged.value === 1 ? SINK_AMOUNT : 1, cardSink) }],
+            };
+        }
+        if (feedback === 'tilt') {
+            return {
+                transform: [
+                    { perspective: Math.max(cardWidth * TILT_PERSPECTIVE_FACTOR, 1) },
+                    { rotateX: `${withSpring(tiltX.value, cardTilt)}deg` },
+                    { rotateY: `${withSpring(tiltY.value, cardTilt)}deg` },
+                ],
+            };
+        }
+        return {};
+    }, [feedback, cardWidth]);
+
+    const onLayout = useCallback((e: LayoutChangeEvent) => {
+        const { width, height } = e.nativeEvent.layout;
+        setCardWidth(width);
+        setCardHeight(height);
+    }, []);
+
+    const handlePressIn = useCallback(
+        (e: GestureResponderEvent) => {
+            longPressFired.current = false;
+            if (feedback === 'tilt') {
+                const { locationX, locationY } = e.nativeEvent;
+                const halfW = (cardWidth || 1) / 2;
+                const halfH = (cardHeight || 1) / 2;
+                const originX = locationX < halfW ? '100%' : '0%';
+                const originY = locationY < halfH ? '100%' : '0%';
+                setTiltOrigin(`${originX} ${originY}`);
+                tiltX.value = locationY < halfH ? TILT_AMOUNT : -TILT_AMOUNT;
+                tiltY.value = locationX < halfW ? -TILT_AMOUNT : TILT_AMOUNT;
+            }
+            pressed.value = 1;
+        },
+        [feedback, cardWidth, cardHeight, tiltX, tiltY, pressed],
+    );
+
+    const handlePressOut = useCallback(() => {
+        pressed.value = 0;
+        tiltX.value = 0;
+        tiltY.value = 0;
+    }, [tiltX, tiltY, pressed]);
+
+    const handleLongPress = useCallback(() => {
+        longPressFired.current = true;
+        onLongPress?.();
+    }, [onLongPress]);
+
+    const handlePress = useCallback(() => {
+        // A completed long-press swallows the click (combinedClickable parity).
+        if (longPressFired.current) {
+            longPressFired.current = false;
+            return;
+        }
+        onPress?.();
+    }, [onPress]);
+
+    return (
+        <Pressable
+            accessibilityRole={interactive ? 'button' : undefined}
+            onPress={interactive ? handlePress : undefined}
+            onPressIn={interactive ? handlePressIn : undefined}
+            onPressOut={interactive ? handlePressOut : undefined}
+            onLongPress={interactive && !!onLongPress ? handleLongPress : undefined}
+            style={style}
+        >
+            <Animated.View
+                onLayout={feedback === 'tilt' ? onLayout : undefined}
+                style={[
+                    {
+                        backgroundColor: theme.colors.surfaceContainer,
+                        borderRadius: radius,
+                        overflow: 'hidden',
+                        flexDirection: 'column',
+                    },
+                    feedback === 'tilt' ? { transformOrigin: tiltOrigin } : undefined,
+                    contentStyle,
+                    animatedStyle,
+                ]}
+            >
+                {children}
+                {showIndication && <PressIndication pressed={pressed} color={theme.colors.onBackground} radius={radius} />}
+            </Animated.View>
+        </Pressable>
+    );
+}

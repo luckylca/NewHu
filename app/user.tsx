@@ -1,47 +1,22 @@
 import { useUserStore } from "@/src/stores/useUserStore";
 import { useSettingStore } from "@/src/stores/useSettingStore";
 import { router } from "expo-router";
-import React, { useEffect, useRef } from "react";
-import { ScrollView, TouchableOpacity, View, Animated, Dimensions, StyleSheet } from 'react-native';
-import { Avatar, Button, Card, Surface, Text } from '@/src/components/ui';
-import { useTheme } from '@/src/theme/ThemeProvider';
-
-const { width } = Dimensions.get('window');
-const TOGGLE_WIDTH = width * 0.8; // 80% 宽度
-const TOGGLE_PADDING = 4;         // 内部留白
-const SLIDER_WIDTH = (TOGGLE_WIDTH - TOGGLE_PADDING * 2) / 2; // 单块滑块宽度
+import React from "react";
+import { Image, ScrollView, View } from 'react-native';
+import { Card, Divider, Icon, ListRow, SegmentedControl } from '@/src/ui';
+import { Text } from '@/src/ui/primitives';
+import { useTheme } from '@/src/ui/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const UserScreen = ({ navigation }: any) => {
     const theme = useTheme();
+    const insets = useSafeAreaInsets();
     const userStore = useUserStore();
     const settingStore = useSettingStore();
-    
-    const cardBgColor = theme.colors.surfaceVariant;
-    const metaColor = theme.colors.onSurfaceVariant;
-    
-    // 滑块及选中状态的颜色
-    const activeSliderColor = theme.colors.primaryContainer; 
-    const activeTextColor = theme.colors.onPrimaryContainer;
+
+    const metaColor = theme.colors.onSurfaceSecondary;
 
     const isCardMode = settingStore.mode === 'card';
-
-    // 动画参考值
-    const slideAnim = useRef(new Animated.Value(isCardMode ? 0 : 1)).current;
-
-    useEffect(() => {
-        Animated.spring(slideAnim, {
-            toValue: isCardMode ? 0 : 1,
-            useNativeDriver: true,
-            damping: 15,
-            mass: 1,
-            stiffness: 100,
-        }).start();
-    }, [isCardMode, slideAnim]);
-
-    const translateX = slideAnim.interpolate({
-        inputRange: [0, 1],
-        outputRange: [0, SLIDER_WIDTH]
-    });
 
     const handlePress = () => {
         if(userStore.isLoggedIn){
@@ -52,116 +27,49 @@ const UserScreen = ({ navigation }: any) => {
     }
 
     return (
-        <ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: 'center', paddingBottom: 30, backgroundColor: theme.colors.background }}>
-            <TouchableOpacity style={{ alignItems: 'center', marginTop: 30, width: '30%' }} activeOpacity={0.8} onPress={handlePress}>
-                <Avatar.Image size={100} source={{ uri: userStore.avatar }} style={{ marginTop: 30, marginBottom: 10 }} />
-                <Card mode="elevated" style={{ marginBottom: 30, height: 40, justifyContent: 'center', alignItems: 'center', backgroundColor: cardBgColor }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }}>
-                        <Text style={{ margin: 8, textAlign: 'center', fontSize: 18, color: metaColor }}>{userStore.username || '请登录'}</Text>
-                    </View>
-                </Card>
-            </TouchableOpacity>
-            <Surface 
-                mode="elevated" 
-                style={[styles.toggleContainer, { backgroundColor: cardBgColor }]}
+        <ScrollView contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + theme.spacing.sm, paddingBottom: theme.spacing.xxl, backgroundColor: theme.colors.surface }}>
+            <Card
+                feedback="sink"
+                showIndication
+                onPress={handlePress}
+                style={{ margin: theme.spacing.lg }}
+                contentStyle={{ padding: theme.spacing.lg, flexDirection: 'row', alignItems: 'center' }}
             >
-                <View style={styles.sliderBgLayer} pointerEvents="none">
-                    <Animated.View 
-                        style={[
-                            styles.activeSlider, 
-                            { 
-                                backgroundColor: activeSliderColor,
-                                transform: [{ translateX }] 
-                            }
-                        ]} 
-                    />
+                <Image
+                    source={{ uri: userStore.avatar }}
+                    style={{ width: 68, height: 68, borderRadius: theme.radius.full, backgroundColor: theme.colors.surfaceContainerHigh }}
+                />
+                <View style={{ flex: 1, marginLeft: theme.spacing.lg }}>
+                    <Text type="title3" weight="bold">{userStore.username || '请登录'}</Text>
+                    <Text type="body2" color={metaColor} style={{ marginTop: theme.spacing.xs }}>
+                        {userStore.isLoggedIn ? '查看个人资料' : '登录后同步收藏与历史'}
+                    </Text>
                 </View>
+                <Icon name="chevron-right" size={24} color={theme.colors.onSurfaceVariantActions} />
+            </Card>
 
-                <TouchableOpacity 
-                    style={styles.toggleItem} 
-                    activeOpacity={0.8}
-                    onPress={() => settingStore.setMode('card')}
-                >
-                    <Text style={{ 
-                        fontSize: 15, 
-                        color: isCardMode ? activeTextColor : metaColor,
-                        fontWeight: isCardMode ? 'bold' : 'normal'
-                    }}>
-                        卡片模式
-                    </Text>
-                </TouchableOpacity>
+            <View style={{ marginBottom: theme.spacing.lg, marginHorizontal: theme.spacing.lg, padding: theme.spacing.lg, borderRadius: theme.radius.component, backgroundColor: theme.colors.surfaceContainer }}>
+                <Text type="headline1" weight="medium">浏览方式</Text>
+                <Text type="body2" color={metaColor} style={{ marginTop: 2, marginBottom: theme.spacing.md }}>
+                    滑动模式每次专注浏览一条内容
+                </Text>
+                <SegmentedControl
+                    tabs={['普通模式', '滑动模式']}
+                    selected={isCardMode ? 1 : 0}
+                    onSelect={(i) => settingStore.setMode(i === 1 ? 'card' : 'normal')}
+                />
+            </View>
 
-                <TouchableOpacity 
-                    style={styles.toggleItem} 
-                    activeOpacity={0.8}
-                    onPress={() => settingStore.setMode('normal')}
-                >
-                    <Text style={{ 
-                        fontSize: 15, 
-                        color: !isCardMode ? activeTextColor : metaColor,
-                        fontWeight: !isCardMode ? 'bold' : 'normal'
-                    }}>
-                        普通模式
-                    </Text>
-                </TouchableOpacity>
-            </Surface>
-
-            <Button 
-                mode="elevated"
-                onPress={() => router.push('/like')}
-                style={{ width: '80%', marginBottom: 20, height: 60, justifyContent: 'center', backgroundColor: cardBgColor }}
-                contentStyle={{ height: 60, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', backgroundColor: cardBgColor }}
-                labelStyle={{ fontSize: 15, color: metaColor }}
-                >
-                收藏列表
-            </Button>
-            <Button 
-                mode="elevated"
-                style={{ width: '80%', marginBottom: 20, height: 60, justifyContent: 'center', backgroundColor: cardBgColor }}
-                contentStyle={{ height: 60, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', backgroundColor: cardBgColor }}
-                labelStyle={{ fontSize: 15, color: metaColor }}
-                onPress={() => router.push('/history')}
-                >
-                浏览历史
-            </Button>
-            <Button
-                mode="elevated"
-                style={{ width: '80%', marginBottom: 20 ,height: 60, justifyContent: 'center', backgroundColor: cardBgColor }}
-                contentStyle={{ height: 60, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', backgroundColor: cardBgColor }}
-                labelStyle={{ fontSize: 15, color: metaColor }}
-                onPress={() => router.push('/settings')}
-                >
-                设置
-            </Button>
+            {/* 设置入口组 —— ListRow + Divider，Miuix 设置列表 */}
+            <View style={{ marginBottom: theme.spacing.xl, marginHorizontal: theme.spacing.lg, borderRadius: theme.radius.component, backgroundColor: theme.colors.surfaceContainer, overflow: 'hidden' }}>
+                <ListRow title="收藏列表" onPress={() => router.push('/like')} />
+                <Divider style={{ marginLeft: theme.spacing.lg }} />
+                <ListRow title="浏览历史" onPress={() => router.push('/history')} />
+                <Divider style={{ marginLeft: theme.spacing.lg }} />
+                <ListRow title="设置" onPress={() => router.push('/settings')} />
+            </View>
         </ScrollView>
     );
 }
-
-const styles = StyleSheet.create({
-    toggleContainer: {
-        width: TOGGLE_WIDTH,
-        height: 60,
-        marginBottom: 20,
-        borderRadius: 30, // 使用大圆角让它看起来像一个按钮组
-        flexDirection: 'row',
-        position: 'relative',
-    },
-    sliderBgLayer: {
-        ...StyleSheet.absoluteFillObject, // 绝对定位铺满整个容器
-        padding: TOGGLE_PADDING,          // 留出内边距
-        flexDirection: 'row',
-    },
-    activeSlider: {
-        width: SLIDER_WIDTH,
-        height: '100%',
-        borderRadius: 26, // 滑块稍微比外壳小一点
-    },
-    toggleItem: {
-        flex: 1,
-        height: '100%',
-        justifyContent: 'center',
-        alignItems: 'center',
-    }
-});
 
 export default UserScreen;

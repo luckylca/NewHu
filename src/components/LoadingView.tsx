@@ -1,5 +1,5 @@
-import { Text } from "@/src/components/ui";
-import { useTheme } from "@/src/theme/ThemeProvider";
+import { Text } from "@/src/ui/primitives";
+import { useTheme } from "@/src/ui/theme";
 import { ActivityIndicator, View } from "react-native";
 
 const LoadingView = ({ message = "正在加载…" }: { message?: string }) => {
@@ -22,17 +22,18 @@ const LoadingView = ({ message = "正在加载…" }: { message?: string }) => {
             />
 
             <Text
-                variant="titleMedium"
+                type="headline1"
+                weight="medium"
                 style={{ marginTop: 16, color: theme.colors.onBackground }}
             >
                 {message}
             </Text>
 
             <Text
-                variant="bodyMedium"
+                type="body2"
                 style={{
                     marginTop: 6,
-                    color: theme.colors.onSurfaceVariant,
+                    color: theme.colors.onSurfaceVariantSummary,
                     textAlign: "center",
                 }}
             >

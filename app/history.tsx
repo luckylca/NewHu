@@ -1,6 +1,8 @@
 import { getReadHistory } from "@/src/api/ZhihuApi";
 import LoadingView from "@/src/components/LoadingView";
-import { Appbar, Text } from "@/src/components/ui";
+import { TopAppBar } from '@/src/ui';
+import { Text } from '@/src/ui/primitives';
+import { useTheme } from '@/src/ui/theme';
 import { useRouter } from "expo-router";
 import React, { useCallback, useRef, useState } from "react";
 import { FlatList, View } from "react-native";
@@ -104,29 +106,28 @@ export default function HistoryScreen() {
         }, [fetchHistory])
     );
 
+    const theme = useTheme();
+
     return (
-        <View style={{ flex: 1 }}>
-            <Appbar.Header>
-                <Appbar.BackAction onPress={() => router.back()} />
-                <Appbar.Content title="浏览历史" />
-            </Appbar.Header>
+        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+            <TopAppBar title="浏览历史" back={() => router.back()} />
 
             <FlatList
                 data={historyData}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => <RenderItem item={item} type={item.feedType} needToGet={true} />}
-                contentContainerStyle={{ padding: 16 }}
+                contentContainerStyle={{ padding: theme.spacing.lg }}
                 onRefresh={() => fetchHistory("refresh")}
                 refreshing={isRefreshing}
                 onEndReachedThreshold={0.3}
                 onEndReached={() => fetchHistory("more")}
-                ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+                ItemSeparatorComponent={() => <View style={{ height: theme.spacing.sm }} />}
                 ListEmptyComponent={() =>
                     loading ? (
                         <LoadingView />
                     ) : (
-                        <View style={{ marginTop: 50, alignItems: "center" }}>
-                            <Text style={{ opacity: 0.6 }}>没有浏览历史记录</Text>
+                        <View style={{ marginTop: theme.spacing.xxl, alignItems: "center" }}>
+                            <Text type="body1" color={theme.colors.onSurfaceVariantSummary}>没有浏览历史记录</Text>
                         </View>
                     )
                 }

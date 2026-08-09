@@ -4,14 +4,16 @@ import type { FeedDetail } from "@/src/types/zhihu";
 import ImageReanimatedModal from "@/src/components/ImageReanimatedModal";
 import LoadingView from "@/src/components/LoadingView";
 import { useContentStore } from "@/src/stores/useContentStore";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Image, Pressable, ScrollView, TouchableOpacity, useWindowDimensions, View } from "react-native";
+import { Animated, Image, Pressable, ScrollView, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { Appbar, Avatar, Divider, Icon, Menu, Portal, Snackbar, Text } from "@/src/components/ui";
-import { useTheme } from "@/src/theme/ThemeProvider";
-import { runOnJS } from 'react-native-reanimated';
+import { Divider, Icon, ListRow, Menu, TopAppBar } from "@/src/ui";
+import { notify } from '@/src/stores/useNotificationStore';
+import { PressIndication, Text } from "@/src/ui/primitives";
+import type { IconName } from "@/src/ui/primitives";
+import { useTheme } from "@/src/ui/theme";
+import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import RenderHtml from 'react-native-render-html';
 import { scheduleOnRN } from "react-native-worklets";
 
@@ -34,10 +36,21 @@ type ArrowEffect = {
 const CustomImageRenderer = React.memo(({ tnode, setOrigin, setImageUrl, setModalVisible }: any) => {
     const attrs = tnode.attributes;
     const localImageRef = useRef<View>(null);
+    const theme = useTheme();
+    const pressed = useSharedValue(0);
 
     // 知乎懒加载：真实地址在 data-original 或 data-actualsrc，src 只是占位 SVG
     const src = attrs['data-original'] || attrs['data-actualsrc'] || attrs['data-src'] || attrs.src;
     const { width: imgWidth, height: imgHeight } = attrs;
+    const declaredAspect = imgWidth && imgHeight ? Number(imgWidth) / Number(imgHeight) : 16 / 9;
+    const [aspectRatio, setAspectRatio] = useState(Number.isFinite(declaredAspect) ? declaredAspect : 16 / 9);
+
+    useEffect(() => {
+        if (!src || src.startsWith('data:image/svg')) return;
+        Image.getSize(src, (width, height) => {
+            if (width > 0 && height > 0) setAspectRatio(width / height);
+        });
+    }, [src]);
 
     // 如果是占位 SVG 则不渲染
     if (!src || src.startsWith('data:image/svg')) {
@@ -45,54 +58,91 @@ const CustomImageRenderer = React.memo(({ tnode, setOrigin, setImageUrl, setModa
     }
 
     return (
-        <View ref={localImageRef} style={{ flex: 1, alignItems: 'center', marginVertical: 8 }}>
-            <TouchableOpacity
-                activeOpacity={0.8}
+        <View ref={localImageRef} collapsable={false} style={{ width: '100%', alignItems: 'center', marginVertical: 8 }}>
+            <Pressable
                 onPress={() => {
                     console.log('图片地址:', src);
                     if (localImageRef.current) {
-                        localImageRef.current.measure((x, y, componentWidth, componentHeight, pageX, pageY) => {
+                        localImageRef.current.measureInWindow((pageX, pageY, componentWidth, componentHeight) => {
                             setOrigin({ x: pageX, y: pageY, width: componentWidth, height: componentHeight });
                             setImageUrl(src);
                             setModalVisible(true);
                         });
                     }
                 }}
+                onPressIn={() => (pressed.value = 1)}
+                onPressOut={() => (pressed.value = 0)}
+                style={{ width: '100%', borderRadius: theme.radius.tabContour, overflow: 'hidden' }}
             >
                 <Image
                     source={{ uri: src }}
                     style={{
                         width: '100%',
-                        aspectRatio: imgWidth && imgHeight ? Number(imgWidth) / Number(imgHeight) : 16 / 9,
-                        borderRadius: 8
+                        aspectRatio,
+                        borderRadius: theme.radius.tabContour
                     }}
                     resizeMode="contain"
                 />
-            </TouchableOpacity>
+                <PressIndication pressed={pressed} color={theme.colors.onBackground} radius={theme.radius.tabContour} />
+            </Pressable>
         </View>
     );
 });
 CustomImageRenderer.displayName = 'CustomImageRenderer';
+
+// 底部操作按钮：图标 + 可选计数，DS 按压缩放（alpha 覆盖层）
+const ContentActionButton = ({ name, count, alwaysShowCount, color, onPress }: {
+    name: IconName;
+    count?: number;
+    alwaysShowCount?: boolean;
+    color: string;
+    onPress: () => void;
+}) => {
+    const theme = useTheme();
+    const pressed = useSharedValue(0);
+    const showCount = count != null && (count > 0 || alwaysShowCount);
+    return (
+        <Pressable
+            accessibilityRole="button"
+            onPress={onPress}
+            onPressIn={() => (pressed.value = 1)}
+            onPressOut={() => (pressed.value = 0)}
+            hitSlop={6}
+            style={{ borderRadius: theme.radius.tabContour, overflow: 'hidden', padding: 4 }}
+        >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Icon name={name} size={26} color={color} />
+                {showCount ? (
+                    <Text type="footnote1" style={{ marginLeft: 6, color: theme.colors.onSurfaceVariantSummary }}>
+                        {count}
+                    </Text>
+                ) : null}
+            </View>
+            <PressIndication pressed={pressed} color={theme.colors.onBackground} radius={theme.radius.tabContour} />
+        </Pressable>
+    );
+};
 
 export default function Item() {
     const { id, type, needToGet } = useLocalSearchParams<ItemParams>();
     const contentStore = useContentStore();
     const router = useRouter();
     const theme = useTheme();
-    
+
     const [origin, setOrigin] = useState({ x: 0, y: 0, width: 0, height: 0 });
     const [modalVisible, setModalVisible] = useState(false);
     const [imageUrl, setImageUrl] = useState("");
     const { width } = useWindowDimensions();
-    
+
     const [readData, setReadData] = useState<FeedDetail | null>(null);
     const [menuVisible, setMenuVisible] = useState(false);
+    const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0, width: 0, height: 0 });
+    const menuBtnRef = useRef<View>(null);
     const [voted, setVoted] = useState(false);
     const [voteCount, setVoteCount] = useState(0);
-    const [snackVisible, setSnackVisible] = useState(false);
-    const [snackText, setSnackText] = useState('');
     const [arrowEffects, setArrowEffects] = useState<ArrowEffect[]>([]);
     const arrowIdRef = useRef(0);
+    const titlePressed = useSharedValue(0);
 
     useEffect(() => {
         addReadHistory(String(id), type === 'answer' ? 'answer' : 'article');
@@ -168,11 +218,6 @@ export default function Item() {
     const voteupAction = type === 'answer' ? voteupAnswer : voteupArticle;
     const cancelVoteupAction = type === 'answer' ? cancelVoteupAnswer : cancelVoteupArticle;
 
-    const showSnack = (text: string) => {
-        setSnackText(text);
-        setSnackVisible(true);
-    };
-
     const playArrowAnimation = (absoluteX: number, absoluteY: number) => {
         const arrowId = arrowIdRef.current + 1;
         arrowIdRef.current = arrowId;
@@ -216,17 +261,15 @@ export default function Item() {
 
     const handleVoteUp = () => {
         if (voted) {
-            showSnack(`已经点赞过了，当前已经有${voteCount}点赞`);
+            notify(`已经点赞过了，当前已有 ${voteCount} 个赞`);
             console.log('重复点赞，已忽略');
             return;
         }
         voteupAction(String(id));
         setVoted(true);
-        setVoteCount((count: number) => {
-            const nextCount = count + 1;
-            showSnack(`点赞成功，当前已经有${nextCount}点赞`);
-            return nextCount;
-        });
+        const nextCount = voteCount + 1;
+        setVoteCount(nextCount);
+        notify(`点赞成功，当前已有 ${nextCount} 个赞`);
         setReadData((prev: any) => ({
             ...prev,
             voted: true,
@@ -238,10 +281,7 @@ export default function Item() {
         if (voted) {
             setVoted(false);
             cancelVoteupAction(String(id));
-            setVoteCount((count: number) => {
-                const nextCount = count - 1;
-                return nextCount;
-            });
+            setVoteCount(voteCount - 1);
             setReadData((prev: any) => ({
                 ...prev,
                 voted: false,
@@ -251,11 +291,9 @@ export default function Item() {
         }
         setVoted(true);
         voteupAction(String(id));
-        setVoteCount((count: number) => {
-            const nextCount = count + 1;
-            showSnack(`点赞成功，当前已经有${nextCount}点赞`);
-            return nextCount;
-        });
+        const nextCount = voteCount + 1;
+        setVoteCount(nextCount);
+        notify(`点赞成功，当前已有 ${nextCount} 个赞`);
         setReadData((prev: any) => ({
             ...prev,
             voted: true,
@@ -294,13 +332,20 @@ export default function Item() {
     // 双击和右滑互斥：优先尝试双击，失败则尝试右滑
     const combinedGesture = Gesture.Exclusive(doubleTab, rightSwipe);
 
+    const openHeaderMenu = () => {
+        menuBtnRef.current?.measureInWindow((x, y, width, height) => {
+            setMenuAnchor({ x, y, width, height });
+            setMenuVisible(true);
+        });
+    };
+
     // 1. 缓存 tagsStyles
     const tagsStyles = useMemo(() => ({
         body: { color: theme.colors.onSurface, fontSize: 16, lineHeight: 28 },
         p: { marginBottom: 16 },
         figure: { margin: 0, marginTop: 8, marginBottom: 8 },
-        img: { borderRadius: 12 }
-    }), [theme.colors.onSurface]);
+        img: { borderRadius: theme.radius.tab }
+    }), [theme.colors.onSurface, theme.radius.tab]);
 
     // 2. 缓存 renderers 对象
     const renderers = useMemo(() => ({
@@ -324,86 +369,92 @@ export default function Item() {
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            <Portal>
-                <ImageReanimatedModal
-                    visible={modalVisible}
-                    url={imageUrl}
-                    origin={origin}
-                    onClose={() => setModalVisible(false)}
-                />
-            </Portal>
+            <ImageReanimatedModal
+                visible={modalVisible}
+                url={imageUrl}
+                origin={origin}
+                onClose={() => setModalVisible(false)}
+            />
 
             {/* 顶部导航栏 */}
-            <Appbar.Header elevated>
-                <Appbar.BackAction onPress={() => router.back()} />
-                <Appbar.Content title={type === 'answer' ? '回答详情' : '文章详情'} />
-                <Menu
-                    visible={menuVisible}
-                    onDismiss={() => setMenuVisible(false)}
-                    anchor={<Appbar.Action icon="dots-vertical" onPress={() => setMenuVisible(true)} />}>
-                    <Menu.Item
-                        onPress={() => { console.log('复制内容'); }}
-                        title="复制内容"
-                        leadingIcon={() => <Icon source="content-copy" size={16} color="#49454F" />}
-                    />
-                    <Menu.Item
-                        onPress={() => { cancelVoteupAction(String(id)); setVoted(false); setVoteCount((count: number) => count - 1); }}
-                        title="取消点赞"
-                        leadingIcon={() => <Icon source="account-outline" size={16} color="#49454F" />}
-                    />
-                </Menu>
-            </Appbar.Header>
+            <TopAppBar
+                title={type === 'answer' ? '回答详情' : '文章详情'}
+                back={() => router.back()}
+                actions={
+                    <View ref={menuBtnRef} collapsable={false}>
+                        <Pressable
+                            accessibilityRole="button"
+                            onPress={openHeaderMenu}
+                            hitSlop={8}
+                            style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 40 }}
+                        >
+                            <Icon name="dots-vertical" size={24} color={theme.colors.onBackground} />
+                        </Pressable>
+                    </View>
+                }
+            />
+            <Menu
+                visible={menuVisible}
+                onClose={() => setMenuVisible(false)}
+                anchor={menuAnchor}
+                items={[
+                    { label: '复制内容', onPress: () => { console.log('复制内容'); } },
+                    {
+                        label: '取消点赞',
+                        onPress: () => {
+                            cancelVoteupAction(String(id));
+                            setVoted(false);
+                            setVoteCount((count: number) => count - 1);
+                        }
+                    },
+                ]}
+            />
 
             <ScrollView
-                contentContainerStyle={{ padding: 10, flexGrow: 1 }}
+                contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xl, flexGrow: 1 }}
                 showsVerticalScrollIndicator={false}
             >
                 {/* 标题 */}
                 <Pressable
                     onPress={() => handleTitlePress()}
-                    android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
+                    onPressIn={() => (titlePressed.value = 1)}
+                    onPressOut={() => (titlePressed.value = 0)}
                     style={{
                         width: '100%',
-                        borderRadius: 16,
-                        height: 'auto',
+                        borderRadius: theme.radius.component,
                         overflow: 'hidden',
                         paddingTop: 8,
                         paddingBottom: 8,
                     }}
                 >
-                    <Text variant="headlineSmall" style={{ fontWeight: 'bold' }}>
+                    <Text type="title2" weight="bold">
                         {title}
                     </Text>
+                    <PressIndication pressed={titlePressed} color={theme.colors.onBackground} radius={theme.radius.component} />
                 </Pressable>
 
                 {/* 作者信息区域 */}
-                <Pressable
-                    onPress={() => router.push({ pathname: '/people', params: { urlToken: readData.authorUrlToken } })}
-                    android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
-                    style={{
-                        width: '100%',
-                        borderRadius: 16,
-                        height: 'auto',
-                        overflow: 'hidden',
-                        paddingTop: 8,
-                        paddingBottom: 8,
-                    }}
-                >
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        {readData.authorAvatar ? (
-                            <Avatar.Image size={40} source={{ uri: readData.authorAvatar }} />
+                <ListRow
+                    icon={
+                        readData.authorAvatar ? (
+                            <Image
+                                source={{ uri: readData.authorAvatar }}
+                                style={{ width: 40, height: 40, borderRadius: theme.radius.full, backgroundColor: theme.colors.secondaryContainer }}
+                            />
                         ) : (
-                            <Avatar.Text size={40} label={readData.authorName?.substring(0, 1) || '佚'} />
-                        )}
-                        <View style={{ marginLeft: 12, justifyContent: 'center' }}>
-                            <Text variant="titleMedium">{readData.authorName}</Text>
-                            <Text variant="labelMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-                                {readData.updatedTime ? new Date(readData.updatedTime * 1000).toLocaleDateString() : '最近更新'}
-                            </Text>
-                        </View>
-                    </View>
-                </Pressable>
-                
+                            <View style={{ width: 40, height: 40, borderRadius: theme.radius.full, backgroundColor: theme.colors.secondaryContainer, alignItems: 'center', justifyContent: 'center' }}>
+                                <Text type="body2" weight="medium" color={theme.colors.onSurfaceContainer}>
+                                    {readData.authorName?.substring(0, 1) || '佚'}
+                                </Text>
+                            </View>
+                        )
+                    }
+                    title={readData.authorName}
+                    summary={readData.updatedTime ? new Date(readData.updatedTime * 1000).toLocaleDateString() : '最近更新'}
+                    onPress={() => router.push({ pathname: '/people', params: { urlToken: readData.authorUrlToken } })}
+                    style={{ paddingHorizontal: 0, marginBottom: 4 }}
+                />
+
                 {/* 第一个分割线 */}
                 <Divider style={{ marginVertical: 16 }} />
 
@@ -415,7 +466,7 @@ export default function Item() {
                             source={{ html: htmlContent }}
                             tagsStyles={tagsStyles}
                             enableExperimentalMarginCollapsing={true}
-                            renderers={renderers} 
+                            renderers={renderers}
                             ignoredDomTags={['noscript']}
                             defaultTextProps={{ selectable: false }}
                         />
@@ -425,47 +476,26 @@ export default function Item() {
 
                         {/* 底部操作按钮区域 */}
                         <View style={{ paddingLeft: 24, paddingRight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <Pressable
+                            <ContentActionButton
+                                name={(voted || readData.voted) ? "thumb-up" : "thumb-up-outline"}
+                                count={readData.voteCount}
+                                alwaysShowCount
+                                color={(voted || readData.voted) ? theme.colors.primary : theme.colors.onSurfaceVariantSummary}
                                 onPress={pressVoteUp}
-                                style={{ borderRadius: 8 }}
-                                android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
-                            >
-                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    {(voted || readData.voted) ? (
-                                        <Icon source="thumb-up" size={26} color={theme.colors.primary} />
-                                    ) : (
-                                        <Icon source="thumb-up-outline" size={26} color={theme.colors.onSurfaceVariant} />
-                                    )}
-                                    <Text variant="labelMedium" style={{ marginLeft: 6, color: "#49454F" }}>
-                                        {readData.voteCount}
-                                    </Text>
-                                </View>
-                            </Pressable>
-                            <Pressable
+                            />
+                            <ContentActionButton
+                                name="star-outline"
+                                count={readData.favoriteCount}
+                                color={theme.colors.onSurfaceVariantSummary}
                                 onPress={() => console.log('点击了收藏')}
-                                style={{ borderRadius: 8 }}
-                                android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
-                            >
-                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    <Icon source="star-outline" size={26} color="#49454F" />
-                                    {readData.favoriteCount > 0 &&
-                                        <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
-                                            {readData.favoriteCount}
-                                        </Text>}
-                                </View>
-                            </Pressable>
-                            <Pressable
+                            />
+                            <ContentActionButton
+                                name="comment-outline"
+                                count={readData.commentCount}
+                                alwaysShowCount
+                                color={theme.colors.onSurfaceVariantSummary}
                                 onPress={() => router.push({ pathname: '/item/[type]/[id]/comment', params: { id: readData.id, type } })}
-                                style={{ borderRadius: 8 }}
-                                android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
-                            >
-                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    <Icon source="comment-outline" size={26} color="#49454F" />
-                                    <Text variant="labelMedium" style={{ marginLeft: 6, color: '#49454F' }}>
-                                        {readData.commentCount}
-                                    </Text>
-                                </View>
-                            </Pressable>
+                            />
                         </View>
 
                         {/* 底部留白区域 */}
@@ -486,18 +516,10 @@ export default function Item() {
                         transform: [{ translateY: arrow.translateY }, { scale: arrow.scale }],
                     }}
                 >
-                    <MaterialCommunityIcons name="triangle" size={30} color={theme.colors.primary} />
+                    <Icon name="triangle" size={30} color={theme.colors.primary} />
                 </Animated.View>
             ))}
 
-            <Snackbar
-                visible={snackVisible}
-                style={{ marginBottom: 8 }}
-                onDismiss={() => setSnackVisible(false)}
-                duration={1400}
-            >
-                {snackText}
-            </Snackbar>
         </View>
     );
 }
