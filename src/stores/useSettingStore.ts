@@ -1,6 +1,8 @@
-// src/store/useSettingStore.ts
+// src/stores/useSettingStore.ts
 // 这里面放的是设置相关的信息，比如自动播放，快进倍速，选中的频道ID等
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 interface SettingState {
     followSystemTheme: boolean;
@@ -19,30 +21,39 @@ interface SettingState {
     isAds: boolean; // 是否开启广告过滤
     isPaid: boolean; // 是否开启付费内容过滤
 
-    mode: 'normal' | 'card' ; 
+    mode: 'normal' | 'card';
     setMode: (mode: 'normal' | 'card') => void; // 设置模式的函数
 }
 
-export const useSettingStore = create<SettingState>((set) => ({
+export const useSettingStore = create<SettingState>()(
+    persist(
+        (set) => ({
 
-    // 主题设置
-    followSystemTheme: false,
-    setFollowSystemTheme: (follow) => set({followSystemTheme: follow}),
-    isDarkMode: false, // 默认不是暗黑模式
-    setDarkMode: (isDark) => set({isDarkMode: isDark}),
-    themeColor: '#007AFF', // 默认主题颜色
-    setThemeColor: (color: string) => set({themeColor: color}),
+            // 主题设置
+            followSystemTheme: false,
+            setFollowSystemTheme: (follow) => set({ followSystemTheme: follow }),
+            isDarkMode: false, // 默认不是暗黑模式
+            setDarkMode: (isDark) => set({ isDarkMode: isDark }),
+            themeColor: '#007AFF', // 默认主题颜色
+            setThemeColor: (color) => set({ themeColor: color }),
 
-    disableAnimations: false,
-    setDisableAnimations: (disabled) => set({disableAnimations: disabled}),
+            disableAnimations: false,
+            setDisableAnimations: (disabled) => set({ disableAnimations: disabled }),
 
-    cookie: '',
-    setCookie: (cookie) => set({cookie}),
+            cookie: '',
+            setCookie: (cookie) => set({ cookie }),
 
-    isAds: false, // 是否开启广告过滤
-    isPaid: false, // 是否开启付费内容过滤
+            isAds: false, // 是否开启广告过滤
+            isPaid: false, // 是否开启付费内容过滤
 
-    mode: 'normal', // 默认模式
-    setMode: (mode: 'normal' | 'card') => set({mode}),
+            mode: 'normal', // 默认模式
+            setMode: (mode) => set({ mode }),
 
-}));
+        }),
+        {
+            name: 'setting-store',
+            storage: createJSONStorage(() => AsyncStorage),
+            // 所有设置字段都是可序列化的，整体持久化即可
+        }
+    )
+);

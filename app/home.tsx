@@ -7,6 +7,8 @@ import { Animated, Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent
 import { Card, Icon, Text, TextInput, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSettingStore } from '../src/stores/useSettingStore';
+import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
+import type { FeedItem, FeedItemInfo, FeedType } from '@/src/types/zhihu';
 import RenderHtml from 'react-native-render-html';
 import { Image, useWindowDimensions } from 'react-native';
 import { short } from '@/src/utils/haptics';
@@ -20,7 +22,13 @@ const ITEM_WIDTH = WindowWidth * 0.88;
 const CARD_WIDTH = WindowWidth * 0.82; 
 
 // ==================== 普通模式 Item ====================
-export const RenderItem = memo(({ item, type, needToGet, disableAnimations, hideTitle }: any) => {
+export const RenderItem = memo(({ item, type, needToGet, disableAnimations, hideTitle }: {
+    item: FeedItem;
+    type: FeedType;
+    needToGet: boolean;
+    disableAnimations?: boolean;
+    hideTitle?: boolean;
+}) => {
     const title = (type === 'answer' && item.questionTitle) ? item.questionTitle : item.title;
     const theme = useTheme();
     const metaColor = theme.colors.onSurfaceVariant;
@@ -102,7 +110,7 @@ export const RenderItem = memo(({ item, type, needToGet, disableAnimations, hide
             </Card>
         </AnimatedPressable>
     );
-}, (prevProps: any, nextProps: any) => {
+}, (prevProps, nextProps) => {
     return prevProps.item.id === nextProps.item.id &&
         prevProps.disableAnimations === nextProps.disableAnimations;
 });
@@ -133,7 +141,15 @@ const CardImageRenderer = React.memo(({ tnode }: any) => {
 CardImageRenderer.displayName = 'CardImageRenderer';
 
 // ==================== 卡片模式 Item ====================
-export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimations, hideTitle, onDislike, onCardDragChange }: any) => {
+export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimations, hideTitle, onDislike, onCardDragChange }: {
+    item: FeedItem;
+    type: FeedType;
+    needToGet: boolean;
+    disableAnimations?: boolean;
+    hideTitle?: boolean;
+    onDislike?: (id: string) => void;
+    onCardDragChange?: (dragging: boolean) => void;
+}) => {
     const title = (type === 'answer' && item.questionTitle) ? item.questionTitle : item.title;
 
     const theme = useTheme();
@@ -349,7 +365,7 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
             </Animated.View>
         </View>
     );
-}, (prevProps: any, nextProps: any) => {
+}, (prevProps, nextProps) => {
     return prevProps.item.id === nextProps.item.id &&
         prevProps.disableAnimations === nextProps.disableAnimations &&
         prevProps.onCardDragChange === nextProps.onCardDragChange;
@@ -368,8 +384,9 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
     const addUnlikeItem = useContentStore((state) => state.addUnlikeItem);   // 引入新增的本地不喜欢持久化 Action
     
     const cookies = useUserStore((state) => state.cookies);
-    const disableAnimations = useSettingStore((state) => state.disableAnimations); 
-    const displayMode = useSettingStore((state) => state.mode); 
+    const disableAnimations = useSettingStore((state) => state.disableAnimations);
+    const displayMode = useSettingStore((state) => state.mode);
+    const userHydrated = useStoreHydrated(useUserStore); // 等用户 store 完成水合再初始化 API
 
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -389,7 +406,7 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
         setCardDragging(dragging);
     }, []);
 
-    const processFeedItem = (item: any) => {
+    const processFeedItem = (item: any): FeedItemInfo | null => {
         const target = item.target;
         const isAds = !!item.promotion_extra;
         const isPaid = !!(target.paid_info || target.answer_type === 'paid');
@@ -437,7 +454,7 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
             const res = await getRecommend(sessionTokenRef.current);
             const data = res.data as any[];
             const cleanData = data.filter((item) => item.target && (item.target.type === 'answer' || item.target.type === 'article'));
-            const processedItems = cleanData.map(processFeedItem).filter(Boolean); 
+            const processedItems = cleanData.map(processFeedItem).filter((x): x is FeedItemInfo => x !== null);
 
             if (isRefresh) {
                 setFeedList(processedItems);
@@ -468,12 +485,15 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
     loadDataRef.current = loadData;
 
     useEffect(() => {
+        if (!userHydrated) return; // 等待持久化的 Cookie 恢复后再初始化，避免用到旧的默认值
         getApiInstance(cookies);
         loadData(true).then(() => loadData(false));
-    }, []);
+        // 仅在用户 store 水合完成的那一次执行（水合前后各运行一次加载会产生重复数据）
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [userHydrated]);
 
     // 联动优化：不喜欢（移除+网络请求+本地状态）统一处理器
-    const handleDislikeItem = useCallback((id: string, feedType: 'answer' | 'article') => {
+    const handleDislikeItem = useCallback((id: string, feedType: FeedType) => {
         const list = feedListRef.current;
         const targetIndex = list.findIndex((f) => f.item.id.toString() === id.toString());
         if (targetIndex === -1) return;
@@ -506,17 +526,17 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
         removeFeedItem(id);
     }, [removeFeedItem, addUnlikeItem]);
 
-    const renderListItem = useCallback(({ item }: any) => (
-        <RenderItem 
-            item={item.item} 
-            type={item.feedType} 
-            needToGet={true} 
-            disableAnimations={disableAnimations} 
+    const renderListItem = useCallback(({ item }: { item: FeedItemInfo }) => (
+        <RenderItem
+            item={item.item}
+            type={item.feedType}
+            needToGet={true}
+            disableAnimations={disableAnimations}
         />
     ), [disableAnimations]);
 
     // 关键改动：在这里把 item.feedType 作为形参绑定闭包传给 RenderCardModeItem
-    const renderCardListItem = useCallback(({ item }: any) => (
+    const renderCardListItem = useCallback(({ item }: { item: FeedItemInfo }) => (
         <RenderCardModeItem
             item={item.item}
             type={item.feedType}

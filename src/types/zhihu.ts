@@ -1,59 +1,32 @@
-interface PeopleInfo {
-    name: string;
-    headline: string;
-    avatar_url: string;
-    gender: number;             //基本信息
-    follower_count: number;
+/**
+ * 知乎内容归一化后的统一类型定义
+ *
+ * 所有 feed 项（回答 / 文章）在进入 store 之前，都会先经过
+ * home.tsx 的 processFeedItem（或详情页里的归一化逻辑）统一映射成
+ * camelCase 的 FeedItem 结构，因此这里只描述「归一化之后」的形状，
+ * 而不是知乎 API 的原始响应结构。
+ */
 
-    id: string;
-    url_token: string;              //用户唯一的信息，通过这个访问用户的主页
+export type FeedType = 'answer' | 'article';
 
-    is_following: boolean;
-    is_followed: boolean;           //用户和当前登录用户的关系
-}
-
-interface SimpleAnswer {
-    id: string;
-    excerpt: string;
-    authorName: string;
-
-    voteCount: number;
-    favoriteCount: number;
-    commentCount: number;
-
-    questionId: string;
-    questionTitle: string;
-}
-interface SimpleArticle {
+/** 归一化后的单条 feed 内容（回答与文章统一形状） */
+export interface FeedItem {
     id: string;
     title: string;
-    excerpt: string;
-    authorName: string;
-    voteCount: number;
-    favoriteCount: number;
-    commentCount: number;
-}
-
-type FeedType = 'answer' | 'article';
-
-// 先定义 Answer 和 Article 的类型
-interface Answer {
-    id: string;
-    excerpt: string;
-    content: string;
-    visited_count: number;
-    updatedTime: number;
-      // 统计数据
-    voteup_count: number;
-    comment_count: number;
-    favorite_count: number;
     authorName: string;
     authorUrlToken: string;
     authorAvatar: string;
-    isVisited: boolean; // 这个字段需要我们自己添加，用于标记是否已访问过
-
-    questionId: string;
+    excerpt: string;
+    updatedTime: number;
+    // 统计字段
+    voteCount: number;
+    favoriteCount: number;
+    commentCount: number;
+    // 正文（HTML）
+    content: string;
+    // 所属问题字段（文章可能没有 question，归一化时已填充默认值）
     questionTitle: string;
+    questionId: string;
     questionAuthorName: string;
     questionAuthorAvatar: string;
     questionAuthorUrlToken: string;
@@ -61,36 +34,15 @@ interface Answer {
     questionCreatedTime: number;
 }
 
-interface Article {
-    id: string;
-    title: string;
-    excerpt: string;
-    authorName: string;
-    authorUrlToken: string;
-    authorAvatar: string;
-    voteup_count: number;
-    comment_count: number;
-    favorite_count: number;
-     // 统计数据
-    updatedTime: number;
-    content:string;
-    isVisited: boolean; // 这个字段需要我们自己添加，用于标记是否已访问过
+/** 推荐流中的一条记录：内容 + 类型标记 + 广告/付费标记 */
+export interface FeedItemInfo {
+    feedType: FeedType;
+    isAds: boolean;
+    isPaid: boolean;
+    item: FeedItem;
 }
 
-// 使用判别联合
-type FeedItemInfo =
-    | {
-        feedType: 'answer';
-        isAds: boolean;
-        isPaid: boolean;
-        item: Answer;
-    }
-    | {
-        feedType: 'article';
-        isAds: boolean;
-        isPaid: boolean;
-        item: Article;
-    };
-
-
-export type { PeopleInfo, SimpleAnswer, SimpleArticle, FeedType, Answer, Article, FeedItemInfo };
+/** 详情页读取的数据：在 FeedItem 基础上额外携带当前用户的点赞关系 */
+export interface FeedDetail extends FeedItem {
+    voted?: boolean;
+}

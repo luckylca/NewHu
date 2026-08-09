@@ -12,6 +12,9 @@ function requireApiInstance(): ZhihuAPI {
 export function getApiInstance(cookie?: string): ZhihuAPI {
     if (!apiInstance) {
         apiInstance = new ZhihuAPI(cookie ?? "");
+    } else if (cookie) {
+        // 实例已存在时同步最新 Cookie，避免登录/切换账号后仍使用旧凭据
+        apiInstance.setCookie(cookie);
     }
     return apiInstance;
 }
@@ -95,6 +98,29 @@ export async function cancelVoteupArticle(articleId: string) {
     return data;
 }
 
+// 不喜欢（踩）回答。
+export async function dislikeAnswer(answerId: string) {
+    const data = await requireApiInstance().dislikeAnswer(answerId);
+    return data;
+}
+
+// 取消不喜欢回答。
+export async function cancelDislikeAnswer(answerId: string) {
+    const data = await requireApiInstance().cancelDislikeAnswer(answerId);
+    return data;
+}
+
+// 不喜欢（踩）文章。
+export async function dislikeArticle(articleId: string) {
+    const data = await requireApiInstance().dislikeArticle(articleId);
+    return data;
+}
+
+// 取消不喜欢文章。
+export async function cancelDislikeArticle(articleId: string) {
+    const data = await requireApiInstance().cancelDislikeArticle(articleId);
+    return data;
+}
 
 // 获取问题详情。
 export async function getQuestion(questionId: string) {

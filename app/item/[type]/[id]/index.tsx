@@ -1,10 +1,11 @@
 // app/item/type/[id]/index.tsx
 import { addReadHistory, cancelVoteupAnswer, cancelVoteupArticle, getAnswer, getArticle, voteupAnswer, voteupArticle } from "@/src/api/ZhihuApi";
+import type { FeedDetail } from "@/src/types/zhihu";
 import ImageReanimatedModal from "@/src/components/ImageReanimatedModal";
 import LoadingView from "@/src/components/LoadingView";
 import { useContentStore } from "@/src/stores/useContentStore";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Image, Pressable, ScrollView, TouchableOpacity, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -76,7 +77,6 @@ export default function Item() {
     const { id, type, needToGet } = useLocalSearchParams<ItemParams>();
     const contentStore = useContentStore();
     const router = useRouter();
-    const navigation = useNavigation();
     const theme = useTheme();
     
     const [origin, setOrigin] = useState({ x: 0, y: 0, width: 0, height: 0 });
@@ -84,7 +84,7 @@ export default function Item() {
     const [imageUrl, setImageUrl] = useState("");
     const { width } = useWindowDimensions();
     
-    const [readData, setReadData] = useState<any>(null);
+    const [readData, setReadData] = useState<FeedDetail | null>(null);
     const [menuVisible, setMenuVisible] = useState(false);
     const [voted, setVoted] = useState(false);
     const [voteCount, setVoteCount] = useState(0);
@@ -102,7 +102,7 @@ export default function Item() {
         if (needToGet === 'true') {
             if (type === 'answer') {
                 getAnswer(String(id)).then((data) => {
-                    const tmpReadData = {
+                    const tmpReadData: FeedDetail = {
                         id: data.id,
                         title: data.title || '无标题',
                         authorName: data.author?.name || '匿名用户',
@@ -128,7 +128,7 @@ export default function Item() {
                 });
             } else if (type === 'article') {
                 getArticle(String(id)).then((data) => {
-                    const tmpReadData = {
+                    const tmpReadData: FeedDetail = {
                         id: data.id,
                         title: data.title || '无标题',
                         authorName: data.author?.name || '匿名用户',
@@ -154,7 +154,7 @@ export default function Item() {
             }
         } else {
             const tmpReadData = contentStore.feedList.find((item) => String(item.item.id) === String(id))?.item;
-            setReadData(tmpReadData);
+            setReadData(tmpReadData ?? null);
         }
     }, [id, type, needToGet, contentStore.feedList]);
 
@@ -263,7 +263,7 @@ export default function Item() {
     };
 
     const handleTitlePress = () => {
-        if (type === 'answer' && readData.questionId) {
+        if (type === 'answer' && readData?.questionId) {
             console.log('跳转到问题详情，问题ID:', readData.questionId);
             router.push({ pathname: '/question', params: { id: readData.questionId } });
         }
@@ -454,7 +454,7 @@ export default function Item() {
                                 </View>
                             </Pressable>
                             <Pressable
-                                onPress={() => navigation.navigate('comment', { id: readData.id, type: type } as any)}
+                                onPress={() => router.push({ pathname: '/item/[type]/[id]/comment', params: { id: readData.id, type } })}
                                 style={{ borderRadius: 8 }}
                                 android_ripple={{ color: 'rgba(0,0,0,0.15)', foreground: true }}
                             >
