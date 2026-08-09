@@ -3,7 +3,8 @@ import { useSettingStore } from "@/src/stores/useSettingStore";
 import { router } from "expo-router";
 import React, { useEffect, useRef } from "react";
 import { ScrollView, TouchableOpacity, View, Animated, Dimensions, StyleSheet } from 'react-native';
-import { Avatar, Button, Card, Text, useTheme, Surface } from 'react-native-paper';
+import { Avatar, Button, Card, Surface, Text } from '@/src/components/ui';
+import { useTheme } from '@/src/theme/ThemeProvider';
 
 const { width } = Dimensions.get('window');
 const TOGGLE_WIDTH = width * 0.8; // 80% 宽度

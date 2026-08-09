@@ -4,7 +4,8 @@ import { useUserStore } from '@/src/stores/useUserStore';
 import { router } from 'expo-router';
 import React, { memo, useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Animated, Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent, Pressable, View, StyleSheet, PanResponder } from 'react-native';
-import { Card, Icon, Text, TextInput, useTheme } from 'react-native-paper';
+import { Card, Icon, Text } from '@/src/components/ui';
+import { useTheme } from '@/src/theme/ThemeProvider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSettingStore } from '../src/stores/useSettingStore';
 import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
@@ -592,12 +593,10 @@ const HomeScreen = ({ navigation, onTabVisibilityChange }: any) => {
     return (
         <View style={{ flex: 1, marginTop: insets.top, backgroundColor: theme.colors.background }}>
             <View style={{ width: '100%', alignItems: 'center' }}>
-                <TextInput
-                    label="搜索"
-                    mode="flat"
-                    style={{ width: '90%', marginBottom: 10, borderRadius: 5 }}
-                    left={<TextInput.Icon icon="magnify" />}
-                />
+                <View style={{ width: '90%', marginBottom: 10, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: theme.colors.surfaceVariant, borderRadius: 5 }}>
+                    <Icon source="magnify" size={20} color={theme.colors.onSurfaceVariant} />
+                    <Text style={{ marginLeft: 8, color: theme.colors.onSurfaceVariant }}>搜索</Text>
+                </View>
             </View>
             
             {displayMode === 'card' ? (

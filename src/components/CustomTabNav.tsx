@@ -1,7 +1,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
+import { Text } from '@/src/components/ui';
+import { useTheme } from '@/src/theme/ThemeProvider';
 import { Animated, Dimensions, Keyboard, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { Text, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface tabRoute {

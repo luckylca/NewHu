@@ -1,9 +1,9 @@
 import { getReadHistory } from "@/src/api/ZhihuApi";
 import LoadingView from "@/src/components/LoadingView";
+import { Appbar, Text } from "@/src/components/ui";
 import { useRouter } from "expo-router";
 import React, { useCallback, useRef, useState } from "react";
 import { FlatList, View } from "react-native";
-import { Appbar, Text } from "react-native-paper";
 import { RenderItem } from "./home";
 import { useFocusEffect } from "@react-navigation/native";
 

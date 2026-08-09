@@ -9,8 +9,6 @@ interface SettingState {
     setFollowSystemTheme: (follow: boolean) => void;
     isDarkMode: boolean;
     setDarkMode: (isDark: boolean) => void;
-    themeColor: string; // 主题颜色
-    setThemeColor: (color: string) => void; // 设置主题颜色的函数
 
     disableAnimations: boolean; // 是否关闭动画
     setDisableAnimations: (disabled: boolean) => void; // 设置是否关闭动画
@@ -34,8 +32,6 @@ export const useSettingStore = create<SettingState>()(
             setFollowSystemTheme: (follow) => set({ followSystemTheme: follow }),
             isDarkMode: false, // 默认不是暗黑模式
             setDarkMode: (isDark) => set({ isDarkMode: isDark }),
-            themeColor: '#007AFF', // 默认主题颜色
-            setThemeColor: (color) => set({ themeColor: color }),
 
             disableAnimations: false,
             setDisableAnimations: (disabled) => set({ disableAnimations: disabled }),

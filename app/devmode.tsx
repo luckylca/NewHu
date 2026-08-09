@@ -1,7 +1,8 @@
 import { router } from "expo-router";
 import React, { useRef } from "react";
-import { Animated, Easing, ScrollView, View } from "react-native";
-import { Appbar, Button, Card, Dialog, Portal, Switch, Text, TextInput, useTheme } from "react-native-paper";
+import { Animated, Easing, ScrollView, TextInput, View } from "react-native";
+import { Appbar, Button, Card, Dialog, Switch, Text } from "@/src/components/ui";
+import { useTheme } from "@/src/theme/ThemeProvider";
 import Svg, { Path } from "react-native-svg";
 import { useSettingStore } from "../src/stores/useSettingStore";
 
@@ -69,26 +70,31 @@ const DevModeScreen = () => {
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            <Portal>
-                <Dialog visible={cookieDialogVisible} onDismiss={closeCookieDialog}>
-                    <Dialog.Title>设置 Cookie</Dialog.Title>
-                    <Dialog.Content>
-                        <TextInput
-                            mode="outlined"
-                            label="Cookie"
-                            value={cookieDraft}
-                            onChangeText={setCookieDraft}
-                            placeholder="输入完整的 Cookie"
-                            multiline
-                            style={{ backgroundColor: "transparent" }}
-                        />
-                    </Dialog.Content>
-                    <Dialog.Actions>
-                        <Button onPress={closeCookieDialog}>取消</Button>
-                        <Button onPress={confirmCookie}>确定</Button>
-                    </Dialog.Actions>
-                </Dialog>
-            </Portal>
+            <Dialog visible={cookieDialogVisible} onDismiss={closeCookieDialog}>
+                <Dialog.Title>设置 Cookie</Dialog.Title>
+                <Dialog.Content>
+                    <TextInput
+                        value={cookieDraft}
+                        onChangeText={setCookieDraft}
+                        placeholder="输入完整的 Cookie"
+                        placeholderTextColor={theme.colors.onSurfaceVariant}
+                        multiline
+                        style={{
+                            minHeight: 120,
+                            borderWidth: 1,
+                            borderColor: theme.colors.outline,
+                            borderRadius: 4,
+                            padding: 12,
+                            color: theme.colors.onSurface,
+                            textAlignVertical: 'top',
+                        }}
+                    />
+                </Dialog.Content>
+                <Dialog.Actions>
+                    <Button onPress={closeCookieDialog}>取消</Button>
+                    <Button onPress={confirmCookie}>确定</Button>
+                </Dialog.Actions>
+            </Dialog>
 
             <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 30, backgroundColor: theme.colors.background }}>
                 <Appbar.Header style={{ backgroundColor: "transparent", elevation: 0 }}>

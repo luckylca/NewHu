@@ -1,10 +1,10 @@
 import { getQuestion, getQuestionAnswers } from "@/src/api/ZhihuApi";
-import { useAppTheme } from "@/src/hooks/useAppTheme";
+import { Appbar, Divider, Text } from "@/src/components/ui";
+import { useTheme } from "@/src/theme/ThemeProvider";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import { Animated, FlatList, Image, Pressable, View } from "react-native";
-import { Appbar, Divider, Text } from "react-native-paper";
 import { RenderItem } from "./home";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -16,7 +16,7 @@ export type QuestionParams = {
 const QuestionScreen = () => {
     const {id} = useLocalSearchParams<QuestionParams>()
     console.log("Question ID from params:", id);
-    const theme = useAppTheme()
+    const theme = useTheme()
     const router = useRouter()
     const [questionInfo, setQuestionInfo] = React.useState<any>(null)
     const [offsetString, setOffsetString] = React.useState(0)

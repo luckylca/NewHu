@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Animated, BackHandler, Dimensions, FlatList, Pressable, StyleSheet, View } from "react-native";
-import { Divider, Text, useTheme } from "react-native-paper";
+import { Divider, Text } from "@/src/components/ui";
+import { useTheme } from "@/src/theme/ThemeProvider";
 import { RenderCommentItem } from "../../app/item/[type]/[id]/comment";
 import { getChildComments } from "../api/ZhihuApi";
 import { useSettingStore } from "../stores/useSettingStore";

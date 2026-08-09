@@ -1,78 +1,59 @@
 // app/_layout.tsx
 import { useAppTheme } from '@/src/hooks/useAppTheme';
-import {
-    DarkTheme as NavigationDarkTheme,
-    DefaultTheme as NavigationDefaultTheme,
-    ThemeProvider
-} from '@react-navigation/native'; // 引入 React Navigation 的默认主题
+import { ThemeProvider } from '@/src/theme/ThemeProvider';
+import { PortalHost } from '@/src/components/ui/PortalHost';
+import { ThemeProvider as NavigationThemeProvider } from '@react-navigation/native'; // React Navigation 的导航主题
 import { Stack } from 'expo-router';
 import React from 'react';
 import { StatusBar } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import {
-    adaptNavigationTheme,
-    MD3DarkTheme,
-    MD3LightTheme,
-    PaperProvider
-} from 'react-native-paper'; // 引入适配器
-const { LightTheme, DarkTheme } = adaptNavigationTheme({
-	reactNavigationLight: NavigationDefaultTheme,
-	reactNavigationDark: NavigationDarkTheme,
-	materialLight: MD3LightTheme,
-	materialDark: MD3DarkTheme,
-});
-export default function RootLayout() {
 
+export default function RootLayout() {
 	const theme = useAppTheme();
-	const navigationTheme = theme.dark ? DarkTheme : LightTheme;
-	const combinedTheme = {
-		...navigationTheme,
-		colors: {
-			...navigationTheme.colors,
-			...theme.colors,
-		},
-		fonts: navigationTheme.fonts // 关键：使用适配后的 fonts 避免报错
+	// 自定义主题里已补齐 card/text/border/notification，可直接作为导航主题
+	const navigationTheme = {
+		dark: theme.dark,
+		colors: theme.colors,
+		fonts: theme.fonts,
 	};
 
 	return (
 		<GestureHandlerRootView style={{ flex: 1 }}>
-			<PaperProvider
-				theme={theme}
-				settings={{ rippleEffectEnabled: true }}
-			>
-
-				<ThemeProvider value={combinedTheme}>
+			<ThemeProvider value={theme}>
+				<NavigationThemeProvider value={navigationTheme}>
 					<StatusBar
 						barStyle={theme.dark ? 'light-content' : 'dark-content'}
 						backgroundColor='transparent'
 						translucent
 					/>
-					<Stack
-						screenOptions={{
-							headerStyle: {
-								backgroundColor: theme.colors.background,
-							},
-							contentStyle: {
-								backgroundColor: theme.colors.background,
-							},
-							headerShown: false,
-							animation: 'fade',
-						}}
-					>
-						<Stack.Screen name="(tabs)" />
-						<Stack.Screen name="settings" options={{ title: '设置' }} />
-						<Stack.Screen name="devmode" options={{ title: '开发者模式' }} />
-						<Stack.Screen name="like" options={{ title: '收藏列表' }} />
-						<Stack.Screen name="history" options={{ title: '浏览历史' }} />
-						<Stack.Screen name="webview" options={{ title: '登录' }} />
-						<Stack.Screen name="search" options={{ title: '搜索' }} />
-						<Stack.Screen name="userinfo" options={{ title: '用户信息' }} />
-						<Stack.Screen name="item/[type]/[id]" options={{ title: '详情' }} />
-						<Stack.Screen name="people" options={{ title: '人物信息' }} />
-						<Stack.Screen name="question" options={{ title: '问题详情' }} />
-					</Stack>
-				</ThemeProvider>
-			</PaperProvider>
+					<PortalHost>
+						<Stack
+							screenOptions={{
+								headerStyle: {
+									backgroundColor: theme.colors.background,
+								},
+								contentStyle: {
+									backgroundColor: theme.colors.background,
+								},
+								headerShown: false,
+								animation: 'fade',
+							}}
+						>
+							<Stack.Screen name="(tabs)" />
+							<Stack.Screen name="settings" options={{ title: '设置' }} />
+							<Stack.Screen name="devmode" options={{ title: '开发者模式' }} />
+							<Stack.Screen name="like" options={{ title: '收藏列表' }} />
+							<Stack.Screen name="history" options={{ title: '浏览历史' }} />
+							<Stack.Screen name="webview" options={{ title: '登录' }} />
+							<Stack.Screen name="search" options={{ title: '搜索' }} />
+							<Stack.Screen name="userinfo" options={{ title: '用户信息' }} />
+							<Stack.Screen name="item/[type]/[id]" options={{ title: '详情' }} />
+							<Stack.Screen name="people" options={{ title: '人物信息' }} />
+							<Stack.Screen name="question" options={{ title: '问题详情' }} />
+						</Stack>
+					</PortalHost>
+				</NavigationThemeProvider>
+			</ThemeProvider>
 		</GestureHandlerRootView>
 	);
 }

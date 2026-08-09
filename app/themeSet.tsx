@@ -1,18 +1,9 @@
 import { useSettingStore } from '@/src/stores/useSettingStore';
+import { Appbar, Surface, Switch, Text } from '@/src/components/ui';
+import { useTheme } from '@/src/theme/ThemeProvider';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { Appbar, Surface, Switch, Text, useTheme } from 'react-native-paper'; // Note: Paper doesn't export Slider, using community one below
-
-const COLOR_PRESETS = [
-    '#4F46E5', // Indigo (Default)
-    '#6750A4', // Purple 
-    '#006C4C', // Green
-    '#9C4146', // Red
-    '#00639B', // Blue
-    '#7D5260', // Pink/Terra
-    '#FF8F00', // Orange
-];
+import { ScrollView, StyleSheet, View } from 'react-native';
 
 const ThemeSetScreen = ({ navigation }: any) => {
     const router = useRouter();
@@ -24,8 +15,6 @@ const ThemeSetScreen = ({ navigation }: any) => {
     const setFollowSystemTheme = useSettingStore((state) => state.setFollowSystemTheme);
     const isDarkMode = useSettingStore((state) => state.isDarkMode);
     const setDarkMode = useSettingStore((state) => state.setDarkMode);
-    const themeColor = useSettingStore((state) => state.themeColor);
-    const setThemeColor = useSettingStore((state) => state.setThemeColor);
 
     return (
         <View style={[styles.container, { backgroundColor: 'transparent' }]}>
@@ -48,7 +37,7 @@ const ThemeSetScreen = ({ navigation }: any) => {
                 </Surface>
 
                 {/* 2. Dark Mode Toggle */}
-                <Surface style={[styles.card, { backgroundColor: theme.colors.surfaceVariant, opacity: 0.9,marginTop: 16 }]} elevation={1}>
+                <Surface style={[styles.card, { backgroundColor: theme.colors.surfaceVariant, opacity: 0.9, marginTop: 16 }]} elevation={1}>
                     <View style={styles.row}>
                         <View>
                             <Text variant="titleMedium" style={{ fontWeight: 'bold' }}>黑夜模式</Text>
@@ -62,31 +51,6 @@ const ThemeSetScreen = ({ navigation }: any) => {
                             color={theme.colors.primary}
                             disabled={followSystemTheme}
                         />
-                    </View>
-                </Surface>
-
-                {/* 3. Theme Color Picker */}
-                <Surface style={[styles.card, { backgroundColor: theme.colors.surfaceVariant, marginTop: 16, opacity: 0.9 }]} elevation={0}>
-                    <Text variant="titleMedium" style={{ fontWeight: 'bold', marginBottom: 16 }}>主题颜色</Text>
-                    <View style={styles.colorRow}>
-                        {COLOR_PRESETS.map((color) => {
-                            const isSelected = themeColor === color;
-                            return (
-                            <TouchableOpacity
-                                key={color}
-                                style={[
-                                    styles.colorCircle,
-                                    { backgroundColor: color,borderColor: isSelected ? theme.colors.primary : 'transparent',overflow: 'hidden' },
-                                    isSelected && styles.selectedColorCircle,
-                                
-                                ]}
-                                onPress={() => setThemeColor(color)}
-                            >
-                                {isSelected && (
-                                    <View style={styles.checkMark} />
-                                )}
-                            </TouchableOpacity>
-                        )})}
                     </View>
                 </Surface>
 
@@ -110,29 +74,6 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-    },
-    colorRow: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 12,
-    },
-    colorCircle: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        justifyContent: 'center',
-        alignItems: 'center',
-        elevation: 2,
-    },
-    selectedColorCircle: {
-        borderWidth: 3,
-        borderColor: 'white', // Needs contrast check, using white for now as it's common for selection rings
-    },
-    checkMark: {
-        width: 12,
-        height: 12,
-        borderRadius: 6,
-        backgroundColor: 'white',
     },
 });
 

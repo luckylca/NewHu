@@ -1,14 +1,12 @@
 import { getUserActivities, getUserInfo } from "@/src/api/ZhihuApi";
-import { useAppTheme } from "@/src/hooks/useAppTheme";
+import { Appbar, Divider, Text } from "@/src/components/ui";
+import { useTheme } from "@/src/theme/ThemeProvider";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
-import { Animated, FlatList, Pressable, View } from "react-native";
-import { Appbar, Divider, Text } from "react-native-paper";
+import { FlatList, View } from "react-native";
 import { RenderItem } from "./home";
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export type PeopleParams = {
     urlToken:string
@@ -16,7 +14,7 @@ export type PeopleParams = {
 
 const PeopleScreen = () => {
     const {urlToken} = useLocalSearchParams<PeopleParams>()
-    const theme = useAppTheme()
+    const theme = useTheme()
     const router = useRouter()
     const [userInfo, setUserInfo] = React.useState<any>(null)
     const [offsetString, setOffsetString] = React.useState("")

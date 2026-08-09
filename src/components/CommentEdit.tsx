@@ -1,11 +1,21 @@
+import { Appbar, Button } from "@/src/components/ui";
+import { useTheme } from "@/src/theme/ThemeProvider";
 import React, { useEffect, useRef, useState } from "react";
 import { Animated, Dimensions, KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from "react-native";
-import { Appbar, Button, useTheme } from "react-native-paper";
 import { submitComment } from "../api/ZhihuApi";
 
 const { height } = Dimensions.get("window");
 
-export default function CommentEdit(visible: boolean, name: string, contentType: string, contentId: string, replyCommentId: string, onClose: () => void) {
+interface CommentEditProps {
+    visible: boolean;
+    name: string;
+    contentType: string;
+    contentId: string;
+    replyCommentId: string;
+    onClose: () => void;
+}
+
+export default function CommentEdit({ visible, name, contentType, contentId, replyCommentId, onClose }: CommentEditProps) {
     const theme = useTheme();
     const [content, setContent] = useState("");
     const slideAnim = useRef(new Animated.Value(height)).current;
@@ -44,15 +54,15 @@ export default function CommentEdit(visible: boolean, name: string, contentType:
 
     return (
         <Animated.View style={{ flex: 1, transform: [{ translateY: slideAnim }] }}>
-            <KeyboardAvoidingView 
+            <KeyboardAvoidingView
                 style={{ flex: 1, backgroundColor: theme.colors.background }}
                 behavior={Platform.OS === "ios" ? "padding" : undefined}
             >
                 <Appbar.Header style={{ backgroundColor: theme.colors.surface }}>
                     <Appbar.Action icon="close" onPress={onClose} />
                     <Appbar.Content title={name ? `回复 ${name}` : "回复回答"} />
-                    <Button 
-                        mode="contained" 
+                    <Button
+                        mode="contained"
                         onPress={handleSend}
                         disabled={!content.trim()}
                         style={{ marginRight: 16 }}

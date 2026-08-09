@@ -7,14 +7,16 @@ import { useSettingStore } from "@/src/stores/useSettingStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { memo, useCallback, useEffect, useRef } from "react";
 import { short } from "@/src/utils/haptics";
-import { Animated, FlatList, Pressable, View } from "react-native";
+import { Animated, FlatList, Modal, Pressable, View } from "react-native";
 import { Swipeable } from 'react-native-gesture-handler';
-import { Appbar, Avatar, Icon, IconButton, Menu, Modal, Portal, Text, useTheme } from "react-native-paper";
+import { Appbar, Avatar, Icon, IconButton, Menu, Text } from "@/src/components/ui";
+import { useTheme } from "@/src/theme/ThemeProvider";
+import type { AppTheme } from "@/src/constants/theme";
 import ChildComment from "../../../../src/components/ChildComment";
 
 
-const CommentEditMemo = React.memo(({ visible, name, contentType, contentId, replyCommentId, onClose }: { visible: boolean; name: string; contentType: string; contentId: string; replyCommentId: string; onClose: () => void }) => 
-    CommentEdit(visible, name, contentType, contentId, replyCommentId, onClose)
+const CommentEditMemo = React.memo(({ visible, name, contentType, contentId, replyCommentId, onClose }: { visible: boolean; name: string; contentType: string; contentId: string; replyCommentId: string; onClose: () => void }) =>
+    CommentEdit({ visible, name, contentType, contentId, replyCommentId, onClose })
 );
 
 CommentEditMemo.displayName = "CommentEditMemo";
@@ -32,7 +34,7 @@ export const RenderCommentItem = memo(({
     onReply
 }: {
     item: any;
-    theme: any;
+    theme: AppTheme;
     style?: any;
     handleChildComment: (id: string) => void;
     setChildVisible: (visible: boolean) => void;
@@ -182,38 +184,36 @@ export const RenderCommentItem = memo(({
             { transform: [{ scale }] },
             style]}
         >
-            <Portal>
-                <Menu
-                    visible={menuVisible}
-                    onDismiss={() => setMenuVisible(false)}
-                    anchor={menuAnchor}
-                >
-                    <Menu.Item 
-                        onPress={() => { 
-                            setMenuVisible(false); 
-                            if (onReply) onReply(item.id);
-                        }} 
-                        title="回复" 
-                        leadingIcon="reply"
-                    />
-                    <Menu.Item 
-                        onPress={() => { 
-                            setMenuVisible(false); 
-                        }} 
-                        title="复制" 
-                        leadingIcon="content-copy"
-                    />
-                    <Menu.Item 
-                        onPress={() => { 
-                            setMenuVisible(false); 
-                            handleToggleLike();
-                        }} 
-                        disabled={item.isAuthor} // 如果是自己发布的评论，长按菜单中的点赞也被禁用
-                        title={item.isVote ? "取消点赞" : "点赞"} 
-                        leadingIcon={item.isVote ? "thumb-down" : "thumb-up"}
-                    />
-                </Menu>
-            </Portal>
+            <Menu
+                visible={menuVisible}
+                onDismiss={() => setMenuVisible(false)}
+                anchor={menuAnchor}
+            >
+                <Menu.Item
+                    onPress={() => {
+                        setMenuVisible(false);
+                        if (onReply) onReply(item.id);
+                    }}
+                    title="回复"
+                    leadingIcon="reply"
+                />
+                <Menu.Item
+                    onPress={() => {
+                        setMenuVisible(false);
+                    }}
+                    title="复制"
+                    leadingIcon="content-copy"
+                />
+                <Menu.Item
+                    onPress={() => {
+                        setMenuVisible(false);
+                        handleToggleLike();
+                    }}
+                    disabled={item.isAuthor} // 如果是自己发布的评论，长按菜单中的点赞也被禁用
+                    title={item.isVote ? "取消点赞" : "点赞"}
+                    leadingIcon={item.isVote ? "thumb-down" : "thumb-up"}
+                />
+            </Menu>
 
             <View style={{ paddingHorizontal: 12, paddingVertical: 12 }}>
                 {/* Header */}
@@ -462,15 +462,27 @@ export default function Comment() {
 
     return (
         <View style={{ flex: 1 }}>
-            <Portal>
-                <Modal visible={childVisible} onDismiss={() => setChildVisible(false)} contentContainerStyle={{ flex: 1 }}>
-                    <ChildComment visible={childVisible} id={childId} onClose={() => setChildVisible(false)} onReply={handleReply}/>
-                </Modal>
-                <Modal visible={commentEditVisible} onDismiss={() => setCommentEditVisible(false)} contentContainerStyle={{ flex: 1 }}>
-                    {/* 直接传入上面存好的 replyName，找不到或者为空时再尝试从总 comments 找(兜底) */}
+            <Modal
+                visible={childVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setChildVisible(false)}
+            >
+                <View style={{ flex: 1 }}>
+                    <ChildComment visible={childVisible} id={childId} onClose={() => setChildVisible(false)} onReply={handleReply} />
+                </View>
+            </Modal>
+            <Modal
+                visible={commentEditVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setCommentEditVisible(false)}
+            >
+                {/* 直接传入上面存好的 replyName，找不到或者为空时再尝试从总 comments 找(兜底) */}
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }}>
                     <CommentEditMemo visible={commentEditVisible} contentType={type} contentId={id} replyCommentId={replyId} name={replyName || comments.find(c => c.id === replyId)?.authorName || ''} onClose={() => setCommentEditVisible(false)} />
-                </Modal>
-            </Portal>
+                </View>
+            </Modal>
             <Appbar.Header>
                 <Appbar.BackAction onPress={() => { router.back() }} />
                 <Appbar.Content title={`评论 (${commentCount})`} />

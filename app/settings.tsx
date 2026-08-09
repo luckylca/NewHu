@@ -2,7 +2,8 @@
 import { router } from "expo-router";
 import React, { useRef } from "react";
 import { Animated, Easing, ScrollView, View } from 'react-native';
-import { Appbar, Button, Card, Dialog, Portal, Switch, Text, useTheme } from 'react-native-paper';
+import { Appbar, Button, Card, Dialog, Portal, Switch, Text } from '@/src/components/ui';
+import { useTheme } from '@/src/theme/ThemeProvider';
 import Svg, { Path } from 'react-native-svg';
 import { useSettingStore } from '../src/stores/useSettingStore';
 import { useUserStore } from '../src/stores/useUserStore';

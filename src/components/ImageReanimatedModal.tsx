@@ -1,7 +1,7 @@
 import ImageLayout from "@/src/components/ImageLayout";
+import { Portal } from "@/src/components/ui";
 import React, { useEffect } from 'react';
 import { BackHandler, Dimensions, StyleSheet } from 'react-native';
-import { Portal } from 'react-native-paper';
 import Animated, {
     Extrapolation,
     interpolate,

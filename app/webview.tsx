@@ -1,17 +1,12 @@
 import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Modal, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import CookieManager from '@react-native-cookies/cookies';
 import { useUserStore } from '@/src/stores/useUserStore';
-import { Appbar, Portal,Text,ActivityIndicator,Modal } from 'react-native-paper';
+import { Appbar, Text } from '@/src/components/ui';
 import { router } from 'expo-router';
 import { getApiInstance } from '@/src/api/ZhihuApi';
-import { useTheme } from 'react-native-paper';
-import { white } from 'react-native-paper/lib/typescript/styles/themes/v2/colors';
-
 const ZhihuLoginWebView = () => {
-
-    const theme = useTheme();
 
     const userStore = useUserStore();
     const [modalVisible, setModalVisible] = useState(false);
@@ -48,14 +43,12 @@ const ZhihuLoginWebView = () => {
 
     return (
         <View style={{ flex: 1 }}>
-            <Portal>
-                <Modal visible={modalVisible} dismissable={false} 
-                    contentContainerStyle={{ backgroundColor: 'transparent', width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}
-                >
-                    <ActivityIndicator animating={true} size="large" color="white" />
-                    <Text style={{ marginTop: 10, color: 'white' }}>{statueText}</Text>
-                </Modal>
-            </Portal>
+            <Modal visible={modalVisible} transparent>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+                    <ActivityIndicator animating={true} size="large" color="#FFFFFF" />
+                    <Text style={{ marginTop: 10, color: '#FFFFFF' }}>{statueText}</Text>
+                </View>
+            </Modal>
             <Appbar.Header>
                 <Appbar.BackAction onPress={() => router.back()} />
                 <Appbar.Content title="登录知乎" />

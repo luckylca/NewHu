@@ -1,5 +1,6 @@
-import { ActivityIndicator, Text, useTheme } from "react-native-paper";
-import { View } from "react-native";
+import { Text } from "@/src/components/ui";
+import { useTheme } from "@/src/theme/ThemeProvider";
+import { ActivityIndicator, View } from "react-native";
 
 const LoadingView = ({ message = "正在加载…" }: { message?: string }) => {
     const theme = useTheme();

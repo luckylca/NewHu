@@ -1,7 +1,7 @@
 import React from 'react';
 import { Dimensions, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { Menu, Portal } from 'react-native-paper';
+import { Menu } from '@/src/components/ui';
 import Animated, {
     useAnimatedStyle,
     useDerivedValue,
@@ -104,16 +104,14 @@ export default function ImageLayout({ uri, onClose }: { uri: string, onClose: ()
 
     return (
         <View style={styles.container}>
-            <Portal>
-                <Menu
-                    visible={showMenu}
-                    onDismiss={() => setShowMenu(false)}
-                    anchor={{ x: longPressPlace.x, y: longPressPlace.y }}
-                >
-                    <Menu.Item onPress={() => {console.log(uri)}} title="保存图片" />
-                    <Menu.Item onPress={() => {console.log(uri)}} title="分享图片" />
-                </Menu>
-            </Portal>
+            <Menu
+                visible={showMenu}
+                onDismiss={() => setShowMenu(false)}
+                anchor={{ x: longPressPlace.x, y: longPressPlace.y }}
+            >
+                <Menu.Item onPress={() => {console.log(uri)}} title="保存图片" />
+                <Menu.Item onPress={() => {console.log(uri)}} title="分享图片" />
+            </Menu>
             <GestureDetector gesture={composedGesture}>
                 <Animated.Image
                     source={{ uri }}
