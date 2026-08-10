@@ -1,6 +1,7 @@
 import ImageLayout from '@/src/components/ImageLayout';
 import React, { useEffect } from 'react';
-import { Modal, StatusBar, StyleSheet, useWindowDimensions } from 'react-native';
+import { BackHandler, Modal, StatusBar, StyleSheet, useWindowDimensions } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
     Extrapolation,
     interpolate,
@@ -49,6 +50,15 @@ const ImageReanimatedModal = ({ origin, visible, url, onClose }: {
         };
     }, [mounted, theme.dark]);
 
+    useEffect(() => {
+        if (!visible) return;
+        const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+            onClose();
+            return true;
+        });
+        return () => subscription.remove();
+    }, [onClose, visible]);
+
     const startY = Math.max(0, origin.y - insets.top);
     const containerStyle = useAnimatedStyle(() => ({
         top: interpolate(progress.value, [0, 1], [startY, 0]),
@@ -73,16 +83,22 @@ const ImageReanimatedModal = ({ origin, visible, url, onClose }: {
             navigationBarTranslucent={false}
             onRequestClose={onClose}
         >
-            <StatusBar barStyle="light-content" backgroundColor="#000000" />
-            <Animated.View style={[styles.backdrop, backdropStyle]} />
-            <Animated.View style={[styles.container, containerStyle]}>
-                <ImageLayout uri={url} onClose={onClose} />
-            </Animated.View>
+            <GestureHandlerRootView style={styles.modalRoot}>
+                <StatusBar barStyle="light-content" backgroundColor="#000000" />
+                <Animated.View style={[styles.backdrop, backdropStyle]} />
+                <Animated.View style={[styles.container, containerStyle]}>
+                    <ImageLayout uri={url} onClose={onClose} />
+                </Animated.View>
+            </GestureHandlerRootView>
         </Modal>
     );
 };
 
 const styles = StyleSheet.create({
+    modalRoot: {
+        flex: 1,
+        backgroundColor: '#000000',
+    },
     backdrop: {
         ...StyleSheet.absoluteFillObject,
         backgroundColor: '#000000',

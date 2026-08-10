@@ -8,7 +8,7 @@ import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Pressable, View } from 'react-native';
+import { FlatList, Modal, Pressable, View } from 'react-native';
 
 function normalizeComment(item: any): CommentViewModel | null {
     if (!item?.id) return null;
@@ -96,7 +96,7 @@ export default function CommentScreen() {
     const renderComment = useCallback(({ item }: { item: CommentViewModel }) => (
         <CommentItem
             item={item}
-            onOpenReplies={setChildId}
+            onOpenReplies={item.childCommentCount > 0 ? setChildId : undefined}
             onReply={(commentId) => setReply({ id: commentId, name: item.authorName || '' })}
         />
     ), []);
@@ -164,18 +164,27 @@ export default function CommentScreen() {
                 onClose={() => setChildId('')}
                 onReply={(commentId, name) => {
                     setChildId('');
-                    setReply({ id: commentId, name: name || '' });
+                    setTimeout(() => {
+                        setReply({ id: commentId, name: name || '' });
+                    }, 240);
                 }}
             />
-            <CommentEdit
+            <Modal
                 visible={Boolean(reply)}
-                name={reply?.name || ''}
-                contentType={type || ''}
-                contentId={id || ''}
-                replyCommentId={reply?.id || ''}
-                onClose={() => setReply(null)}
-                onSubmitted={() => loadComments(true)}
-            />
+                animationType="slide"
+                statusBarTranslucent={false}
+                onRequestClose={() => setReply(null)}
+            >
+                <CommentEdit
+                    visible={Boolean(reply)}
+                    name={reply?.name || ''}
+                    contentType={type || ''}
+                    contentId={id || ''}
+                    replyCommentId={reply?.id || ''}
+                    onClose={() => setReply(null)}
+                    onSubmitted={() => loadComments(true)}
+                />
+            </Modal>
         </View>
     );
 }

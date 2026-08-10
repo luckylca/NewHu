@@ -29,7 +29,7 @@ const UserScreen = ({ navigation }: any) => {
     return (
         <ScrollView contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + theme.spacing.sm, paddingBottom: theme.spacing.xxl, backgroundColor: theme.colors.surface }}>
             <Card
-                feedback="sink"
+                feedback="none"
                 showIndication
                 onPress={handlePress}
                 style={{ margin: theme.spacing.lg }}
@@ -48,11 +48,7 @@ const UserScreen = ({ navigation }: any) => {
                 <Icon name="chevron-right" size={24} color={theme.colors.onSurfaceVariantActions} />
             </Card>
 
-            <View style={{ marginBottom: theme.spacing.lg, marginHorizontal: theme.spacing.lg, padding: theme.spacing.lg, borderRadius: theme.radius.component, backgroundColor: theme.colors.surfaceContainer }}>
-                <Text type="headline1" weight="medium">浏览方式</Text>
-                <Text type="body2" color={metaColor} style={{ marginTop: 2, marginBottom: theme.spacing.md }}>
-                    滑动模式每次专注浏览一条内容
-                </Text>
+            <View style={{ marginBottom: theme.spacing.lg, marginHorizontal: theme.spacing.lg }}>
                 <SegmentedControl
                     tabs={['普通模式', '滑动模式']}
                     selected={isCardMode ? 1 : 0}

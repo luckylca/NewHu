@@ -3,7 +3,7 @@ import { notify } from '@/src/stores/useNotificationStore';
 import { Button, Icon, Input, TopAppBar } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import React, { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 
 type CommentEditProps = {
     visible: boolean;
@@ -48,9 +48,10 @@ export default function CommentEdit({ visible, name, contentType, contentId, rep
         }
     };
 
+    if (!visible) return null;
+
     return (
-        <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-            <KeyboardAvoidingView style={{ flex: 1, backgroundColor: pageBackground }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: pageBackground }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
                 <TopAppBar
                     title={name ? `回复 ${name}` : '发表评论'}
                     navigation={
@@ -79,7 +80,6 @@ export default function CommentEdit({ visible, name, contentType, contentId, rep
                         style={{ flex: 1, alignItems: 'stretch' }}
                     />
                 </View>
-            </KeyboardAvoidingView>
-        </Modal>
+        </KeyboardAvoidingView>
     );
 }

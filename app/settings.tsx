@@ -105,10 +105,12 @@ function SettingsGroup({ title, children }: { title: string; children: ReactNode
     const theme = useTheme();
     return (
         <View style={{ marginTop: theme.spacing.lg }}>
-            <Text type="footnote1" weight="medium" color={theme.colors.onSurfaceVariantSummary} style={{ marginLeft: theme.spacing.sm, marginBottom: theme.spacing.sm }}>
-                {title}
-            </Text>
-            <Card feedback="none" contentStyle={{ overflow: 'hidden' }}>{children}</Card>
+            <Card feedback="none" contentStyle={{ overflow: 'hidden' }}>
+                <View style={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: theme.spacing.xs }}>
+                    <Text type="footnote1" weight="bold" color={theme.colors.primary}>{title}</Text>
+                </View>
+                {children}
+            </Card>
         </View>
     );
 }

@@ -33,6 +33,7 @@ const SCALE_HOVER_PRESS = 1.127;
 export function Switch({ value = false, onValueChange, disabled = false }: AppSwitchProps) {
     const theme = useTheme();
     const c = theme.components.switch;
+    const thumbInset = (c.height - c.thumbSize) / 2;
 
     const pressed = useSharedValue(0);
     const dragging = useSharedValue(0);
@@ -146,8 +147,6 @@ export function Switch({ value = false, onValueChange, disabled = false }: AppSw
                         height: c.height,
                         borderRadius: theme.radius.full,
                         justifyContent: 'center',
-                        borderWidth: 1,
-                        borderColor: checked ? 'transparent' : theme.colors.outline,
                     },
                     trackStyle,
                 ]}
@@ -156,8 +155,8 @@ export function Switch({ value = false, onValueChange, disabled = false }: AppSw
                     style={[
                         {
                             position: 'absolute',
-                            top: c.thumbOffset,
-                            left: c.thumbOffset,
+                            top: thumbInset,
+                            left: thumbInset,
                             width: c.thumbSize,
                             height: c.thumbSize,
                             borderRadius: c.thumbSize / 2,
@@ -166,6 +165,21 @@ export function Switch({ value = false, onValueChange, disabled = false }: AppSw
                         thumbStyle,
                     ]}
                 />
+                {!checked ? (
+                    <Animated.View
+                        pointerEvents="none"
+                        style={{
+                            position: 'absolute',
+                            top: 0,
+                            right: 0,
+                            bottom: 0,
+                            left: 0,
+                            borderWidth: 1,
+                            borderColor: theme.colors.outline,
+                            borderRadius: theme.radius.full,
+                        }}
+                    />
+                ) : null}
             </Animated.View>
         </GestureDetector>
     );

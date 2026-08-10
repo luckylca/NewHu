@@ -37,6 +37,7 @@ const LARGE_MIN_HEIGHT = 480;
 
 export function Dialog({ visible = false, onClose, title, summary, closeOnClickModal = true, children }: AppDialogProps) {
     const theme = useTheme();
+    const dialogBackground = theme.dark ? '#242424' : '#FFFFFF';
     const c = theme.components.dialog;
     const { width: windowW, height: windowH } = useWindowDimensions();
 
@@ -121,7 +122,7 @@ export function Dialog({ visible = false, onClose, title, summary, closeOnClickM
                             maxHeight: isLarge ? (windowH * 2) / 3 : windowH - c.outsideMargin * 2,
                             borderRadius: c.radius,
                             padding: c.padding,
-                            backgroundColor: theme.colors.background,
+                            backgroundColor: dialogBackground,
                             overflow: 'hidden',
                         },
                         isLarge ? largeStyle : mobileStyle,

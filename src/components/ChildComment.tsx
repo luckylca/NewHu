@@ -1,9 +1,9 @@
 import { getChildComments } from '@/src/api/ZhihuApi';
-import { BottomSheet, Divider } from '@/src/ui';
+import { Divider } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, View } from 'react-native';
+import { Animated, BackHandler, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { CommentItem } from './CommentItem';
 import type { CommentViewModel } from './CommentItem';
 
@@ -48,6 +48,8 @@ export default function ChildComment({ visible, id, onClose, onReply }: ChildCom
     const [rootComment, setRootComment] = useState<CommentViewModel | null>(null);
     const [count, setCount] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
+    const [rendered, setRendered] = useState(false);
+    const animation = useRef(new Animated.Value(0)).current;
     const offsetRef = useRef('');
     const inFlightRef = useRef(false);
     const hasMoreRef = useRef(true);
@@ -97,17 +99,73 @@ export default function ChildComment({ visible, id, onClose, onReply }: ChildCom
         }
     }, [load, visible]);
 
+    useEffect(() => {
+        if (visible) {
+            setRendered(true);
+            Animated.timing(animation, {
+                toValue: 1,
+                duration: 220,
+                useNativeDriver: true,
+            }).start();
+            return;
+        }
+
+        if (rendered) {
+            Animated.timing(animation, {
+                toValue: 0,
+                duration: 180,
+                useNativeDriver: true,
+            }).start(({ finished }) => {
+                if (finished) setRendered(false);
+            });
+        }
+    }, [animation, rendered, visible]);
+
+    useEffect(() => {
+        if (!visible) return;
+        const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+            onClose();
+            return true;
+        });
+        return () => subscription.remove();
+    }, [onClose, visible]);
+
     const renderItem = useCallback(({ item }: { item: CommentViewModel }) => (
         <CommentItem
             item={item}
-            onOpenReplies={(commentId) => onReply?.(commentId, item.authorName)}
             onReply={(commentId) => onReply?.(commentId, item.authorName)}
             onNavigateAway={onClose}
         />
     ), [onClose, onReply]);
 
+    if (!rendered) return null;
+
+    const pageBackground = theme.dark ? '#181818' : '#F7F7F7';
+
     return (
-        <BottomSheet visible={visible} onClose={onClose} title={count > 0 ? `${count} 条回复` : '回复'}>
+        <View style={[StyleSheet.absoluteFill, styles.layer]}>
+            <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: animation }]}>
+                <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+            </Animated.View>
+            <Animated.View
+                style={[
+                    styles.sheet,
+                    {
+                        backgroundColor: pageBackground,
+                        opacity: animation,
+                        transform: [{
+                            translateY: animation.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [280, 0],
+                            }),
+                        }],
+                    },
+                ]}
+            >
+                <View style={[styles.header, { borderBottomColor: theme.colors.dividerLine }]}>
+                    <View style={[styles.handle, { backgroundColor: theme.colors.onSurfaceVariantSummary }]} />
+                    <Text type="headline2" weight="bold">{count > 0 ? `${count} 条回复` : '回复'}</Text>
+                </View>
             <FlatList
                 data={comments}
                 keyExtractor={(item) => item.id}
@@ -116,7 +174,7 @@ export default function ChildComment({ visible, id, onClose, onReply }: ChildCom
                 onRefresh={() => load(true)}
                 onEndReached={() => load(false)}
                 onEndReachedThreshold={0.35}
-                contentContainerStyle={{ paddingBottom: theme.spacing.xl, flexGrow: 1 }}
+                contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm, paddingBottom: theme.spacing.xl, flexGrow: 1 }}
                 initialNumToRender={5}
                 maxToRenderPerBatch={5}
                 updateCellsBatchingPeriod={32}
@@ -139,6 +197,36 @@ export default function ChildComment({ visible, id, onClose, onReply }: ChildCom
                     </View>
                 ) : null}
             />
-        </BottomSheet>
+            </Animated.View>
+        </View>
     );
 }
+
+const styles = StyleSheet.create({
+    layer: {
+        zIndex: 1000,
+    },
+    backdrop: {
+        backgroundColor: 'rgba(0,0,0,0.48)',
+    },
+    sheet: {
+        flex: 1,
+        marginTop: 92,
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        overflow: 'hidden',
+    },
+    header: {
+        height: 58,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    handle: {
+        width: 36,
+        height: 4,
+        borderRadius: 2,
+        marginBottom: 7,
+        opacity: 0.35,
+    },
+});

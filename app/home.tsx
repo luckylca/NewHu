@@ -193,7 +193,7 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
     });
 
     const cardHeight = WindowHeight * 0.65; 
-    const topSpacing = WindowHeight * 0.05; 
+    const topSpacing = 0;
     const preview = getContentPreview(item);
     return (
         <View style={{ 
@@ -489,7 +489,7 @@ const HomeScreen = () => {
     }), []);
 
     return (
-        <View style={{ flex: 1, paddingTop: insets.top + theme.spacing.xs, backgroundColor: theme.colors.surface }}>
+        <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: theme.colors.surface }}>
             <SearchBar
                 label="搜索知乎内容"
                 onPress={() => router.push('/search')}
@@ -497,6 +497,7 @@ const HomeScreen = () => {
                     editable: false,
                     showSoftInputOnFocus: false,
                 }}
+                style={{ height: theme.components.searchBar.minHeight, marginVertical: 0 }}
             />
             
             {displayMode === 'card' ? (
@@ -527,7 +528,7 @@ const HomeScreen = () => {
             ) : (
                 <FlatList
                     style={{ flex: 1 }}
-                    contentContainerStyle={{ alignItems: 'center', paddingTop: 4, paddingBottom: theme.spacing.md }}
+                    contentContainerStyle={{ alignItems: 'center', paddingTop: 0, paddingBottom: theme.spacing.md }}
                     data={feedList}
                     renderItem={renderListItem}
                     keyExtractor={(item) => item.item.id.toString()}

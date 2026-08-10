@@ -6,6 +6,8 @@ import { TextInput, View } from 'react-native';
 import type { StyleProp, TextInputProps, ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
+const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
+
 /**
  * Design System Input (Miuix TextField).
  *
@@ -135,7 +137,7 @@ export function Input({
                         {label}
                     </Animated.Text>
                 )}
-                <TextInput
+                <AnimatedTextInput
                     value={value}
                     onChangeText={onChangeText}
                     onFocus={(e) => {
