@@ -2,6 +2,7 @@ import { getUserActivities, getUserInfo } from "@/src/api/ZhihuApi";
 import { Divider, Icon, TopAppBar } from "@/src/ui";
 import { Text } from "@/src/ui/primitives";
 import { useTheme } from "@/src/ui/theme";
+import { useMonetTextColor } from '@/src/hooks/useMonetTextColor';
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
@@ -15,6 +16,8 @@ export type PeopleParams = {
 const PeopleScreen = () => {
     const {urlToken} = useLocalSearchParams<PeopleParams>()
     const theme = useTheme()
+    const wallpaperText = useMonetTextColor()
+    const wallpaperSecondaryText = useMonetTextColor(true)
     const router = useRouter()
     const [userInfo, setUserInfo] = React.useState<any>(null)
     const [offsetString, setOffsetString] = React.useState("")
@@ -117,8 +120,8 @@ const PeopleScreen = () => {
 
     const renderStats = (label: string, value: number) => (
         <View style={{ alignItems: 'center', flex: 1 }}>
-            <Text type="title4" weight="bold">{value || 0}</Text>
-            <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>{label}</Text>
+            <Text type="title4" weight="bold" color={wallpaperText}>{value || 0}</Text>
+            <Text type="footnote1" color={wallpaperSecondaryText}>{label}</Text>
         </View>
     );
 
@@ -146,7 +149,7 @@ const PeopleScreen = () => {
                                     />
                                     <View style={{ flex: 1, marginLeft: 12, marginTop: 36 }}>
                                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                            <Text type="title2" weight="bold">
+                                            <Text type="title2" weight="bold" color={wallpaperText}>
                                                 {userInfo.name}
                                             </Text>
                                             {userInfo.vip_info?.is_vip && (
@@ -158,7 +161,7 @@ const PeopleScreen = () => {
                                             )}
                                         </View>
                                         {userInfo.headline ? (
-                                            <Text type="body2" numberOfLines={2} style={{ color: theme.colors.onSurfaceVariantSummary, marginTop: 4 }}>
+                                            <Text type="body2" numberOfLines={2} style={{ color: wallpaperSecondaryText, marginTop: 4 }}>
                                                 {userInfo.headline}
                                             </Text>
                                         ) : null}
@@ -176,23 +179,23 @@ const PeopleScreen = () => {
 
                                 <View style={{ marginBottom: 20 }}>
                                     {userInfo.description ? (
-                                        <Text type="body2" style={{ marginBottom: 12 }}>
+                                        <Text type="body2" color={wallpaperText} style={{ marginBottom: 12 }}>
                                             {userInfo.description}
                                         </Text>
                                     ) : null}
 
                                     <View style={{ gap: 8 }}>
                                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                            <Icon name="briefcase-outline" size={18} color={theme.colors.onSurfaceVariantSummary} />
-                                            <Text type="body2" style={{ color: theme.colors.onSurfaceVariantSummary }}>
+                                            <Icon name="briefcase-outline" size={18} color={wallpaperSecondaryText} />
+                                            <Text type="body2" color={wallpaperSecondaryText}>
                                                 {userInfo.business?.name || "未知行业"}
                                             </Text>
                                         </View>
 
                                         {userInfo.locations?.[0]?.name && (
                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                                <Icon name="map-marker-outline" size={18} color={theme.colors.onSurfaceVariantSummary} />
-                                                <Text type="body2" style={{ color: theme.colors.onSurfaceVariantSummary }}>
+                                                <Icon name="map-marker-outline" size={18} color={wallpaperSecondaryText} />
+                                                <Text type="body2" color={wallpaperSecondaryText}>
                                                     {userInfo.locations[0].name}
                                                 </Text>
                                             </View>
@@ -200,8 +203,8 @@ const PeopleScreen = () => {
 
                                         {userInfo.ip_info && (
                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                                <Icon name="ip-network-outline" size={18} color={theme.colors.onSurfaceVariantSummary} />
-                                                <Text type="body2" style={{ color: theme.colors.onSurfaceVariantSummary }}>
+                                                <Icon name="ip-network-outline" size={18} color={wallpaperSecondaryText} />
+                                                <Text type="body2" color={wallpaperSecondaryText}>
                                                     {userInfo.ip_info}
                                                 </Text>
                                             </View>
@@ -210,7 +213,7 @@ const PeopleScreen = () => {
                                 </View>
 
                                 <View style={{ marginTop: 24 }}>
-                                    <Text type="title4" weight="bold" style={{ marginBottom: 12 }}>最新动态</Text>
+                                    <Text type="title4" weight="bold" color={wallpaperText} style={{ marginBottom: 12 }}>最新动态</Text>
                                 </View>
                             </View>
                         </View>
@@ -218,8 +221,8 @@ const PeopleScreen = () => {
                     renderItem={({ item }) => (
                         <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 4 }}>
-                                <Icon name="history" size={16} color={theme.colors.onSurfaceVariantSummary} />
-                                <Text type="footnote1" style={{ color: theme.colors.onSurfaceVariantSummary }}>
+                                <Icon name="history" size={16} color={wallpaperSecondaryText} />
+                                <Text type="footnote1" color={wallpaperSecondaryText}>
                                     {item.actionText} · {new Date(item.createdTime * 1000).toLocaleString()}
                                 </Text>
                             </View>
@@ -238,14 +241,14 @@ const PeopleScreen = () => {
                     onEndReachedThreshold={0.5}
                     ListFooterComponent={() => (
                         <View style={{ marginVertical: 20, alignItems: 'center' }}>
-                            {isLoadingActivities && <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>加载中...</Text>}
-                            {!hasMoreActivities && activities.length > 0 && <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>没有更多了</Text>}
+                            {isLoadingActivities && <Text type="body2" color={wallpaperSecondaryText}>加载中...</Text>}
+                            {!hasMoreActivities && activities.length > 0 && <Text type="body2" color={wallpaperSecondaryText}>没有更多了</Text>}
                         </View>
                     )}
                 />
             ) : (
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                    <Text type="body1">Loading...</Text>
+                    <Text type="body1" color={wallpaperText}>Loading...</Text>
                 </View>
             )}
         </View>

@@ -1,6 +1,6 @@
 import { notify } from '@/src/stores/useNotificationStore';
 import { useSettingStore } from '@/src/stores/useSettingStore';
-import { Button, Card, Dialog, Divider, Icon, Input, ListRow, Switch, TopAppBar } from '@/src/ui';
+import { Button, Card, Dialog, Divider, Icon, Input, ListRow, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
@@ -9,8 +9,6 @@ import { ScrollView, View } from 'react-native';
 
 export default function AdvancedSettingsScreen() {
     const theme = useTheme();
-    const disableAnimations = useSettingStore((state) => state.disableAnimations);
-    const setDisableAnimations = useSettingStore((state) => state.setDisableAnimations);
     const cookie = useSettingStore((state) => state.cookie);
     const setCookie = useSettingStore((state) => state.setCookie);
     const [dialogVisible, setDialogVisible] = useState(false);
@@ -20,23 +18,10 @@ export default function AdvancedSettingsScreen() {
         <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
             <TopAppBar title="高级设置" back={() => router.back()} />
             <ScrollView contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}>
-                <Text type="footnote1" weight="medium" color={theme.colors.onSurfaceVariantSummary} style={{ marginLeft: theme.spacing.sm, marginBottom: theme.spacing.sm }}>
-                    性能
-                </Text>
-                <Card feedback="none">
-                    <ListRow
-                        title="减少界面动画"
-                        summary="低性能设备上可以让操作更直接"
-                        icon={<Icon name="motion-play-outline" size={24} color={theme.colors.primary} />}
-                        trailing={<Switch value={disableAnimations} onValueChange={setDisableAnimations} />}
-                        onPress={() => setDisableAnimations(!disableAnimations)}
-                    />
-                </Card>
-
-                <Text type="footnote1" weight="medium" color={theme.colors.onSurfaceVariantSummary} style={{ marginLeft: theme.spacing.sm, marginTop: theme.spacing.xl, marginBottom: theme.spacing.sm }}>
-                    调试
-                </Text>
-                <Card feedback="none">
+                <Card feedback="none" style={{ marginTop: theme.spacing.lg }}>
+                    <View style={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: theme.spacing.xs }}>
+                        <Text type="footnote1" weight="bold" color={theme.colors.primary}>调试</Text>
+                    </View>
                     <ListRow
                         title="自定义 Cookie"
                         summary={cookie ? '已配置，仅用于接口调试' : '未配置'}

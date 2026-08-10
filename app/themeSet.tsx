@@ -1,4 +1,5 @@
 import { useSettingStore } from '@/src/stores/useSettingStore';
+import { useMonetTextColor } from '@/src/hooks/useMonetTextColor';
 import { notify } from '@/src/stores/useNotificationStore';
 import { Button, Card, Icon, ListRow, Slider, Switch, Text, TopAppBar } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
@@ -8,10 +9,12 @@ import React, { useState } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { launchImageLibrary } from 'react-native-image-picker';
+import { getImageAverageColor } from '@/src/utils/imageColor';
 
 const ThemeSetScreen = () => {
     const router = useRouter();
     const theme = useTheme();
+    const wallpaperSecondaryText = useMonetTextColor(true);
 
     const followSystemTheme = useSettingStore((state) => state.followSystemTheme);
     const setFollowSystemTheme = useSettingStore((state) => state.setFollowSystemTheme);
@@ -19,10 +22,13 @@ const ThemeSetScreen = () => {
     const setDarkMode = useSettingStore((state) => state.setDarkMode);
     const wallpaperUri = useSettingStore((state) => state.wallpaperUri);
     const setWallpaperUri = useSettingStore((state) => state.setWallpaperUri);
+    const setWallpaperColor = useSettingStore((state) => state.setWallpaperColor);
     const wallpaperOpacity = useSettingStore((state) => state.wallpaperOpacity);
     const setWallpaperOpacity = useSettingStore((state) => state.setWallpaperOpacity);
     const wallpaperBlur = useSettingStore((state) => state.wallpaperBlur);
     const setWallpaperBlur = useSettingStore((state) => state.setWallpaperBlur);
+    const useMonetText = useSettingStore((state) => state.useMonetText);
+    const setUseMonetText = useSettingStore((state) => state.setUseMonetText);
 
     const [isPicking, setIsPicking] = useState(false);
 
@@ -57,6 +63,11 @@ const ThemeSetScreen = () => {
             const previousUri = wallpaperUri;
             setWallpaperUri(target.uri);
             removeStoredWallpaper(previousUri);
+            getImageAverageColor(target.uri)
+                .then((color) => {
+                    if (useSettingStore.getState().wallpaperUri === target.uri) setWallpaperColor(color);
+                })
+                .catch((error) => console.warn('分析壁纸颜色失败', error));
             notify('壁纸已应用');
         } catch (error) {
             console.error('导入壁纸失败', error);
@@ -77,88 +88,97 @@ const ThemeSetScreen = () => {
             <TopAppBar title="主题设置" back={() => router.back()} />
 
             <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-                <Text type="subtitle" color={theme.colors.onSurfaceSecondary} style={styles.sectionTitle}>
-                    外观
-                </Text>
-                <Card contentStyle={styles.groupCard}>
-                    <ListRow
-                        title="跟随系统"
-                        summary="自动切换白天与黑夜模式"
-                        onPress={() => setFollowSystemTheme(!followSystemTheme)}
-                        trailing={<Switch value={followSystemTheme} onValueChange={setFollowSystemTheme} />}
-                    />
-                    <View style={[styles.divider, { backgroundColor: theme.colors.dividerLine }]} />
-                    <ListRow
-                        title="黑夜模式"
-                        summary={followSystemTheme ? '当前由系统外观控制' : '使用深色背景与浅色文字'}
-                        onPress={followSystemTheme ? undefined : () => setDarkMode(!isDarkMode)}
-                        disabled={followSystemTheme}
-                        trailing={<Switch value={isDarkMode} onValueChange={setDarkMode} disabled={followSystemTheme} />}
-                    />
-                </Card>
+                <View style={styles.section}>
+                    <Card contentStyle={styles.groupCard}>
+                        <CardSectionTitle>外观</CardSectionTitle>
+                        <ListRow
+                            title="跟随系统"
+                            summary="自动切换白天与黑夜模式"
+                            onPress={() => setFollowSystemTheme(!followSystemTheme)}
+                            trailing={<Switch value={followSystemTheme} interactive={false} />}
+                        />
+                        <View style={[styles.divider, { backgroundColor: theme.colors.dividerLine }]} />
+                        <ListRow
+                            title="黑夜模式"
+                            summary={followSystemTheme ? '当前由系统外观控制' : '使用深色背景与浅色文字'}
+                            onPress={followSystemTheme ? undefined : () => setDarkMode(!isDarkMode)}
+                            disabled={followSystemTheme}
+                            trailing={<Switch value={isDarkMode} disabled={followSystemTheme} interactive={false} />}
+                        />
+                        <View style={[styles.divider, { backgroundColor: theme.colors.dividerLine }]} />
+                        <ListRow
+                            title="字体莫奈取色"
+                            summary="根据壁纸明暗自动调整透明区域的文字"
+                            onPress={() => setUseMonetText(!useMonetText)}
+                            trailing={<Switch value={useMonetText} interactive={false} />}
+                        />
+                    </Card>
+                </View>
 
-                <Text type="subtitle" color={theme.colors.onSurfaceSecondary} style={styles.sectionTitle}>
-                    底层壁纸
-                </Text>
-                <Card contentStyle={styles.wallpaperCard}>
-                    <View style={[styles.preview, { backgroundColor: theme.colors.surfaceContainerHigh }]}>
-                        {wallpaperUri ? (
-                            <Image
-                                source={{ uri: wallpaperUri }}
-                                resizeMode="cover"
-                                blurRadius={wallpaperBlur}
-                                style={[StyleSheet.absoluteFill, { opacity: wallpaperOpacity }]}
-                            />
-                        ) : (
-                            <View style={styles.emptyPreview}>
-                                <Icon name="image-outline" size={38} color={theme.colors.onSurfaceContainerHigh} />
-                                <Text type="body2" color={theme.colors.onSurfaceContainerHigh}>还没有选择壁纸</Text>
+                <View style={styles.section}>
+                    <Card contentStyle={styles.wallpaperCard}>
+                        <CardSectionTitle>底层壁纸</CardSectionTitle>
+                        <View style={styles.wallpaperContent}>
+                            <View style={[styles.preview, { backgroundColor: theme.colors.surfaceContainerHigh }]}>
+                                {wallpaperUri ? (
+                                    <Image
+                                        source={{ uri: wallpaperUri }}
+                                        resizeMode="cover"
+                                        blurRadius={wallpaperBlur}
+                                        style={[StyleSheet.absoluteFill, { opacity: wallpaperOpacity }]}
+                                    />
+                                ) : (
+                                    <View style={styles.emptyPreview}>
+                                        <Icon name="image-outline" size={38} color={theme.colors.onSurfaceContainerHigh} />
+                                        <Text type="body2" color={theme.colors.onSurfaceContainerHigh}>还没有选择壁纸</Text>
+                                    </View>
+                                )}
+                                <View
+                                    style={[
+                                        styles.previewSample,
+                                        {
+                                            backgroundColor: theme.dark
+                                                ? 'rgba(28,28,28,0.82)'
+                                                : 'rgba(255,255,255,0.84)',
+                                        },
+                                    ]}
+                                >
+                                    <Text type="headline1" weight="medium" color={theme.colors.onBackground}>壁纸预览</Text>
+                                    <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>文字与卡片会自动保持清晰</Text>
+                                </View>
                             </View>
-                        )}
-                        <View
-                            style={[
-                                styles.previewSample,
-                                {
-                                    backgroundColor: theme.dark
-                                        ? 'rgba(28,28,28,0.82)'
-                                        : 'rgba(255,255,255,0.84)',
-                                },
-                            ]}
-                        >
-                            <Text type="headline1" weight="medium" color={theme.colors.onBackground}>壁纸预览</Text>
-                            <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>文字与卡片会自动保持清晰</Text>
+
+                            <View style={styles.actions}>
+                                <Button type="primary" onPress={importWallpaper} disabled={isPicking} style={styles.primaryAction}>
+                                    {isPicking ? '正在读取…' : wallpaperUri ? '更换图片' : '导入图片'}
+                                </Button>
+                                {wallpaperUri ? <Button onPress={clearWallpaper}>移除</Button> : null}
+                            </View>
+
+                            <SliderSetting
+                                label="壁纸透明度"
+                                valueLabel={`${Math.round(wallpaperOpacity * 100)}%`}
+                                value={wallpaperOpacity}
+                                minimumValue={0.15}
+                                maximumValue={1}
+                                onValueChange={setWallpaperOpacity}
+                                disabled={!wallpaperUri}
+                            />
+                            <SliderSetting
+                                label="高斯模糊"
+                                valueLabel={`${Math.round(wallpaperBlur)}`}
+                                value={wallpaperBlur}
+                                minimumValue={0}
+                                maximumValue={30}
+                                step={1}
+                                onValueChange={setWallpaperBlur}
+                                disabled={!wallpaperUri}
+                            />
                         </View>
-                    </View>
+                    </Card>
+                </View>
 
-                    <View style={styles.actions}>
-                        <Button type="primary" onPress={importWallpaper} disabled={isPicking} style={styles.primaryAction}>
-                            {isPicking ? '正在读取…' : wallpaperUri ? '更换图片' : '导入图片'}
-                        </Button>
-                        {wallpaperUri ? <Button onPress={clearWallpaper}>移除</Button> : null}
-                    </View>
-
-                    <SliderSetting
-                        label="壁纸透明度"
-                        valueLabel={`${Math.round(wallpaperOpacity * 100)}%`}
-                        value={wallpaperOpacity}
-                        minimumValue={0.15}
-                        maximumValue={1}
-                        onValueChange={setWallpaperOpacity}
-                        disabled={!wallpaperUri}
-                    />
-                    <SliderSetting
-                        label="高斯模糊"
-                        valueLabel={`${Math.round(wallpaperBlur)}`}
-                        value={wallpaperBlur}
-                        minimumValue={0}
-                        maximumValue={30}
-                        step={1}
-                        onValueChange={setWallpaperBlur}
-                        disabled={!wallpaperUri}
-                    />
-                </Card>
-
-                <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary} style={styles.hint}>
+                <Text type="footnote1" color={wallpaperSecondaryText} style={styles.hint}>
                     图片会保存在应用目录中。调整壁纸时，白天模式会加入轻微亮色遮罩，黑夜模式会自动压暗，避免正文与背景混在一起。
                 </Text>
             </ScrollView>
@@ -166,6 +186,15 @@ const ThemeSetScreen = () => {
         </View>
     );
 };
+
+function CardSectionTitle({ children }: { children: React.ReactNode }) {
+    const theme = useTheme();
+    return (
+        <View style={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: theme.spacing.xs }}>
+            <Text type="footnote1" weight="bold" color={theme.colors.primary}>{children}</Text>
+        </View>
+    );
+}
 
 interface SliderSettingProps {
     label: string;
@@ -205,10 +234,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingBottom: 36,
     },
-    sectionTitle: {
+    section: {
         marginTop: 18,
-        marginBottom: 8,
-        marginLeft: 4,
     },
     groupCard: {
         paddingVertical: 2,
@@ -218,6 +245,9 @@ const styles = StyleSheet.create({
         marginHorizontal: 16,
     },
     wallpaperCard: {
+        padding: 0,
+    },
+    wallpaperContent: {
         padding: 12,
         gap: 14,
     },

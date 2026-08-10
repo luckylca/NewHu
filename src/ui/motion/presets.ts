@@ -30,7 +30,7 @@ export const sliderThumbScale = folmeSpring(0.6, 987);
 
 /** Card sink feedback. scale 1.0 → 0.94. folmeSpring(0.8, 600). */
 export const cardSink = folmeSpring(0.8, 600);
-/** Card tilt feedback. rotate ±8°. folmeSpring(0.6, 400). */
+/** Card tilt feedback. folmeSpring(0.6, 400). */
 export const cardTilt = folmeSpring(0.6, 400);
 
 /** BottomSheet enter / exit slide. folmeSpring(damping 0.9, response 0.38). */

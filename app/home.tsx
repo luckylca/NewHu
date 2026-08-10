@@ -2,9 +2,10 @@ import { getApiInstance, getRecommend, dislikeAnswer, dislikeArticle } from '@/s
 import { useContentStore } from '@/src/stores/useContentStore';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { router } from 'expo-router';
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent, View, StyleSheet, PanResponder, Share } from 'react-native';
-import { Card, Icon, SearchBar, Text } from '@/src/ui';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent, View, StyleSheet, Share } from 'react-native';
+import type { GestureResponderEvent } from 'react-native';
+import { Card, Icon, Menu, SearchBar, Text } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { useSettingStore } from '../src/stores/useSettingStore';
 import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
@@ -94,7 +95,7 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle }: {
 RenderItem.displayName = 'RenderItem';
 
 // ==================== 卡片模式 Item ====================
-export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimations, hideTitle, onDislike, onShare, leftAction, rightAction, onCardDragChange }: {
+export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimations, hideTitle, onDislike, onShare }: {
     item: FeedItem;
     type: FeedType;
     needToGet: boolean;
@@ -102,9 +103,6 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
     hideTitle?: boolean;
     onDislike?: (id: string) => void;
     onShare?: () => void;
-    leftAction: 'share' | 'dislike' | 'none';
-    rightAction: 'share' | 'dislike' | 'none';
-    onCardDragChange?: (dragging: boolean) => void;
 }) => {
     const title = (type === 'answer' && item.questionTitle) ? item.questionTitle : item.title;
 
@@ -120,65 +118,15 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
         });
     }, [item.id, type, needToGet]);
 
-    const translateX = useRef(new Animated.Value(0)).current;
-    const actionRef = useRef({ onDislike, onShare, leftAction, rightAction });
-    actionRef.current = { onDislike, onShare, leftAction, rightAction };
+    const [menuVisible, setMenuVisible] = useState(false);
+    const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0, width: 1, height: 1 });
 
-    // 慢速横滑触发卡片动作；纵向手势始终留给分页列表。
-    const touchStartTimeRef = useRef(0);
-    const isDragModeRef = useRef(false);
-
-    const panResponder = useRef(
-        PanResponder.create({
-            onStartShouldSetPanResponder: () => false,
-            onMoveShouldSetPanResponder: (_, gs) => {
-                if (isDragModeRef.current) return true;
-                const horizontal = Math.abs(gs.dx) > Math.abs(gs.dy) && Math.abs(gs.dx) > 4;
-                if (horizontal && Date.now() - touchStartTimeRef.current > 100) {
-                    isDragModeRef.current = true;
-                    onCardDragChange?.(true);
-                    return true;
-                }
-                return false;
-            },
-            onPanResponderGrant: () => {},
-            onPanResponderMove: (_, gs) => {
-                translateX.setValue(gs.dx);
-            },
-            onPanResponderRelease: (_, gs) => {
-                isDragModeRef.current = false;
-                onCardDragChange?.(false);
-                const direction = gs.dx < -150 ? 'left' : gs.dx > 150 ? 'right' : null;
-                if (direction) {
-                    short();
-                    Animated.timing(translateX, {
-                        toValue: direction === 'left' ? -WindowWidth : WindowWidth,
-                        duration: 220,
-                        useNativeDriver: true,
-                    }).start(() => {
-                        const config = actionRef.current;
-                        const action = direction === 'left' ? config.leftAction : config.rightAction;
-                        if (action === 'dislike') config.onDislike?.(item.id);
-                        if (action === 'share') config.onShare?.();
-                        translateX.setValue(0);
-                    });
-                } else {
-                    Animated.spring(translateX, { toValue: 0, useNativeDriver: true, bounciness: 8 }).start();
-                }
-            },
-            onPanResponderTerminate: () => {
-                isDragModeRef.current = false;
-                onCardDragChange?.(false);
-                translateX.setValue(0);
-            },
-        })
-    ).current;
-
-    const cardOpacity = translateX.interpolate({
-        inputRange: [-WindowWidth * 0.35, 0, WindowWidth * 0.35],
-        outputRange: [0.4, 1, 0.4],
-        extrapolate: 'clamp'
-    });
+    const openActionMenu = useCallback((event: GestureResponderEvent) => {
+        const { pageX, pageY } = event.nativeEvent;
+        setMenuAnchor({ x: pageX, y: pageY, width: 1, height: 1 });
+        setMenuVisible(true);
+        short();
+    }, []);
 
     const topSpacing = 0;
     const preview = getContentPreview(item);
@@ -189,55 +137,33 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
             alignItems: 'center', 
             paddingTop: topSpacing 
         }}>
-            <Animated.View
-                {...panResponder.panHandlers}
-                onTouchStart={() => {
-                    touchStartTimeRef.current = Date.now();
-                    isDragModeRef.current = false;
-                }}
-                onTouchEnd={() => {
-                    isDragModeRef.current = false;
-                    onCardDragChange?.(false);
-                }}
-                onTouchCancel={() => {
-                    isDragModeRef.current = false;
-                    onCardDragChange?.(false);
-                }}
-                style={[
-                    {
-                        width: CARD_WIDTH,
-                        height: CARD_HEIGHT,
-                        borderRadius: 24,
-                        overflow: 'hidden',
-                        backgroundColor: cardBgColor,
-                    },
-                    { transform: [{ translateX }], opacity: cardOpacity }
-                ]}
-            >
+            <View style={{ width: CARD_WIDTH, height: CARD_HEIGHT, borderRadius: 24, overflow: 'hidden' }}>
                 <Card
-                    feedback="none"
+                    feedback={disableAnimations ? 'none' : 'sink'}
                     showIndication
+                    holdDown={menuVisible}
                     onPress={openItem}
+                    onLongPress={openActionMenu}
                     style={{ flex: 1 }}
-                    contentStyle={{ backgroundColor: 'transparent', borderRadius: 24, padding: 24, flex: 1 }}
+                    contentStyle={{ backgroundColor: cardBgColor, borderRadius: 24, padding: 20, flex: 1 }}
                 >
                     {!hideTitle && (
                         <Text
                             type="title3"
                             weight="bold"
-                            style={{ marginBottom: 16, color: textColor, lineHeight: 32 }}
+                            style={{ marginBottom: 12, color: textColor, lineHeight: 31 }}
                             numberOfLines={3}
                         >
                             {title || '无标题'}
                         </Text>
                     )}
                     
-                    <View style={{ flex: 1, marginTop: 4, overflow: 'hidden' }} pointerEvents="none">
+                    <View style={{ flex: 1, overflow: 'hidden' }} pointerEvents="none">
                         <Text
                             type="body1"
                             color={metaColor}
-                            style={{ lineHeight: 27 }}
-                            numberOfLines={12}
+                            style={{ lineHeight: 26 }}
+                            numberOfLines={18}
                         >
                             {preview}
                         </Text>
@@ -246,8 +172,8 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                     <View style={{
                         flexDirection: 'row',
                         alignItems: 'center',
-                        marginTop: 20,
-                        paddingTop: 20,
+                        marginTop: 12,
+                        paddingTop: 12,
                         borderTopWidth: StyleSheet.hairlineWidth,
                         borderColor: theme.colors.dividerLine
                     }}>
@@ -267,15 +193,23 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                         </View>
                     </View>
                 </Card>
-            </Animated.View>
+            </View>
+            <Menu
+                visible={menuVisible}
+                onClose={() => setMenuVisible(false)}
+                anchor={menuAnchor}
+                items={[
+                    { label: '分享', onPress: onShare },
+                    { label: '不喜欢', onPress: () => onDislike?.(item.id) },
+                ]}
+            />
         </View>
     );
 }, (prevProps, nextProps) => {
     return prevProps.item.id === nextProps.item.id &&
         prevProps.disableAnimations === nextProps.disableAnimations &&
-        prevProps.leftAction === nextProps.leftAction &&
-        prevProps.rightAction === nextProps.rightAction &&
-        prevProps.onCardDragChange === nextProps.onCardDragChange;
+        prevProps.type === nextProps.type &&
+        prevProps.hideTitle === nextProps.hideTitle;
 });
 RenderCardModeItem.displayName = 'RenderCardModeItem';
 
@@ -289,38 +223,42 @@ const HomeScreen = () => {
     const setFeedList = useContentStore((state) => state.setFeedList);
     const removeFeedItem = useContentStore((state) => state.removeFeedItem); // 引入解耦后的局部删除 Action
     const addUnlikeItem = useContentStore((state) => state.addUnlikeItem);   // 引入新增的本地不喜欢持久化 Action
+    const refreshRequest = useContentStore((state) => state.refreshRequest);
     
     const cookies = useUserStore((state) => state.cookies);
     const disableAnimations = useSettingStore((state) => state.disableAnimations);
     const displayMode = useSettingStore((state) => state.mode);
     const filterAds = useSettingStore((state) => state.isAds);
     const filterPaid = useSettingStore((state) => state.isPaid);
-    const leftSwipeAction = useSettingStore((state) => state.cardSwipeLeftAction);
-    const rightSwipeAction = useSettingStore((state) => state.cardSwipeRightAction);
     const userHydrated = useStoreHydrated(useUserStore); // 等用户 store 完成水合再初始化 API
 
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [cardListHeight, setCardListHeight] = useState(0);
     const requestInFlightRef = useRef(false);
+    const visibleFeedList = useMemo(() => feedList.filter((feed) => (
+        !(filterAds && feed.isAds) && !(filterPaid && feed.isPaid)
+    )), [feedList, filterAds, filterPaid]);
 
     const sessionTokenRef = useRef("");
     const feedListRef = useRef(feedList);
     feedListRef.current = feedList;
+    const visibleFeedListRef = useRef(visibleFeedList);
+    visibleFeedListRef.current = visibleFeedList;
     const loadDataRef = useRef<any>(null);
+    const handledRefreshRequestRef = useRef(refreshRequest);
 
     const flatListRef = useRef<FlatList>(null);
     const currentIndexRef = useRef(0);
-    // 滑动模式保持原生纵向分页；长按拖动卡片时才临时锁住列表。
-    const [cardDragging, setCardDragging] = useState(false);
-    const onCardDragChange = useCallback((dragging: boolean) => {
-        setCardDragging(dragging);
-    }, []);
 
     const processFeedItem = (item: any): FeedItemInfo | null => {
         const target = item.target;
-        const isAds = !!item.promotion_extra;
-        const isPaid = !!(target.paid_info || target.answer_type === 'paid');
-        if ((filterAds && isAds) || (filterPaid && isPaid)) return null;
+        const isAds = item.promotion_extra != null || item.advertisement != null;
+        const isPaid = Boolean(
+            target.paid_info
+            || target.paywall_info
+            || target.answer_type === 'paid'
+            || target.is_paid === true
+        );
 
         if (target.type === 'answer' || target.type === 'article') {
             return {
@@ -396,6 +334,18 @@ const HomeScreen = () => {
     loadDataRef.current = loadData;
 
     useEffect(() => {
+        if (handledRefreshRequestRef.current === refreshRequest) return;
+        handledRefreshRequestRef.current = refreshRequest;
+        const refresh = async () => {
+            currentIndexRef.current = 0;
+            flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+            await loadDataRef.current?.(true);
+            await loadDataRef.current?.(false);
+        };
+        void refresh();
+    }, [refreshRequest]);
+
+    useEffect(() => {
         if (!userHydrated) return; // 等待持久化的 Cookie 恢复后再初始化，避免用到旧的默认值
         getApiInstance(cookies);
         loadData(true).then(() => loadData(false));
@@ -403,9 +353,17 @@ const HomeScreen = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [userHydrated]);
 
+    useEffect(() => {
+        currentIndexRef.current = 0;
+        const frame = requestAnimationFrame(() => {
+            flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+        });
+        return () => cancelAnimationFrame(frame);
+    }, [filterAds, filterPaid]);
+
     // 联动优化：不喜欢（移除+网络请求+本地状态）统一处理器
     const handleDislikeItem = useCallback((id: string, feedType: FeedType) => {
-        const list = feedListRef.current;
+        const list = visibleFeedListRef.current;
         const targetIndex = list.findIndex((f) => f.item.id.toString() === id.toString());
         if (targetIndex === -1) return;
 
@@ -461,18 +419,15 @@ const HomeScreen = () => {
             disableAnimations={disableAnimations}
             onDislike={(id: string) => handleDislikeItem(id, item.feedType)}
             onShare={() => handleShareItem(item.item, item.feedType)}
-            leftAction={leftSwipeAction}
-            rightAction={rightSwipeAction}
-            onCardDragChange={onCardDragChange}
         />
-    ), [disableAnimations, handleDislikeItem, handleShareItem, leftSwipeAction, onCardDragChange, rightSwipeAction]);
+    ), [disableAnimations, handleDislikeItem, handleShareItem]);
 
     const handleMomentumScrollEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
         const offsetY = event.nativeEvent.contentOffset.y;
         const index = Math.round(offsetY / CARD_ITEM_HEIGHT);
         currentIndexRef.current = index;
 
-        if (feedListRef.current.length - index <= 5) {
+        if (visibleFeedListRef.current.length - index <= 5) {
             loadDataRef.current?.(false);
         }
     }, []);
@@ -507,14 +462,14 @@ const HomeScreen = () => {
                             alignItems: 'center',
                             paddingVertical: Math.max(0, (cardListHeight - CARD_ITEM_HEIGHT) / 2),
                         }}
-                        data={feedList}
+                        data={visibleFeedList}
                         renderItem={renderCardListItem}
                         keyExtractor={(item) => item.item.id.toString()}
                         snapToInterval={CARD_ITEM_HEIGHT}
                         snapToAlignment="start"
-                        decelerationRate="fast"
-                        disableIntervalMomentum={true}
-                        scrollEnabled={!cardDragging}
+                        // 保留一点惯性，但一次手势最多推进一个卡片间隔。
+                        decelerationRate={0.96}
+                        disableIntervalMomentum
                         showsVerticalScrollIndicator={false}
                         onEndReached={() => loadData(false)}
                         onEndReachedThreshold={0.8}
@@ -530,7 +485,7 @@ const HomeScreen = () => {
                 <FlatList
                     style={{ flex: 1 }}
                     contentContainerStyle={{ alignItems: 'center', paddingTop: 0, paddingBottom: theme.spacing.md }}
-                    data={feedList}
+                    data={visibleFeedList}
                     renderItem={renderListItem}
                     keyExtractor={(item) => item.item.id.toString()}
                     refreshing={isRefreshing}

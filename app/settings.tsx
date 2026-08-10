@@ -1,17 +1,14 @@
 import { notify } from '@/src/stores/useNotificationStore';
 import { useSettingStore } from '@/src/stores/useSettingStore';
-import type { CardSwipeAction } from '@/src/stores/useSettingStore';
 import { useUserStore } from '@/src/stores/useUserStore';
-import { Button, Card, Dialog, Divider, Icon, ListRow, Switch, TopAppBar } from '@/src/ui';
+import { Card, Divider, Icon, ListRow, Switch, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import type { IconName } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
-import React, { useState } from 'react';
+import React from 'react';
 import type { ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
-
-const CURRENT_VERSION = 'v1.0.0';
 
 export default function SettingsScreen() {
     const theme = useTheme();
@@ -20,28 +17,6 @@ export default function SettingsScreen() {
     const filterPaid = useSettingStore((state) => state.isPaid);
     const setFilterAds = useSettingStore((state) => state.setAds);
     const setFilterPaid = useSettingStore((state) => state.setPaid);
-    const leftSwipeAction = useSettingStore((state) => state.cardSwipeLeftAction);
-    const rightSwipeAction = useSettingStore((state) => state.cardSwipeRightAction);
-    const setLeftSwipeAction = useSettingStore((state) => state.setCardSwipeLeftAction);
-    const setRightSwipeAction = useSettingStore((state) => state.setCardSwipeRightAction);
-    const [updateVisible, setUpdateVisible] = useState(false);
-    const [swipeSide, setSwipeSide] = useState<'left' | 'right' | null>(null);
-    const [update, setUpdate] = useState({ loading: false, version: '' });
-
-    const checkUpdate = async () => {
-        setUpdateVisible(true);
-        setUpdate({ loading: true, version: '' });
-        try {
-            const response = await fetch('https://api.github.com/repos/luckylca/GirlVideo_ByReactNative/releases/latest');
-            const data = await response.json();
-            setUpdate({ loading: false, version: data?.tag_name || '' });
-        } catch (error) {
-            console.error('检查更新失败:', error);
-            setUpdateVisible(false);
-            notify('检查更新失败，请稍后重试');
-        }
-    };
-
     const trailingChevron = <Icon name="chevron-right" size={22} color={theme.colors.onSurfaceVariantActions} />;
 
     return (
@@ -63,7 +38,7 @@ export default function SettingsScreen() {
                         icon="advertisements-off"
                         title="过滤推广内容"
                         summary="隐藏推荐流中的广告"
-                        trailing={<Switch value={filterAds} onValueChange={setFilterAds} />}
+                        trailing={<Switch value={filterAds} interactive={false} />}
                         onPress={() => setFilterAds(!filterAds)}
                     />
                     <Divider style={{ marginLeft: 60 }} />
@@ -71,7 +46,7 @@ export default function SettingsScreen() {
                         icon="lock-outline"
                         title="隐藏付费内容"
                         summary="过滤需要付费阅读的内容"
-                        trailing={<Switch value={filterPaid} onValueChange={setFilterPaid} />}
+                        trailing={<Switch value={filterPaid} interactive={false} />}
                         onPress={() => setFilterPaid(!filterPaid)}
                     />
                 </SettingsGroup>
@@ -79,78 +54,25 @@ export default function SettingsScreen() {
                 <SettingsGroup title="外观与体验">
                     <SettingRow icon="palette-outline" title="主题与壁纸" summary="颜色、壁纸、透明度和模糊" trailing={trailingChevron} onPress={() => router.push('/themeSet')} />
                     <Divider style={{ marginLeft: 60 }} />
-                    <SettingRow icon="tune-variant" title="高级设置" summary="动画和调试选项" trailing={trailingChevron} onPress={() => router.push('/devmode')} />
-                </SettingsGroup>
-
-                <SettingsGroup title="滑动模式">
                     <SettingRow
-                        icon="gesture-swipe-left"
-                        title="慢速左滑"
-                        summary={swipeActionLabel(leftSwipeAction)}
+                        icon="animation-play-outline"
+                        title="动画设置"
+                        summary="抽屉与全局动画"
                         trailing={trailingChevron}
-                        onPress={() => setSwipeSide('left')}
+                        onPress={() => router.push('/animationSettings')}
                     />
                     <Divider style={{ marginLeft: 60 }} />
-                    <SettingRow
-                        icon="gesture-swipe-right"
-                        title="慢速右滑"
-                        summary={swipeActionLabel(rightSwipeAction)}
-                        trailing={trailingChevron}
-                        onPress={() => setSwipeSide('right')}
-                    />
+                    <SettingRow icon="tune-variant" title="高级设置" summary="Cookie 和调试选项" trailing={trailingChevron} onPress={() => router.push('/devmode')} />
                 </SettingsGroup>
 
                 <SettingsGroup title="应用">
-                    <SettingRow icon="cloud-download-outline" title="检查更新" summary={`当前版本 ${CURRENT_VERSION}`} trailing={trailingChevron} onPress={checkUpdate} />
-                    <Divider style={{ marginLeft: 60 }} />
                     <SettingRow icon="broom" title="清理临时缓存" summary="保留账号、收藏和主题设置" trailing={trailingChevron} onPress={() => notify('当前没有需要清理的临时文件')} />
                     <Divider style={{ marginLeft: 60 }} />
-                    <SettingRow icon="information-outline" title="关于 NewHu" summary="简洁的知乎阅读体验" trailing={trailingChevron} onPress={() => notify(`NewHu ${CURRENT_VERSION}`)} />
+                    <SettingRow icon="information-outline" title="关于 NewHU" summary="版本信息与检查更新" trailing={trailingChevron} onPress={() => router.push('/about')} />
                 </SettingsGroup>
             </ScrollView>
-
-            <Dialog visible={updateVisible} onClose={() => setUpdateVisible(false)} title="检查更新">
-                <Text type="body1" color={theme.colors.onBackground}>
-                    {update.loading
-                        ? '正在检查最新版本…'
-                        : update.version && update.version !== CURRENT_VERSION
-                            ? `发现新版本 ${update.version}，当前版本为 ${CURRENT_VERSION}。`
-                            : `当前已是最新版本 ${CURRENT_VERSION}。`}
-                </Text>
-                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: theme.spacing.lg }}>
-                    <Button type="primary" onPress={() => setUpdateVisible(false)} disabled={update.loading}>知道了</Button>
-                </View>
-            </Dialog>
-
-            <Dialog
-                visible={swipeSide != null}
-                onClose={() => setSwipeSide(null)}
-                title={swipeSide === 'left' ? '慢速左滑动作' : '慢速右滑动作'}
-            >
-                {(['share', 'dislike', 'none'] as CardSwipeAction[]).map((action) => {
-                    const selected = (swipeSide === 'left' ? leftSwipeAction : rightSwipeAction) === action;
-                    return (
-                        <ListRow
-                            key={action}
-                            title={swipeActionLabel(action)}
-                            trailing={selected ? <Icon name="check" size={22} color={theme.colors.primary} /> : null}
-                            onPress={() => {
-                                if (swipeSide === 'left') setLeftSwipeAction(action);
-                                else setRightSwipeAction(action);
-                                setSwipeSide(null);
-                            }}
-                        />
-                    );
-                })}
-            </Dialog>
         </View>
     );
-}
-
-function swipeActionLabel(action: CardSwipeAction) {
-    if (action === 'share') return '分享';
-    if (action === 'dislike') return '不喜欢';
-    return '无操作';
 }
 
 function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {

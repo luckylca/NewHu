@@ -40,6 +40,8 @@ export default function RootLayout() {
 							>
 								<Stack.Screen name="(tabs)" />
 								<Stack.Screen name="settings" options={{ title: '设置' }} />
+								<Stack.Screen name="about" options={{ title: '关于 NewHU' }} />
+								<Stack.Screen name="animationSettings" options={{ title: '动画设置' }} />
 								<Stack.Screen name="devmode" options={{ title: '开发者模式' }} />
 								<Stack.Screen name="like" options={{ title: '收藏列表' }} />
 								<Stack.Screen name="history" options={{ title: '浏览历史' }} />

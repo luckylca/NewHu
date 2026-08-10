@@ -24,13 +24,15 @@ export interface AppSwitchProps {
     value?: boolean;
     onValueChange?: (value: boolean) => void;
     disabled?: boolean;
+    /** 在整行可点击时关闭开关自身手势，避免一次点击触发两次切换。 */
+    interactive?: boolean;
 }
 
 const THUMB_TRAVEL = 21; // 25 - 4
 const DRAG_HALF = 10.5; // 21 / 2 — half-way snap threshold
 const SCALE_HOVER_PRESS = 1.127;
 
-export function Switch({ value = false, onValueChange, disabled = false }: AppSwitchProps) {
+export function Switch({ value = false, onValueChange, disabled = false, interactive = true }: AppSwitchProps) {
     const theme = useTheme();
     const c = theme.components.switch;
     const thumbInset = (c.height - c.thumbSize) / 2;
@@ -136,51 +138,52 @@ export function Switch({ value = false, onValueChange, disabled = false }: AppSw
 
     const gesture = Gesture.Exclusive(pan, tap);
 
-    return (
-        <GestureDetector gesture={gesture}>
+    const content = (
+        <Animated.View
+            accessibilityRole="switch"
+            accessibilityState={{ checked, disabled }}
+            pointerEvents={interactive ? 'auto' : 'none'}
+            style={[
+                {
+                    width: c.width,
+                    height: c.height,
+                    borderRadius: theme.radius.full,
+                    justifyContent: 'center',
+                },
+                trackStyle,
+            ]}
+        >
             <Animated.View
-                accessibilityRole="switch"
-                accessibilityState={{ checked, disabled }}
                 style={[
                     {
-                        width: c.width,
-                        height: c.height,
-                        borderRadius: theme.radius.full,
-                        justifyContent: 'center',
+                        position: 'absolute',
+                        top: thumbInset,
+                        left: thumbInset,
+                        width: c.thumbSize,
+                        height: c.thumbSize,
+                        borderRadius: c.thumbSize / 2,
+                        backgroundColor: thumbColor,
                     },
-                    trackStyle,
+                    thumbStyle,
                 ]}
-            >
+            />
+            {!checked ? (
                 <Animated.View
-                    style={[
-                        {
-                            position: 'absolute',
-                            top: thumbInset,
-                            left: thumbInset,
-                            width: c.thumbSize,
-                            height: c.thumbSize,
-                            borderRadius: c.thumbSize / 2,
-                            backgroundColor: thumbColor,
-                        },
-                        thumbStyle,
-                    ]}
+                    pointerEvents="none"
+                    style={{
+                        position: 'absolute',
+                        top: 0,
+                        right: 0,
+                        bottom: 0,
+                        left: 0,
+                        borderWidth: 1,
+                        borderColor: theme.colors.outline,
+                        borderRadius: theme.radius.full,
+                    }}
                 />
-                {!checked ? (
-                    <Animated.View
-                        pointerEvents="none"
-                        style={{
-                            position: 'absolute',
-                            top: 0,
-                            right: 0,
-                            bottom: 0,
-                            left: 0,
-                            borderWidth: 1,
-                            borderColor: theme.colors.outline,
-                            borderRadius: theme.radius.full,
-                        }}
-                    />
-                ) : null}
-            </Animated.View>
-        </GestureDetector>
+            ) : null}
+        </Animated.View>
     );
+
+    return interactive ? <GestureDetector gesture={gesture}>{content}</GestureDetector> : content;
 }

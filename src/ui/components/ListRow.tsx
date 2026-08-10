@@ -30,17 +30,19 @@ export interface AppListRowProps {
     trailing?: ReactNode;
     onPress?: () => void;
     disabled?: boolean;
+    titleColor?: string;
+    summaryColor?: string;
     style?: StyleProp<ViewStyle>;
 }
 
-export function ListRow({ title, summary, icon, trailing, onPress, disabled, style }: AppListRowProps) {
+export function ListRow({ title, summary, icon, trailing, onPress, disabled, titleColor: titleColorOverride, summaryColor: summaryColorOverride, style }: AppListRowProps) {
     const theme = useTheme();
     const c = theme.components.preference;
     const pressed = useSharedValue(0);
 
     const interactive = !!onPress && !disabled;
-    const titleColor = disabled ? theme.colors.disabledOnSecondaryVariant : theme.colors.onBackground;
-    const summaryColor = disabled ? theme.colors.disabledOnSecondaryVariant : theme.colors.onSurfaceVariantSummary;
+    const titleColor = disabled ? theme.colors.disabledOnSecondaryVariant : titleColorOverride ?? theme.colors.onBackground;
+    const summaryColor = disabled ? theme.colors.disabledOnSecondaryVariant : summaryColorOverride ?? theme.colors.onSurfaceVariantSummary;
 
     return (
         <Pressable

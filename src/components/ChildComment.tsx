@@ -2,8 +2,9 @@ import { getChildComments } from '@/src/api/ZhihuApi';
 import { Divider } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
+import { useSettingStore } from '@/src/stores/useSettingStore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, BackHandler, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, BackHandler, FlatList, InteractionManager, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { CommentItem } from './CommentItem';
 import type { CommentViewModel } from './CommentItem';
 
@@ -14,6 +15,15 @@ type ChildCommentProps = {
     onReply?: (id: string, name?: string) => void;
     initialFocusId?: string;
 };
+
+// Miuix BottomSheet: folmeSpring(0.9, 0.38)，换算后约为 stiffness 273 / damping 30。
+const DRAWER_SPRING = {
+    stiffness: 273,
+    damping: 30,
+    mass: 1,
+    overshootClamping: true,
+    useNativeDriver: true,
+} as const;
 
 function normalizeComment(item: any): CommentViewModel | null {
     if (!item?.id) return null;
@@ -45,6 +55,9 @@ function readOffset(next?: string) {
 
 export default function ChildComment({ visible, id, onClose, onReply, initialFocusId }: ChildCommentProps) {
     const theme = useTheme();
+    const drawerAnimation = useSettingStore((state) => state.commentDrawerAnimation);
+    const disableAnimations = useSettingStore((state) => state.disableAnimations);
+    const { height: windowHeight } = useWindowDimensions();
     const [comments, setComments] = useState<CommentViewModel[]>([]);
     const [rootComment, setRootComment] = useState<CommentViewModel | null>(null);
     const [count, setCount] = useState(0);
@@ -55,6 +68,18 @@ export default function ChildComment({ visible, id, onClose, onReply, initialFoc
     const offsetRef = useRef('');
     const inFlightRef = useRef(false);
     const hasMoreRef = useRef(true);
+    const renderedRef = useRef(false);
+    const visibleRef = useRef(visible);
+    visibleRef.current = visible;
+
+    const resetComments = useCallback(() => {
+        setComments([]);
+        setRootComment(null);
+        setCount(0);
+        setRefreshing(false);
+        offsetRef.current = '';
+        hasMoreRef.current = true;
+    }, []);
 
     const load = useCallback(async (refresh = false) => {
         if (!visible || !id || inFlightRef.current || (!refresh && !hasMoreRef.current)) return;
@@ -67,6 +92,7 @@ export default function ChildComment({ visible, id, onClose, onReply, initialFoc
 
         try {
             const response = await getChildComments(id, refresh ? '' : offsetRef.current, 'ts');
+            if (!visibleRef.current) return;
             const next = readOffset(response?.paging?.next);
             offsetRef.current = next;
             hasMoreRef.current = Boolean(next) && response?.paging?.is_end !== true;
@@ -91,37 +117,56 @@ export default function ChildComment({ visible, id, onClose, onReply, initialFoc
     }, [id, visible]);
 
     useEffect(() => {
-        if (visible) load(true);
-        else {
-            setComments([]);
-            setRootComment(null);
-            setCount(0);
-            offsetRef.current = '';
-            hasMoreRef.current = true;
-        }
-    }, [load, visible]);
+        let frame: number | undefined;
+        let interaction: ReturnType<typeof InteractionManager.runAfterInteractions> | undefined;
+        animation.stopAnimation();
 
-    useEffect(() => {
         if (visible) {
+            renderedRef.current = true;
             setRendered(true);
-            Animated.timing(animation, {
-                toValue: 1,
-                duration: 220,
-                useNativeDriver: true,
-            }).start();
-            return;
+            setRefreshing(true);
+
+            const startLoading = () => {
+                interaction = InteractionManager.runAfterInteractions(() => load(true));
+            };
+
+            if (disableAnimations || !drawerAnimation) {
+                animation.setValue(1);
+                startLoading();
+            } else {
+                frame = requestAnimationFrame(() => {
+                    Animated.spring(animation, {
+                        ...DRAWER_SPRING,
+                        toValue: 1,
+                    }).start();
+                    startLoading();
+                });
+            }
+        } else if (renderedRef.current) {
+            const finishClosing = () => {
+                renderedRef.current = false;
+                setRendered(false);
+                resetComments();
+            };
+
+            if (disableAnimations || !drawerAnimation) {
+                animation.setValue(0);
+                finishClosing();
+            } else {
+                Animated.spring(animation, {
+                    ...DRAWER_SPRING,
+                    toValue: 0,
+                }).start(({ finished }) => {
+                    if (finished) finishClosing();
+                });
+            }
         }
 
-        if (rendered) {
-            Animated.timing(animation, {
-                toValue: 0,
-                duration: 180,
-                useNativeDriver: true,
-            }).start(({ finished }) => {
-                if (finished) setRendered(false);
-            });
-        }
-    }, [animation, rendered, visible]);
+        return () => {
+            if (frame != null) cancelAnimationFrame(frame);
+            interaction?.cancel();
+        };
+    }, [animation, disableAnimations, drawerAnimation, load, resetComments, visible]);
 
     useEffect(() => {
         if (!visible) return;
@@ -169,11 +214,10 @@ export default function ChildComment({ visible, id, onClose, onReply, initialFoc
                     styles.sheet,
                     {
                         backgroundColor: pageBackground,
-                        opacity: animation,
                         transform: [{
                             translateY: animation.interpolate({
                                 inputRange: [0, 1],
-                                outputRange: [280, 0],
+                                outputRange: [windowHeight, 0],
                             }),
                         }],
                     },

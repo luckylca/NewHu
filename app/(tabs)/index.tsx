@@ -4,11 +4,13 @@ import { StyleSheet, View } from 'react-native';
 import PagerView from 'react-native-pager-view';
 import HomeScreen from '../home';
 import UserScreen from '../user';
+import { useContentStore } from '@/src/stores/useContentStore';
 
 const MainScreens = () => {
 
     const [activeIndex, setActiveIndex] = React.useState(0);
     const pageViewRef = React.useRef<PagerView>(null);
+    const requestFeedRefresh = useContentStore((state) => state.requestFeedRefresh);
 
     const routes: tabRoute[] = React.useMemo(() => [
         { key: 'home', title: '首页', icon: 'home' },
@@ -48,6 +50,9 @@ const MainScreens = () => {
             <CustomTabNav
                 activeIndex={activeIndex}      // 告诉它：现在哪一页是激活的（用来变色）
                 onIndexChange={handleTabPress} // 告诉它：有人按按钮时，执行这个函数
+                onDoubleSelect={(index) => {
+                    if (index === 0) requestFeedRefresh();
+                }}
                 routes={routes}                // 告诉它：有哪些按钮要渲染
             />
         </View>

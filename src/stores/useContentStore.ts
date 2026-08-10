@@ -8,6 +8,8 @@ interface ContentState {
     feedList: FeedItemInfo[]; // 推荐流列表
     setFeedList: (list: FeedItemInfo[]) => void; // 设置推荐流列表的函数
     removeFeedItem: (id: string) => void; // 根据 ID 从列表中移除指定帖子的函数
+    refreshRequest: number;
+    requestFeedRefresh: () => void;
 
     unlikeList: string[]; // 不喜欢列表，存储用户不喜欢的帖子的 ID
     setUnlikeList: (list: string[]) => void; // 设置不喜欢列表的函数
@@ -20,6 +22,8 @@ export const useContentStore = create<ContentState>()(
         (set) => ({
             feedList: [],
             setFeedList: (list) => set({ feedList: list }),
+            refreshRequest: 0,
+            requestFeedRefresh: () => set((state) => ({ refreshRequest: state.refreshRequest + 1 })),
             removeFeedItem: (id) => set((state) => ({
                 feedList: state.feedList.filter(
                     (feed) => feed.item.id.toString() !== id.toString()

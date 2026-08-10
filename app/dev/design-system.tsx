@@ -165,7 +165,7 @@ export default function DesignSystemShowcase() {
                 {/* ListRow */}
                 <Section title="ListRow">
                     <View style={{ backgroundColor: theme.colors.surfaceContainer, borderRadius: theme.radius.component, marginHorizontal: 16, overflow: 'hidden' }}>
-                        <ListRow title="开启某项" summary="带 Switch 的行" trailing={<Switch value={switchOn} onValueChange={setSwitchOn} />} onPress={() => {}} />
+                        <ListRow title="开启某项" summary="带 Switch 的行" trailing={<Switch value={switchOn} interactive={false} />} onPress={() => setSwitchOn(!switchOn)} />
                         <ListRow title="普通行" summary="summary 说明文字" onPress={() => {}} />
                         <ListRow title="禁用行" summary="disabled 状态" disabled />
                     </View>

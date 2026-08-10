@@ -4,8 +4,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-export type CardSwipeAction = 'share' | 'dislike' | 'none';
-
 interface SettingState {
     followSystemTheme: boolean;
     setFollowSystemTheme: (follow: boolean) => void;
@@ -14,6 +12,8 @@ interface SettingState {
 
     wallpaperUri: string | null;
     setWallpaperUri: (uri: string | null) => void;
+    wallpaperColor: string | null;
+    setWallpaperColor: (color: string | null) => void;
     wallpaperOpacity: number;
     setWallpaperOpacity: (opacity: number) => void;
     wallpaperBlur: number;
@@ -21,7 +21,11 @@ interface SettingState {
 
     disableAnimations: boolean; // 是否关闭动画
     setDisableAnimations: (disabled: boolean) => void; // 设置是否关闭动画
+    commentDrawerAnimation: boolean;
+    setCommentDrawerAnimation: (enabled: boolean) => void;
 
+    useMonetText: boolean;
+    setUseMonetText: (enabled: boolean) => void;
     cookie: string; // 自定义 cookie
     setCookie: (cookie: string) => void; // 设置 cookie
 
@@ -32,10 +36,6 @@ interface SettingState {
 
     mode: 'normal' | 'card';
     setMode: (mode: 'normal' | 'card') => void; // 设置模式的函数
-    cardSwipeLeftAction: CardSwipeAction;
-    cardSwipeRightAction: CardSwipeAction;
-    setCardSwipeLeftAction: (action: CardSwipeAction) => void;
-    setCardSwipeRightAction: (action: CardSwipeAction) => void;
 }
 
 export const useSettingStore = create<SettingState>()(
@@ -48,7 +48,9 @@ export const useSettingStore = create<SettingState>()(
             isDarkMode: false, // 默认不是暗黑模式
             setDarkMode: (isDark) => set({ isDarkMode: isDark }),
             wallpaperUri: null,
-            setWallpaperUri: (uri) => set({ wallpaperUri: uri }),
+            setWallpaperUri: (uri) => set({ wallpaperUri: uri, wallpaperColor: null }),
+            wallpaperColor: null,
+            setWallpaperColor: (color) => set({ wallpaperColor: color }),
             wallpaperOpacity: 0.82,
             setWallpaperOpacity: (opacity) => set({ wallpaperOpacity: opacity }),
             wallpaperBlur: 8,
@@ -56,6 +58,10 @@ export const useSettingStore = create<SettingState>()(
 
             disableAnimations: false,
             setDisableAnimations: (disabled) => set({ disableAnimations: disabled }),
+            commentDrawerAnimation: true,
+            setCommentDrawerAnimation: (enabled) => set({ commentDrawerAnimation: enabled }),
+            useMonetText: false,
+            setUseMonetText: (enabled) => set({ useMonetText: enabled }),
 
             cookie: '',
             setCookie: (cookie) => set({ cookie }),
@@ -67,10 +73,6 @@ export const useSettingStore = create<SettingState>()(
 
             mode: 'normal', // 默认模式
             setMode: (mode) => set({ mode }),
-            cardSwipeLeftAction: 'share',
-            cardSwipeRightAction: 'dislike',
-            setCardSwipeLeftAction: (action) => set({ cardSwipeLeftAction: action }),
-            setCardSwipeRightAction: (action) => set({ cardSwipeRightAction: action }),
 
         }),
         {

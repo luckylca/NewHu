@@ -54,6 +54,8 @@ const HIDDEN_TRANSLATION_Y = 20;
 
 export function TopAppBar({ title = '', largeTitle, subtitle, large = false, scrollY, expansion = 88, back, actions, navigation }: AppTopAppBarProps) {
     const theme = useTheme();
+    const titleColor = theme.colors.onBackground;
+    const subtitleColor = theme.colors.onSurfaceVariantSummary;
     const insets = useSafeAreaInsets();
 
     const hasBack = back !== undefined && back !== false && back !== null;
@@ -90,12 +92,12 @@ export function TopAppBar({ title = '', largeTitle, subtitle, large = false, scr
                 {large ? (
                     <Animated.View style={[{ alignItems: 'center', paddingHorizontal: 26, pointerEvents: 'none' }, smallTitleStyle]}>
                         <TitleText>{title}</TitleText>
-                        {subtitle != null && <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>{subtitle}</Text>}
+                        {subtitle != null && <Text type="body2" color={subtitleColor}>{subtitle}</Text>}
                     </Animated.View>
                 ) : (
                     <View style={{ alignItems: 'center', paddingHorizontal: 26 }}>
                         <TitleText>{title}</TitleText>
-                        {subtitle != null && <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>{subtitle}</Text>}
+                        {subtitle != null && <Text type="body2" color={subtitleColor}>{subtitle}</Text>}
                     </View>
                 )}
                 <View style={{ position: 'absolute', right: 0, paddingRight: theme.spacing.lg, flexDirection: 'row', alignItems: 'center' }}>{actions}</View>
@@ -104,10 +106,10 @@ export function TopAppBar({ title = '', largeTitle, subtitle, large = false, scr
             {/* Large title (collapsing, in flow) */}
             {large && (
                 <Animated.View style={[{ paddingHorizontal: 26, paddingBottom: 4 }, largeAlphaStyle]}>
-                    <Text type="title1" color={theme.colors.onSurface}>
+                    <Text type="title1" color={titleColor}>
                         {largeTitle ?? title}
                     </Text>
-                    {subtitle != null && <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>{subtitle}</Text>}
+                    {subtitle != null && <Text type="body2" color={subtitleColor}>{subtitle}</Text>}
                 </Animated.View>
             )}
         </View>
@@ -117,7 +119,7 @@ export function TopAppBar({ title = '', largeTitle, subtitle, large = false, scr
 function TitleText({ children }: { children: ReactNode }) {
     const theme = useTheme();
     return (
-        <Text type="title3" weight="medium" color={theme.colors.onSurface} style={{ textAlign: 'center' }}>
+        <Text type="title3" weight="medium" color={theme.colors.onBackground} style={{ textAlign: 'center' }}>
             {children}
         </Text>
     );

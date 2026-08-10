@@ -17,7 +17,7 @@ import Animated, { useAnimatedStyle, useDerivedValue, useSharedValue, withSpring
  * Feedback:
  *   none — inert container.
  *   sink — scale 1.0 → 0.94, folmeSpring(0.8, 600).
- *   tilt — rotateX/Y ±8°, folmeSpring(0.6, 400), pivot follows the touch
+ *   tilt — rotateX/Y ±5.3°, folmeSpring(0.6, 400), pivot follows the touch
  *          quadrant (perspective ≈ width × 1.6).
  * Long-press after 500ms emits onLongPress and swallows the following click.
  * No default heavy shadow.
@@ -32,17 +32,17 @@ export interface AppCardProps {
     /** Latch the press feedback on (e.g. while a long-press dialog is open). */
     holdDown?: boolean;
     onPress?: () => void;
-    onLongPress?: () => void;
+    onLongPress?: (event: GestureResponderEvent) => void;
     style?: StyleProp<ViewStyle>;
     contentStyle?: StyleProp<ViewStyle>;
     children?: ReactNode;
 }
 
 const SINK_AMOUNT = 0.94;
-const TILT_AMOUNT = 8;
+const TILT_AMOUNT = 5.3;
 const TILT_PERSPECTIVE_FACTOR = 1.6;
 
-export function Card({ feedback = 'none', showIndication, holdDown, onPress, onLongPress, style, contentStyle, children }: AppCardProps) {
+export function Card({ feedback = 'sink', showIndication, holdDown, onPress, onLongPress, style, contentStyle, children }: AppCardProps) {
     const theme = useTheme();
     const radius = theme.components.card.radius;
     const pressed = useSharedValue(0);
@@ -55,7 +55,7 @@ export function Card({ feedback = 'none', showIndication, holdDown, onPress, onL
 
     const longPressFired = useRef(false);
 
-    const interactive = feedback !== 'none' || !!onPress || !!onLongPress;
+    const interactive = feedback === 'tilt' || !!onPress || !!onLongPress;
 
     const engaged = useDerivedValue(() => (pressed.value === 1 || holdDown ? 1 : 0));
 
@@ -69,8 +69,8 @@ export function Card({ feedback = 'none', showIndication, holdDown, onPress, onL
             return {
                 transform: [
                     { perspective: Math.max(cardWidth * TILT_PERSPECTIVE_FACTOR, 1) },
-                    { rotateX: `${withSpring(tiltX.value, cardTilt)}deg` },
-                    { rotateY: `${withSpring(tiltY.value, cardTilt)}deg` },
+                    { rotateX: withSpring(`${tiltX.value}deg`, cardTilt) },
+                    { rotateY: withSpring(`${tiltY.value}deg`, cardTilt) },
                 ],
             };
         }
@@ -107,9 +107,9 @@ export function Card({ feedback = 'none', showIndication, holdDown, onPress, onL
         tiltY.value = 0;
     }, [tiltX, tiltY, pressed]);
 
-    const handleLongPress = useCallback(() => {
+    const handleLongPress = useCallback((event: GestureResponderEvent) => {
         longPressFired.current = true;
-        onLongPress?.();
+        onLongPress?.(event);
     }, [onLongPress]);
 
     const handlePress = useCallback(() => {
