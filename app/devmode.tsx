@@ -37,6 +37,14 @@ export default function AdvancedSettingsScreen() {
                         trailing={<Icon name="chevron-right" size={22} color={theme.colors.onSurfaceVariantActions} />}
                         onPress={() => router.push('/dev/design-system')}
                     />
+                    <Divider style={{ marginLeft: 56 }} />
+                    <ListRow
+                        title="动态柔光预览"
+                        summary="查看粉蓝白 HyperOS 风格柔光组件"
+                        icon={<Icon name="blur" size={24} color={theme.colors.primary} />}
+                        trailing={<Icon name="chevron-right" size={22} color={theme.colors.onSurfaceVariantActions} />}
+                        onPress={() => router.push('/dev/hyper-glow')}
+                    />
                 </Card>
             </ScrollView>
 

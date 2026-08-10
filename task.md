@@ -1,779 +1,816 @@
-# Task: 实现 HyperOS 风格粉蓝白动态柔光背景
+# Task：为 Expo 项目实现 Android 下载目录文件导出
 
-请在当前 Expo / React Native 项目中实现一个可复用的动态柔光背景组件，视觉目标参考 HyperOS / 澎湃 OS 3 的柔和渐变光效。
+请直接检查当前 Expo / React Native 项目并完成实现，不要只给方案或示例代码，要实际修改项目代码。
 
-## 视觉目标
+## 目标
 
-最终效果由三个主要柔光团组成：
+项目只需要兼容：
 
-* 粉色柔光
-* 蓝色柔光
-* 白色高光
+* Android 10 / API 29 及以上
 
-三个光团需要：
+需要实现两个主要能力：
 
-* 大面积覆盖
-* 边缘非常柔和
-* 彼此自然融合
-* 不出现明显边界
-* 不像普通 `linear-gradient`
-* 不像霓虹灯
-* 不要高饱和
-* 不要赛博朋克感
-* 整体应该轻盈、柔和、干净、现代
+1. 保存图片到系统下载目录
+2. 导出 PDF 到系统下载目录
 
-希望视觉效果类似：
+最终文件统一保存到：
 
 ```text
-┌────────────────────────────┐
-│                  淡蓝蓝蓝   │
-│             白白白蓝蓝      │
-│       白白白白白            │
-│   粉粉粉白白                │
-│ 粉粉粉粉                    │
-└────────────────────────────┘
+Download/<当前 App 名称>/
 ```
 
-但实际效果不能是明显分区，而应该像光线在磨砂玻璃或白色材质下面扩散。
+例如：
+
+```text
+Download/MyApp/
+├── image-20260810-001.jpg
+├── image-20260810-002.png
+└── article-20260810.pdf
+```
+
+用户应该能够直接使用系统文件管理器看到这些文件。
 
 ---
 
-# 技术方案
+## 核心要求
 
-优先使用：
+不要直接操作：
+
+```text
+/storage/emulated/0/Download/
+```
+
+不要通过绝对路径直接写公共存储。
+
+Android 端必须使用：
+
+```text
+MediaStore
+ContentResolver
+MediaStore.Downloads
+RELATIVE_PATH
+```
+
+例如核心逻辑应该基于：
+
+```kotlin
+MediaStore.Downloads.EXTERNAL_CONTENT_URI
+```
+
+并设置：
+
+```kotlin
+MediaStore.Downloads.RELATIVE_PATH
+```
+
+保存路径类似：
+
+```text
+Download/MyApp
+```
+
+---
+
+## 权限要求
+
+Android 10+ 不要申请：
+
+```text
+WRITE_EXTERNAL_STORAGE
+READ_EXTERNAL_STORAGE
+MANAGE_EXTERNAL_STORAGE
+```
+
+特别禁止使用：
+
+```text
+MANAGE_EXTERNAL_STORAGE
+```
+
+不要要求用户开启：
+
+```text
+所有文件访问权限
+```
+
+也不要为了适配 MIUI / HyperOS 添加额外的文件访问权限。
+
+目标是在：
+
+* AOSP
+* MIUI
+* HyperOS
+* 其他 Android 10+ 系统
+
+上都通过 Android 官方 Scoped Storage / MediaStore 机制保存文件。
+
+---
+
+# 实现方式
+
+当前项目是 Expo 项目，并且允许使用：
 
 ```bash
-@shopify/react-native-skia
+npx expo run:android
 ```
 
-如果项目中还没有安装：
+编译原生代码。
 
-```bash
-npx expo install @shopify/react-native-skia
-```
+优先创建一个项目内部的 Local Expo Module。
 
-不要使用：
+不要为了这个功能引入大型第三方文件管理库。
 
-* WebView
-* HTML
-* CSS
-* WebGL 网页组件
-* React Bits 直接嵌入
-* Three.js
-
-需要直接使用 React Native Skia 原生绘制。
-
----
-
-# 组件
-
-新建类似：
+模块可以命名为类似：
 
 ```text
-src/components/effects/HyperGlowBackground.tsx
+expo-download-storage
 ```
 
-组件名称：
+或者根据当前项目命名风格决定。
 
-```tsx
-HyperGlowBackground
-```
-
-它需要作为普通 React Native 背景组件使用，例如：
-
-```tsx
-<View style={{ flex: 1 }}>
-  <HyperGlowBackground />
-
-  <View style={styles.content}>
-    ...
-  </View>
-</View>
-```
-
-或者：
-
-```tsx
-<HyperGlowBackground style={StyleSheet.absoluteFill} />
-```
-
-它不能阻挡任何触摸事件。
-
----
-
-# 核心实现
-
-背景首先使用非常浅的白色：
+目录尽量保持：
 
 ```text
-#FBFBFD
-```
-
-然后叠加三个巨大的 Radial Gradient。
-
-## 粉色光团
-
-颜色建议从下面范围开始调：
-
-```text
-中心：
-#FFB7D5
-
-中层：
-rgba(255, 196, 222, 0.55)
-
-外层：
-rgba(255, 220, 236, 0)
-```
-
-光团应该比较大，半径建议约为：
-
-```text
-屏幕宽度的 55% ~ 80%
-```
-
-默认位置：
-
-```text
-屏幕左下方
-```
-
-但不要完全固定在角落，应有一部分进入屏幕中央。
-
----
-
-## 蓝色光团
-
-颜色建议：
-
-```text
-中心：
-#AFCBFF
-
-中层：
-rgba(185, 215, 255, 0.55)
-
-外层：
-rgba(210, 230, 255, 0)
-```
-
-默认位置：
-
-```text
-屏幕右上方
-```
-
-半径略大于粉色。
-
-蓝色整体应该：
-
-* 很淡
-* 很通透
-* 偏天空蓝
-* 不要偏紫
-* 不要偏青
-
----
-
-## 白色光团
-
-白色不是普通背景，而是用于制造一种局部 Bloom / 高光。
-
-颜色：
-
-```text
-rgba(255,255,255,0.95)
-rgba(255,255,255,0.5)
-rgba(255,255,255,0)
-```
-
-默认位于：
-
-```text
-屏幕中央附近
-```
-
-白色光团可以比粉蓝稍小。
-
-它的作用是让粉色和蓝色之间产生：
-
-```text
-粉 → 粉白 → 白 → 蓝白 → 蓝
-```
-
-这种柔和过渡。
-
----
-
-# 光团形状
-
-不要让三个光团看起来像三个明显的圆。
-
-虽然可以使用 RadialGradient 实现，但最终效果需要通过：
-
-* 大半径
-* 多层透明渐变
-* 部分重叠
-* Blur
-* 位置偏移
-* 非均匀缩放
-
-让它看起来更像：
-
-```text
-不规则的大面积光雾
-```
-
-而不是：
-
-```text
-⭕ ⭕ ⭕
-```
-
-可以考虑使用：
-
-```tsx
-<Group transform={[{ scaleX: ... }, { scaleY: ... }]}>
-```
-
-或者椭圆形区域。
-
-粉色可以稍微横向拉宽。
-
-蓝色可以稍微纵向拉宽。
-
-白色可以比较圆。
-
----
-
-# Blur
-
-需要适量使用 Blur，让光团边缘彻底消失。
-
-建议从：
-
-```text
-blur = 25 ~ 50
-```
-
-开始调。
-
-不要 Blur 得过度，以至于整个屏幕只剩下一片均匀颜色。
-
-最终仍然应该隐约能感觉到：
-
-```text
-粉色来源于左下
-蓝色来源于右上
-白色位于中间
+modules/
+└── expo-download-storage/
 ```
 
 ---
 
-# 动画
+# Native Module API
 
-三个光团需要非常缓慢地漂移。
+请封装简洁的 TypeScript API。
 
-重点：
-
-**不要做明显动画。**
-
-用户应该是过几秒之后才会意识到背景正在变化。
-
-推荐动画周期：
-
-```text
-18 ~ 35 秒
-```
-
-不要：
-
-```text
-2 秒
-4 秒
-6 秒
-```
-
-这种快速循环。
-
----
-
-# 粉色动画
-
-大致运动轨迹：
-
-```text
-左下
-↓
-向右上移动一点
-↓
-稍微放大
-↓
-再缓慢回去
-```
-
-移动范围不要超过屏幕尺寸的：
-
-```text
-8% ~ 15%
-```
-
-Scale 建议：
-
-```text
-1.0 → 1.08 → 1.0
-```
-
----
-
-# 蓝色动画
-
-与粉色方向错开。
-
-例如：
-
-```text
-右上
-↓
-向左下轻微移动
-↓
-稍微缩小
-↓
-再返回
-```
-
-不要让粉蓝两个光团同步运动。
-
-否则视觉效果会像整个背景在平移。
-
----
-
-# 白色动画
-
-白色高光运动幅度最小。
-
-例如：
-
-```text
-左右漂移 3% ~ 6%
-上下漂移 2% ~ 5%
-```
-
-白色主要负责改变光线融合关系。
-
----
-
-# 动画节奏
-
-必须使用：
-
-```text
-easeInOut
-```
-
-或者非常接近自然呼吸感的曲线。
-
-不要使用：
-
-```text
-linear
-```
-
-做明显机械移动。
-
-三个光团的：
-
-```text
-duration
-delay
-movement range
-scale range
-```
-
-都应该略有差异。
-
-例如：
-
-```text
-粉色：24 秒
-蓝色：31 秒
-白色：19 秒
-```
-
-避免出现明显周期同步。
-
----
-
-# 颜色控制
-
-整体颜色一定要保持低饱和。
-
-错误效果：
-
-```text
-#FF00AA
-#0066FF
-```
-
-这种颜色太亮、太电子、太廉价。
-
-应该更接近：
-
-```text
-粉：
-#F7BFD8
-#FFD4E5
-
-蓝：
-#BFD5FF
-#D5E5FF
-
-白：
-#FFFFFF
-```
-
-整个画面的最终效果应该主要仍然是：
-
-```text
-白色
-```
-
-粉蓝只作为柔光。
-
-大致视觉占比可以理解为：
-
-```text
-白色 55%
-
-蓝色 25%
-
-粉色 20%
-```
-
-这里不是严格面积比例，只是视觉权重。
-
----
-
-# 避免渐变色带
-
-如果出现明显：
-
-```text
-banding
-色阶
-一圈一圈的渐变
-```
-
-需要继续调整：
-
-* gradient stops
-* opacity
-* blur
-* radius
-
-尽量使变化非常平滑。
-
-如果 Skia 实现方便，也可以加入非常微弱的噪点来减少 banding，但不要让用户肉眼看到噪点。
-
----
-
-# 层级关系
-
-建议大致结构：
-
-```text
-Canvas
-
-└── Base white background
-
-    ├── Pink glow
-
-    ├── Blue glow
-
-    ├── White bloom
-
-    └── optional very subtle overlay
-```
-
-粉蓝两个光团需要明显重叠。
-
-不要：
-
-```text
-粉色在左边
-蓝色在右边
-中间没有交集
-```
-
-重叠区域才是整个效果最重要的地方。
-
----
-
-# Blend
-
-如果 Skia 的 BlendMode 效果自然，可以尝试：
-
-```text
-screen
-plus
-softLight
-```
-
-但必须实际观察效果。
-
-不要为了使用 BlendMode 而使用。
-
-如果普通透明叠加已经很好看，就保持简单实现。
-
-最终标准只有：
-
-```text
-看起来像柔光，而不是彩色图层。
-```
-
----
-
-# 尺寸适配
-
-禁止写死：
-
-```text
-390
-844
-```
-
-这种设备尺寸。
-
-必须通过组件实际宽高动态计算：
-
-```tsx
-onLayout
-```
-
-或者其他可靠方式获取容器大小。
-
-横屏、竖屏、平板都要能够正常扩展。
-
----
-
-# Reduce Motion
-
-需要尊重：
-
-```text
-Reduce Motion
-```
-
-如果系统开启减少动态效果：
-
-* 保留粉蓝白柔光
-* 停止漂移动画
-* 使用静态位置
-
-不要直接移除整个背景。
-
----
-
-# API
-
-组件至少支持：
-
-```tsx
-<HyperGlowBackground
-  animated
-  intensity={1}
-  speed={1}
-/>
-```
-
-建议 Props：
+至少实现：
 
 ```ts
-interface HyperGlowBackgroundProps {
-  animated?: boolean;
-  intensity?: number;
-  speed?: number;
+saveImageToDownloads(...)
+savePdfToDownloads(...)
+```
 
-  pinkColor?: string;
-  blueColor?: string;
+推荐统一底层实现成：
 
-  style?: StyleProp<ViewStyle>;
+```ts
+copyFileToDownloads(
+  sourceUri: string,
+  fileName: string,
+  mimeType: string
+): Promise<DownloadResult>
+```
+
+然后图片和 PDF API 调用这个通用实现。
+
+例如：
+
+```ts
+interface DownloadResult {
+  uri: string;
+  fileName: string;
 }
 ```
 
-默认：
+返回的：
+
+```ts
+uri
+```
+
+应该允许是：
 
 ```text
-animated = true
-intensity = 1
-speed = 1
+content://media/...
+```
+
+不要强制转换成：
+
+```text
+/storage/emulated/0/...
 ```
 
 ---
 
-# Preset
+# 图片保存
 
-如果方便，可以额外支持：
+图片可能来自：
 
-```tsx
-<HyperGlowBackground preset="hyperos" />
+1. App cache
+2. expo-file-system 下载后的临时文件
+3. 图片编辑后的临时输出
+4. 截图生成的文件
+
+例如：
+
+```text
+file:///data/user/0/com.xxx.xxx/cache/image.jpg
 ```
 
-默认 preset 就按照本 Task 中描述的粉蓝白效果实现。
+调用：
+
+```ts
+await saveImageToDownloads(
+  localUri,
+  'example.jpg'
+);
+```
+
+最终保存为：
+
+```text
+Download/MyApp/example.jpg
+```
+
+需要正确处理：
+
+```text
+.jpg  -> image/jpeg
+.jpeg -> image/jpeg
+.png  -> image/png
+.webp -> image/webp
+```
+
+如果调用者已经提供 MIME type，则优先使用调用者提供的值。
 
 ---
 
-# 性能要求
+# PDF 导出
 
-这个效果不会在 App 中大量出现，因此：
+PDF 通常会先在 App 私有目录或 cache 中生成。
 
-**优先保证视觉效果。**
-
-不需要为了极端优化而：
-
-* 删除 Blur
-* 删除动画
-* 降低到非常粗糙的渐变
-
-但仍然避免明显不合理的实现，例如：
-
-* 每帧 React setState
-* 大量 JS 对象创建
-* JS 定时器驱动 60 FPS
-* 每一帧重新生成 Gradient
-* 多个全屏 Canvas 嵌套
-
-动画尽量在 UI / Skia / Reanimated 层完成。
-
----
-
-# 使用区域
-
-该组件未来主要用于：
-
-* Hero 区域
-* AI 功能页
-* 大型特殊卡片
-* 弹窗背景
-* 欢迎页
-* 设置页面顶部
-* 特殊状态页面
-
-不会作为每一个普通列表 Item 的背景。
-
-因此可以适当提高视觉质量。
-
----
-
-# 最终视觉检查
-
-完成后请认真检查以下问题。
-
-## 正确效果
-
-应该让人感觉：
+例如：
 
 ```text
-白色空间中，
-粉色与蓝色柔和的光正在缓慢流动，
-中央有白色光照亮两者，
-光线彼此融合，
-画面非常轻盈、柔软、通透。
+file:///data/user/0/com.xxx.xxx/cache/export.pdf
 ```
 
-用户第一眼应该觉得：
+然后：
 
-```text
-“这个背景很好看。”
+```ts
+await savePdfToDownloads(
+  pdfUri,
+  'article.pdf'
+);
 ```
 
-而不是：
+最终得到：
 
 ```text
-“这里有三个渐变圆。”
+Download/MyApp/article.pdf
+```
+
+MIME type：
+
+```text
+application/pdf
 ```
 
 ---
 
-## 必须避免
+# 不要使用 Base64 搬运大文件
 
-禁止做成：
-
-### 1. RGB 灯效
+图片和 PDF 不要采用：
 
 ```text
-高饱和粉
-+
-高饱和蓝
+file
+↓
+base64
+↓
+JS
+↓
+Native Bridge
+↓
+decode
+↓
+MediaStore
 ```
 
-不要。
+这种方案。
 
-### 2. 极光
+原因是：
 
-不要出现非常明显的：
+* 占用额外内存
+* Base64 数据体积膨胀
+* 大图片和 PDF 容易造成性能问题
+* 没有必要经过 JS 内存复制
+
+应该采用：
 
 ```text
-波浪
-条带
-山峰
+本地临时文件
+        ↓
+Native Module
+        ↓
+InputStream
+        ↓
+OutputStream
+        ↓
+MediaStore
 ```
 
-这不是 Aurora。
+Kotlin 中通过流复制文件。
 
-### 3. 彩虹渐变
+建议：
 
-只能围绕：
-
-```text
-粉
-蓝
-白
+```kotlin
+inputStream.use { input ->
+    outputStream.use { output ->
+        input.copyTo(output)
+    }
+}
 ```
 
-不要加入：
-
-```text
-绿
-黄
-橙
-红
-```
-
-### 4. 快速动画
-
-不能让背景抢用户注意力。
-
-### 5. 明显圆形
-
-不能看到三个圆。
-
-### 6. 纯线性渐变
-
-不要退化成：
-
-```css
-linear-gradient(pink, blue)
-```
-
-那不是目标效果。
+或者使用合理大小的 buffer。
 
 ---
 
-# 最终交付
+# Android MediaStore 写入流程
 
-完成后请给出：
+Android 10+ 使用：
 
-1. `HyperGlowBackground.tsx` 完整实现
-2. 所有新增依赖
-3. 一个独立 Demo 页面
-4. Demo 中展示白色内容卡片叠在光效之上的效果
-5. 保证 TypeScript 无错误
-6. 保证 Expo Android / iOS 可运行
-7. 不要改动与本任务无关的页面或组件
+```kotlin
+ContentValues()
+```
 
-视觉效果优先于极端性能优化。
+至少写入：
 
-最重要的目标：
+```kotlin
+DISPLAY_NAME
+MIME_TYPE
+RELATIVE_PATH
+IS_PENDING
+```
 
-> 做出一种类似澎湃 OS 3 的粉色、蓝色、白色大面积柔光互相融合，并以极慢速度自然漂移的背景效果。它应该像光线在白色磨砂材质下面流动，而不是三个普通渐变圆。
+逻辑类似：
+
+```text
+创建 MediaStore 项目
+        ↓
+IS_PENDING = 1
+        ↓
+打开 OutputStream
+        ↓
+复制文件内容
+        ↓
+flush / close
+        ↓
+IS_PENDING = 0
+```
+
+写入成功之后才设置：
+
+```kotlin
+IS_PENDING = 0
+```
+
+如果写入过程中发生异常：
+
+```text
+必须删除已经 insert 的 MediaStore 条目
+```
+
+避免用户 Download 文件夹中留下损坏的半成品。
+
+---
+
+# sourceUri 处理
+
+需要至少正确支持：
+
+```text
+file:///...
+```
+
+形式。
+
+如果当前项目实际还存在：
+
+```text
+content://...
+```
+
+来源，也请顺手支持。
+
+对于：
+
+```text
+file://
+```
+
+可以通过文件 InputStream 读取。
+
+对于：
+
+```text
+content://
+```
+
+通过：
+
+```kotlin
+ContentResolver.openInputStream()
+```
+
+读取。
+
+不要假设所有输入都是绝对文件路径。
+
+---
+
+# 文件重名处理
+
+需要考虑：
+
+```text
+article.pdf
+```
+
+已经存在的情况。
+
+不要直接覆盖未知文件。
+
+可以优先让 MediaStore 自己处理，或者实现清晰、安全的重命名策略：
+
+```text
+article.pdf
+article (1).pdf
+article (2).pdf
+```
+
+如果 Android MediaStore 当前行为已经能够可靠避免覆盖，则不要重复实现复杂逻辑。
+
+---
+
+# 文件名安全
+
+对传入的：
+
+```ts
+fileName
+```
+
+做基本检查。
+
+避免：
+
+```text
+../
+/
+\
+```
+
+等路径穿越或非法目录拼接。
+
+调用者只能指定文件名，不能通过：
+
+```ts
+fileName
+```
+
+改变目标目录。
+
+所有文件必须始终保存到：
+
+```text
+Download/<AppName>/
+```
+
+---
+
+# App 文件夹名称
+
+不要在很多地方硬编码：
+
+```text
+MyApp
+```
+
+请定义统一配置。
+
+优先从当前项目：
+
+```text
+app.json
+app.config.ts
+```
+
+或者已有常量中获取 App 显示名称。
+
+如果原生侧不方便直接读取，可以由 TypeScript 层统一提供固定的安全目录名。
+
+目录名需要经过清理，避免特殊字符导致路径异常。
+
+---
+
+# TypeScript 层最终体验
+
+业务代码应该尽可能简单。
+
+例如：
+
+```ts
+const result = await saveImageToDownloads(
+  imageUri,
+  'photo.jpg'
+);
+
+console.log(result.uri);
+```
+
+PDF：
+
+```ts
+const result = await savePdfToDownloads(
+  pdfUri,
+  'article.pdf'
+);
+```
+
+业务页面不应该知道：
+
+```text
+MediaStore
+RELATIVE_PATH
+ContentResolver
+```
+
+这些 Android 实现细节。
+
+---
+
+# 错误处理
+
+Native Module 不要简单：
+
+```text
+return false
+```
+
+需要把明确错误抛给 JS。
+
+例如：
+
+```text
+SOURCE_NOT_FOUND
+FAILED_TO_CREATE_MEDIASTORE_ENTRY
+FAILED_TO_OPEN_INPUT_STREAM
+FAILED_TO_OPEN_OUTPUT_STREAM
+FAILED_TO_WRITE_FILE
+```
+
+TypeScript 层可以进一步统一成 Error。
+
+同时不要疯狂打印日志。
+
+仅保留真正有帮助的错误日志。
+
+---
+
+# UI 行为
+
+保存成功之后，业务层应该可以获得：
+
+```ts
+{
+  uri,
+  fileName
+}
+```
+
+然后当前 UI 可以显示类似：
+
+```text
+已保存到 Download/MyApp/
+```
+
+不要显示虚假的绝对路径。
+
+如果需要显示路径，就显示用户可理解的逻辑路径：
+
+```text
+Download/MyApp/article.pdf
+```
+
+---
+
+# Expo 注意事项
+
+这是原生模块，所以：
+
+```text
+Expo Go
+```
+
+不能作为最终测试环境。
+
+应该使用：
+
+```bash
+npx expo run:android
+```
+
+或者已有 Dev Build。
+
+如果当前项目已经存在：
+
+```text
+android/
+```
+
+目录，请检查当前工程结构后直接集成，不要破坏已有原生配置。
+
+如果项目使用：
+
+```text
+prebuild
+```
+
+需要确保重新 prebuild 后模块仍然能够正常工作。
+
+---
+
+# 不要做的事情
+
+禁止：
+
+```text
+MANAGE_EXTERNAL_STORAGE
+```
+
+禁止要求：
+
+```text
+所有文件访问权限
+```
+
+禁止直接：
+
+```text
+/storage/emulated/0/Download
+```
+
+禁止为了保存图片和 PDF 请求：
+
+```text
+READ_MEDIA_IMAGES
+```
+
+禁止：
+
+```text
+WRITE_EXTERNAL_STORAGE
+```
+
+禁止通过 Base64 在 JS / Native 之间搬运整个 PDF 或大图片。
+
+禁止把整个文件加载到：
+
+```text
+ByteArray
+```
+
+之后再一次性写出。
+
+必须使用流式复制。
+
+---
+
+# 验收测试
+
+完成以后实际检查以下情况。
+
+## 测试 1：JPEG
+
+输入：
+
+```text
+cache/test.jpg
+```
+
+调用保存。
+
+应该出现：
+
+```text
+Download/MyApp/test.jpg
+```
+
+---
+
+## 测试 2：PNG
+
+输入：
+
+```text
+cache/test.png
+```
+
+最终：
+
+```text
+Download/MyApp/test.png
+```
+
+---
+
+## 测试 3：PDF
+
+输入：
+
+```text
+cache/export.pdf
+```
+
+最终：
+
+```text
+Download/MyApp/export.pdf
+```
+
+文件能够被正常 PDF 阅读器打开。
+
+---
+
+## 测试 4：大文件
+
+至少用几十 MB 的图片/PDF 或测试文件确认：
+
+* 不会 Base64
+* 不会明显产生超大内存峰值
+* 不会因为 JS Bridge 复制整个文件
+* 使用 stream copy
+
+---
+
+## 测试 5：权限
+
+Android Manifest 中确认不存在：
+
+```text
+MANAGE_EXTERNAL_STORAGE
+WRITE_EXTERNAL_STORAGE
+READ_EXTERNAL_STORAGE
+```
+
+安装后不应该主动弹出：
+
+```text
+所有文件访问权限
+存储权限
+文件和媒体权限
+```
+
+保存文件本身应该能够直接完成。
+
+---
+
+## 测试 6：HyperOS
+
+重点检查小米 MIUI / HyperOS：
+
+保存图片：
+
+```text
+Download/MyApp/test.jpg
+```
+
+保存 PDF：
+
+```text
+Download/MyApp/test.pdf
+```
+
+确保文件管理器中可以正常看到和打开。
+
+不要针对 HyperOS 写特殊 hack。
+
+---
+
+# 最后要求
+
+请直接：
+
+1. 检查当前项目结构
+2. 找出现有图片保存、PDF 导出相关代码
+3. 创建/完善 Local Expo Module
+4. 实现 Android MediaStore 写入
+5. 封装 TypeScript API
+6. 替换旧的保存逻辑
+7. 删除不必要的存储权限
+8. 检查 AndroidManifest / app.json / app.config
+9. 编译检查 TypeScript 和 Kotlin
+10. 修复所有由本次修改引入的错误
+
+不要只告诉我应该修改哪些文件。
+
+直接修改。
+
+尽量保持现有项目代码风格，不要顺手重构无关代码。
+
+最终向我汇报：
+
+* 修改了哪些文件
+* 图片保存流程
+* PDF 保存流程
+* 是否存在任何存储权限
+* MediaStore 使用方式
+* 编译是否通过
+* 还有没有已知问题

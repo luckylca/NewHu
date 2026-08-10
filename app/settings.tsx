@@ -17,6 +17,8 @@ export default function SettingsScreen() {
     const filterPaid = useSettingStore((state) => state.isPaid);
     const setFilterAds = useSettingStore((state) => state.setAds);
     const setFilterPaid = useSettingStore((state) => state.setPaid);
+    const deduplicateFeed = useSettingStore((state) => state.deduplicateFeed);
+    const setDeduplicateFeed = useSettingStore((state) => state.setDeduplicateFeed);
     const trailingChevron = <Icon name="chevron-right" size={22} color={theme.colors.onSurfaceVariantActions} />;
 
     return (
@@ -48,6 +50,14 @@ export default function SettingsScreen() {
                         summary="过滤需要付费阅读的内容"
                         trailing={<Switch value={filterPaid} interactive={false} />}
                         onPress={() => setFilterPaid(!filterPaid)}
+                    />
+                    <Divider style={{ marginLeft: 60 }} />
+                    <SettingRow
+                        icon="content-duplicate"
+                        title="去除重复推送"
+                        summary="不再展示已经推送过的文章和回答"
+                        trailing={<Switch value={deduplicateFeed} interactive={false} />}
+                        onPress={() => setDeduplicateFeed(!deduplicateFeed)}
                     />
                 </SettingsGroup>
 

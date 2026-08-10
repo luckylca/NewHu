@@ -4,7 +4,10 @@ import { EMOJI_URL_MAP } from '@/src/constants/emoji';
 import { Icon, Menu } from '@/src/ui';
 import { PressIndication, Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
+import { notify } from '@/src/stores/useNotificationStore';
+import { htmlToPlainText } from '@/src/utils/contentExport';
 import { short } from '@/src/utils/haptics';
+import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Image, Pressable, View } from 'react-native';
@@ -89,6 +92,17 @@ export const CommentItem = memo(function CommentItem({ item, onOpenReplies, onRe
         onReply?.(item.id);
     }, [item.id, onReply]);
 
+    const copyComment = useCallback(async () => {
+        try {
+            const text = htmlToPlainText(item.content) || item.content;
+            await Clipboard.setStringAsync(text);
+            notify('已复制评论');
+        } catch (error) {
+            console.error('复制评论失败:', error);
+            notify('复制评论失败，请重试');
+        }
+    }, [item.content]);
+
     const openAuthor = useCallback(() => {
         if (!item.authorUrlToken) return;
         router.push({ pathname: '/people', params: { urlToken: item.authorUrlToken } });
@@ -125,6 +139,7 @@ export const CommentItem = memo(function CommentItem({ item, onOpenReplies, onRe
                     onClose={() => setMenuVisible(false)}
                     anchor={menuAnchor}
                     items={[
+                        { label: '复制评论', onPress: () => void copyComment() },
                         { label: '回复', onPress: openReply },
                         { label: liked ? '取消点赞' : '点赞', disabled: item.isAuthor, onPress: toggleLike },
                     ]}

@@ -4,6 +4,7 @@ import type { FeedDetail } from "@/src/types/zhihu";
 import ImageReanimatedModal from "@/src/components/ImageReanimatedModal";
 import LoadingView from "@/src/components/LoadingView";
 import { useContentStore } from "@/src/stores/useContentStore";
+import { useExportContentStore } from "@/src/stores/useExportContentStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Image, Pressable, ScrollView, useWindowDimensions, View } from "react-native";
@@ -13,6 +14,7 @@ import { notify } from '@/src/stores/useNotificationStore';
 import { PressIndication, Text } from "@/src/ui/primitives";
 import type { IconName } from "@/src/ui/primitives";
 import { useTheme } from "@/src/ui/theme";
+import { exportImage, exportPdf } from '@/src/utils/contentExport';
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import RenderHtml from 'react-native-render-html';
 import { scheduleOnRN } from "react-native-worklets";
@@ -129,11 +131,13 @@ export default function Item() {
     const router = useRouter();
     const theme = useTheme();
     const primaryText = theme.colors.onBackground;
-    const secondaryText = theme.colors.onBackgroundVariant;
+    const secondaryText = theme.colors.onSurfaceSecondary;
 
     const [origin, setOrigin] = useState({ x: 0, y: 0, width: 0, height: 0 });
     const [modalVisible, setModalVisible] = useState(false);
     const [imageUrl, setImageUrl] = useState("");
+    const [imageExporting, setImageExporting] = useState(false);
+    const [documentExporting, setDocumentExporting] = useState(false);
     const { width } = useWindowDimensions();
 
     const [readData, setReadData] = useState<FeedDetail | null>(null);
@@ -145,6 +149,7 @@ export default function Item() {
     const [arrowEffects, setArrowEffects] = useState<ArrowEffect[]>([]);
     const arrowIdRef = useRef(0);
     const titlePressed = useSharedValue(0);
+    const setPendingExport = useExportContentStore((state) => state.setPending);
 
     useEffect(() => {
         addReadHistory(String(id), type === 'answer' ? 'answer' : 'article');
@@ -341,6 +346,55 @@ export default function Item() {
         });
     };
 
+    const openCopyPage = () => {
+        if (!readData) return;
+        setPendingExport({
+            id: String(readData.id),
+            type,
+            title: type === 'answer' ? readData.questionTitle : readData.title,
+            authorName: readData.authorName,
+            updatedTime: readData.updatedTime,
+            htmlContent: readData.content || '<p>暂无正文内容</p>',
+        });
+        router.push({ pathname: '/select-text/[type]/[id]', params: { type, id: String(readData.id) } });
+    };
+
+    const runDocumentExport = async () => {
+        if (!readData || documentExporting) return;
+        setDocumentExporting(true);
+        notify('正在导出文档…');
+        try {
+            const result = await exportPdf({
+                id: String(readData.id),
+                title: type === 'answer' ? readData.questionTitle : readData.title,
+                authorName: readData.authorName,
+                updatedTime: readData.updatedTime,
+                htmlContent: readData.content || '<p>暂无正文内容</p>',
+            });
+            notify(`已保存到 Download/NewHu/${result.fileName}`);
+        } catch (exportError) {
+            console.error('导出文档失败', exportError);
+            notify(exportError instanceof Error ? exportError.message : '导出失败，请重试');
+        } finally {
+            setDocumentExporting(false);
+        }
+    };
+
+    const runImageExport = async () => {
+        if (!imageUrl || imageExporting) return;
+        setImageExporting(true);
+        notify('正在保存图片…');
+        try {
+            const result = await exportImage(imageUrl, imageUrl);
+            notify(`已保存到 Download/NewHu/pictures/${result.fileName}`);
+        } catch (exportError) {
+            console.error('导出图片失败', exportError);
+            notify(exportError instanceof Error ? exportError.message : '图片导出失败，请重试');
+        } finally {
+            setImageExporting(false);
+        }
+    };
+
     // 1. 缓存 tagsStyles
     const tagsStyles = useMemo(() => ({
         body: { color: primaryText, fontSize: 16, lineHeight: 28 },
@@ -376,6 +430,7 @@ export default function Item() {
                 url={imageUrl}
                 origin={origin}
                 onClose={() => setModalVisible(false)}
+                onLongPress={() => void runImageExport()}
             />
 
             {/* 顶部导航栏 */}
@@ -400,13 +455,20 @@ export default function Item() {
                 onClose={() => setMenuVisible(false)}
                 anchor={menuAnchor}
                 items={[
-                    { label: '复制内容', onPress: () => { console.log('复制内容'); } },
+                    { label: '复制内容', onPress: openCopyPage },
+                    { label: '导出文档', onPress: () => void runDocumentExport(), disabled: documentExporting },
                     {
                         label: '取消点赞',
                         onPress: () => {
+                            if (!voted) {
+                                notify('当前内容还没有点赞');
+                                return;
+                            }
                             cancelVoteupAction(String(id));
                             setVoted(false);
-                            setVoteCount((count: number) => count - 1);
+                            setVoteCount((count: number) => Math.max(0, count - 1));
+                            setReadData((prev) => prev ? { ...prev, voted: false, voteCount: Math.max(0, Number(prev.voteCount || 0) - 1) } : prev);
+                            notify('已取消点赞');
                         }
                     },
                 ]}

@@ -36,6 +36,8 @@ interface SettingState {
     isPaid: boolean; // 是否开启付费内容过滤
     setAds: (enabled: boolean) => void;
     setPaid: (enabled: boolean) => void;
+    deduplicateFeed: boolean; // 是否剔除已经推送过的文章和回答
+    setDeduplicateFeed: (enabled: boolean) => void;
 
     mode: 'normal' | 'card';
     setMode: (mode: 'normal' | 'card') => void; // 设置模式的函数
@@ -54,7 +56,6 @@ export const useSettingStore = create<SettingState>()(
             setWallpaperUri: (uri) => set({ wallpaperUri: uri }),
             wallpaperBlurLevel: 'medium',
             setWallpaperBlurLevel: (level) => set({ wallpaperBlurLevel: level }),
-
             disableAnimations: false,
             setDisableAnimations: (disabled) => set({ disableAnimations: disabled }),
             commentDrawerAnimation: true,
@@ -67,6 +68,8 @@ export const useSettingStore = create<SettingState>()(
             isPaid: true,
             setAds: (enabled) => set({ isAds: enabled }),
             setPaid: (enabled) => set({ isPaid: enabled }),
+            deduplicateFeed: true,
+            setDeduplicateFeed: (enabled) => set({ deduplicateFeed: enabled }),
 
             mode: 'normal', // 默认模式
             setMode: (mode) => set({ mode }),
@@ -84,6 +87,7 @@ export const useSettingStore = create<SettingState>()(
                 delete migrated.wallpaperColor;
                 delete migrated.wallpaperOpacity;
                 delete migrated.useMonetText;
+                delete migrated.downloadDirectoryUri;
                 return { ...migrated, wallpaperBlurLevel } as unknown as SettingState;
             },
             // 所有设置字段都是可序列化的，整体持久化即可

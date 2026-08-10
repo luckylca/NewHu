@@ -16,7 +16,7 @@ const PeopleScreen = () => {
     const {urlToken} = useLocalSearchParams<PeopleParams>()
     const theme = useTheme()
     const primaryText = theme.colors.onBackground
-    const secondaryText = theme.colors.onBackgroundVariant
+    const secondaryText = theme.colors.onSurfaceSecondary
     const router = useRouter()
     const [userInfo, setUserInfo] = React.useState<any>(null)
     const [offsetString, setOffsetString] = React.useState("")

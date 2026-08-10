@@ -90,14 +90,14 @@ export function TopAppBar({ title = '', largeTitle, subtitle, large = false, scr
                     {navigation ?? (hasBack ? <BackAction onPress={typeof back === 'function' ? back : undefined} /> : null)}
                 </View>
                 {large ? (
-                    <Animated.View style={[{ alignItems: 'center', paddingHorizontal: 26, pointerEvents: 'none' }, smallTitleStyle]}>
+                    <Animated.View style={[{ alignItems: 'center', maxWidth: '68%', minWidth: 0, pointerEvents: 'none' }, smallTitleStyle]}>
                         <TitleText>{title}</TitleText>
-                        {subtitle != null && <Text type="body2" color={subtitleColor}>{subtitle}</Text>}
+                        {subtitle != null && <Text type="body2" color={subtitleColor} numberOfLines={1} ellipsizeMode="tail">{subtitle}</Text>}
                     </Animated.View>
                 ) : (
-                    <View style={{ alignItems: 'center', paddingHorizontal: 26 }}>
+                    <View style={{ alignItems: 'center', maxWidth: '68%', minWidth: 0 }}>
                         <TitleText>{title}</TitleText>
-                        {subtitle != null && <Text type="body2" color={subtitleColor}>{subtitle}</Text>}
+                        {subtitle != null && <Text type="body2" color={subtitleColor} numberOfLines={1} ellipsizeMode="tail">{subtitle}</Text>}
                     </View>
                 )}
                 <View style={{ position: 'absolute', right: 0, paddingRight: theme.spacing.lg, flexDirection: 'row', alignItems: 'center' }}>{actions}</View>
@@ -106,10 +106,10 @@ export function TopAppBar({ title = '', largeTitle, subtitle, large = false, scr
             {/* Large title (collapsing, in flow) */}
             {large && (
                 <Animated.View style={[{ paddingHorizontal: 26, paddingBottom: 4 }, largeAlphaStyle]}>
-                    <Text type="title1" color={titleColor}>
+                    <Text type="title1" color={titleColor} numberOfLines={1} ellipsizeMode="tail">
                         {largeTitle ?? title}
                     </Text>
-                    {subtitle != null && <Text type="body2" color={subtitleColor}>{subtitle}</Text>}
+                    {subtitle != null && <Text type="body2" color={subtitleColor} numberOfLines={1} ellipsizeMode="tail">{subtitle}</Text>}
                 </Animated.View>
             )}
         </View>
@@ -119,7 +119,14 @@ export function TopAppBar({ title = '', largeTitle, subtitle, large = false, scr
 function TitleText({ children }: { children: ReactNode }) {
     const theme = useTheme();
     return (
-        <Text type="title3" weight="medium" color={theme.colors.onBackground} style={{ textAlign: 'center' }}>
+        <Text
+            type="title3"
+            weight="medium"
+            color={theme.colors.onBackground}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            style={{ textAlign: 'center' }}
+        >
             {children}
         </Text>
     );

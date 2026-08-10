@@ -1,0 +1,11 @@
+{
+  "name": "expo-download-storage",
+  "version": "1.0.0",
+  "description": "Save local files to the Android Download directory through MediaStore.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "peerDependencies": {
+    "expo": "*",
+    "react-native": "*"
+  }
+}

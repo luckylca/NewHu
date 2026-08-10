@@ -13,8 +13,8 @@ export interface AppSegmentedControlProps {
     contour?: boolean;
 }
 
-const CONTROL_HEIGHT = 46;
-const CONTROL_PADDING = 3;
+const CONTROL_HEIGHT = 56;
+const CONTROL_PADDING = 4;
 
 export function SegmentedControl({ tabs, selected = 0, onSelect }: AppSegmentedControlProps) {
     const theme = useTheme();
@@ -43,8 +43,8 @@ export function SegmentedControl({ tabs, selected = 0, onSelect }: AppSegmentedC
                 width: '100%',
                 height: CONTROL_HEIGHT,
                 padding: CONTROL_PADDING,
-                borderRadius: 15,
-                backgroundColor: theme.colors.surfaceContainerHigh,
+                borderRadius: 18,
+                backgroundColor: theme.colors.secondaryVariant,
                 overflow: 'hidden',
             }}
         >
@@ -57,8 +57,8 @@ export function SegmentedControl({ tabs, selected = 0, onSelect }: AppSegmentedC
                             top: CONTROL_PADDING,
                             bottom: CONTROL_PADDING,
                             left: 0,
-                            borderRadius: 12,
-                            backgroundColor: theme.colors.surfaceContainerHighest,
+                            borderRadius: 14,
+                            backgroundColor: theme.colors.surfaceContainer,
                         },
                         indicatorStyle,
                     ]}
@@ -74,7 +74,7 @@ export function SegmentedControl({ tabs, selected = 0, onSelect }: AppSegmentedC
                             accessibilityRole="tab"
                             accessibilityState={{ selected: isSelected }}
                             onPress={() => onSelect?.(index)}
-                            style={{ flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 12 }}
+                            style={{ flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 14 }}
                         >
                             <Text
                                 type="body1"

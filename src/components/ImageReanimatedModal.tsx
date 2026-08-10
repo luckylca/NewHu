@@ -1,4 +1,5 @@
 import ImageLayout from '@/src/components/ImageLayout';
+import { Menu } from '@/src/ui';
 import React, { useEffect } from 'react';
 import { BackHandler, Modal, StatusBar, StyleSheet, useWindowDimensions } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -16,17 +17,20 @@ import { useTheme } from '@/src/ui/theme';
 
 type ImageOrigin = { x: number; y: number; width: number; height: number };
 
-const ImageReanimatedModal = ({ origin, visible, url, onClose }: {
+const ImageReanimatedModal = ({ origin, visible, url, onClose, onLongPress }: {
     origin: ImageOrigin;
     visible: boolean;
     url: string;
     onClose: () => void;
+    onLongPress?: () => void;
 }) => {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const insets = useSafeAreaInsets();
     const theme = useTheme();
     const progress = useSharedValue(0);
     const [mounted, setMounted] = React.useState(visible);
+    const [menuVisible, setMenuVisible] = React.useState(false);
+    const [menuAnchor, setMenuAnchor] = React.useState({ x: 0, y: 0, width: 1, height: 1 });
 
     useEffect(() => {
         if (visible) {
@@ -39,6 +43,10 @@ const ImageReanimatedModal = ({ origin, visible, url, onClose }: {
             if (finished) scheduleOnRN(setMounted, false);
         });
     }, [visible, progress]);
+
+    useEffect(() => {
+        if (!visible) setMenuVisible(false);
+    }, [visible]);
 
     useEffect(() => {
         if (!mounted) return;
@@ -74,6 +82,12 @@ const ImageReanimatedModal = ({ origin, visible, url, onClose }: {
 
     if (!mounted || !url) return null;
 
+    const openImageMenu = (x: number, y: number) => {
+        if (!onLongPress) return;
+        setMenuAnchor({ x, y, width: 1, height: 1 });
+        setMenuVisible(true);
+    };
+
     return (
         <Modal
             visible={mounted}
@@ -87,8 +101,18 @@ const ImageReanimatedModal = ({ origin, visible, url, onClose }: {
                 <StatusBar barStyle="light-content" backgroundColor="#000000" />
                 <Animated.View style={[styles.backdrop, backdropStyle]} />
                 <Animated.View style={[styles.container, containerStyle]}>
-                    <ImageLayout uri={url} onClose={onClose} />
+                    <ImageLayout
+                        uri={url}
+                        onClose={onClose}
+                        onLongPress={openImageMenu}
+                    />
                 </Animated.View>
+                <Menu
+                    visible={menuVisible}
+                    onClose={() => setMenuVisible(false)}
+                    anchor={menuAnchor}
+                    items={[{ label: '导出图片', onPress: onLongPress }]}
+                />
             </GestureHandlerRootView>
         </Modal>
     );

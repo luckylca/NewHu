@@ -34,6 +34,21 @@ function getContentPreview(item: FeedItem) {
     return content || item.excerpt || '暂无内容';
 }
 
+function getSessionToken(next: unknown) {
+    if (typeof next !== 'string' || !next) return '';
+    try {
+        return new URL(next).searchParams.get('session_token') || '';
+    } catch {
+        const match = next.match(/[?&]session_token=([^&]+)/);
+        if (!match) return '';
+        try {
+            return decodeURIComponent(match[1]);
+        } catch {
+            return match[1];
+        }
+    }
+}
+
 // ==================== 普通模式 Item ====================
 export const RenderItem = memo(({ item, type, needToGet, hideTitle }: {
     item: FeedItem;
@@ -223,6 +238,8 @@ const HomeScreen = () => {
     const setFeedList = useContentStore((state) => state.setFeedList);
     const removeFeedItem = useContentStore((state) => state.removeFeedItem); // 引入解耦后的局部删除 Action
     const addUnlikeItem = useContentStore((state) => state.addUnlikeItem);   // 引入新增的本地不喜欢持久化 Action
+    const addSeenFeedKeys = useContentStore((state) => state.addSeenFeedKeys);
+    const seenFeedKeys = useContentStore((state) => state.seenFeedKeys);
     const refreshRequest = useContentStore((state) => state.refreshRequest);
     
     const cookies = useUserStore((state) => state.cookies);
@@ -230,7 +247,10 @@ const HomeScreen = () => {
     const displayMode = useSettingStore((state) => state.mode);
     const filterAds = useSettingStore((state) => state.isAds);
     const filterPaid = useSettingStore((state) => state.isPaid);
+    const deduplicateFeed = useSettingStore((state) => state.deduplicateFeed);
     const userHydrated = useStoreHydrated(useUserStore); // 等用户 store 完成水合再初始化 API
+    const settingHydrated = useStoreHydrated(useSettingStore);
+    const contentHydrated = useStoreHydrated(useContentStore);
 
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [cardListHeight, setCardListHeight] = useState(0);
@@ -242,6 +262,8 @@ const HomeScreen = () => {
     const sessionTokenRef = useRef("");
     const feedListRef = useRef(feedList);
     feedListRef.current = feedList;
+    const seenFeedKeysRef = useRef(seenFeedKeys);
+    seenFeedKeysRef.current = seenFeedKeys;
     const visibleFeedListRef = useRef(visibleFeedList);
     visibleFeedListRef.current = visibleFeedList;
     const loadDataRef = useRef<any>(null);
@@ -290,6 +312,8 @@ const HomeScreen = () => {
         return null;
     };
 
+    const getFeedKey = (feed: FeedItemInfo) => `${feed.feedType}:${feed.item.id}`;
+
     const loadData = async (isRefresh = false) => {
         if (requestInFlightRef.current) return;
         requestInFlightRef.current = true;
@@ -300,28 +324,59 @@ const HomeScreen = () => {
         }
 
         try {
-            const res = await getRecommend(sessionTokenRef.current);
-            const data = res.data as any[];
-            const cleanData = data.filter((item) => item.target && (item.target.type === 'answer' || item.target.type === 'article'));
-            const processedItems = cleanData.map(processFeedItem).filter((x): x is FeedItemInfo => x !== null);
+            // 推荐接口的一页不一定都是回答/文章，也可能是视频、问题或推广项。
+            // 首屏至少补够一批可展示内容，避免过滤/去重后只剩一条。
+            const targetVisibleCount = isRefresh ? 8 : 4;
+            const maxPages = 5;
+            let nextToken = isRefresh ? '' : sessionTokenRef.current;
+            const nextItems: FeedItemInfo[] = [];
+            const batchKeys = new Set<string>();
+
+            for (let page = 0; page < maxPages; page += 1) {
+                const res = await getRecommend(nextToken);
+                const data: any[] = Array.isArray(res?.data) ? res.data : [];
+                const processedItems = data
+                    .filter((item: any) => item?.target && (item.target.type === 'answer' || item.target.type === 'article'))
+                    .map(processFeedItem)
+                    .filter((item: FeedItemInfo | null): item is FeedItemInfo => item !== null);
+
+                const existingKeys = new Set([
+                    ...seenFeedKeysRef.current,
+                    ...feedListRef.current.map(getFeedKey),
+                    ...nextItems.map(getFeedKey),
+                ]);
+                const acceptedItems = processedItems.filter((item: FeedItemInfo) => {
+                    const key = getFeedKey(item);
+                    if (batchKeys.has(key) || (deduplicateFeed && existingKeys.has(key))) return false;
+                    batchKeys.add(key);
+                    return true;
+                });
+                nextItems.push(...acceptedItems);
+
+                if (deduplicateFeed) {
+                    const fetchedKeys = processedItems.map(getFeedKey);
+                    addSeenFeedKeys(fetchedKeys);
+                    seenFeedKeysRef.current = [...new Set([...seenFeedKeysRef.current, ...fetchedKeys])];
+                }
+
+                nextToken = getSessionToken(res?.paging?.next);
+                const visibleCount = nextItems.filter((item) => (
+                    !(filterAds && item.isAds) && !(filterPaid && item.isPaid)
+                )).length;
+                if (visibleCount >= targetVisibleCount || !nextToken || res?.paging?.is_end === true) break;
+            }
+            sessionTokenRef.current = nextToken;
 
             if (isRefresh) {
-                setFeedList(processedItems);
+                feedListRef.current = nextItems;
+                setFeedList(nextItems);
             } else {
-                const mergedData = [...feedListRef.current, ...processedItems];
+                const mergedData = [...feedListRef.current, ...nextItems];
                 const uniqueData = mergedData.filter((v, i, a) =>
-                    a.findIndex(t => t.item.id === v.item.id) === i
+                    a.findIndex(t => getFeedKey(t) === getFeedKey(v)) === i
                 );
+                feedListRef.current = uniqueData;
                 setFeedList(uniqueData);
-            }
-
-            const urlString = res.paging.next;
-            try {
-                const url = new URL(urlString);
-                const token = url.searchParams.get('session_token');
-                if (token) sessionTokenRef.current = token;
-            } catch (e) {
-                console.error('URL 格式不正确', e);
             }
         } catch (error) {
             console.error('获取数据失败:', error);
@@ -346,12 +401,12 @@ const HomeScreen = () => {
     }, [refreshRequest]);
 
     useEffect(() => {
-        if (!userHydrated) return; // 等待持久化的 Cookie 恢复后再初始化，避免用到旧的默认值
+        if (!userHydrated || !settingHydrated || !contentHydrated) return; // 等待持久化状态恢复后再初始化推荐流
         getApiInstance(cookies);
         loadData(true).then(() => loadData(false));
         // 仅在用户 store 水合完成的那一次执行（水合前后各运行一次加载会产生重复数据）
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [userHydrated]);
+    }, [contentHydrated, settingHydrated, userHydrated]);
 
     useEffect(() => {
         currentIndexRef.current = 0;

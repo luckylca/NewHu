@@ -4,7 +4,11 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useDerivedValue, useSharedValue, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
-export default function ImageLayout({ uri, onClose }: { uri: string; onClose: () => void }) {
+export default function ImageLayout({ uri, onClose, onLongPress }: {
+    uri: string;
+    onClose: () => void;
+    onLongPress?: (x: number, y: number) => void;
+}) {
     const { width, height } = useWindowDimensions();
     const scale = useSharedValue(1);
     const savedScale = useSharedValue(1);
@@ -31,6 +35,13 @@ export default function ImageLayout({ uri, onClose }: { uri: string; onClose: ()
         .maxDistance(12)
         .onEnd((_, success) => {
             if (success) scheduleOnRN(onClose);
+        });
+
+    const longPress = Gesture.LongPress()
+        .minDuration(500)
+        .maxDistance(20)
+        .onStart((event) => {
+            if (onLongPress) scheduleOnRN(onLongPress, event.absoluteX, event.absoluteY);
         });
 
     const pinchGesture = Gesture.Pinch()
@@ -68,7 +79,7 @@ export default function ImageLayout({ uri, onClose }: { uri: string; onClose: ()
         });
 
     const gesture = Gesture.Simultaneous(
-        Gesture.Exclusive(doubleTap, singleTap),
+        Gesture.Exclusive(doubleTap, singleTap, longPress),
         pinchGesture,
         panGesture,
     );
