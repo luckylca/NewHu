@@ -24,7 +24,7 @@ export const useHyperosTheme = (): AppTheme => {
 
         const translucentSurfaces = shouldUseDarkMode
             ? {
-                surface: 'rgba(0,0,0,0.64)',
+                surface: 'transparent',
                 surfaceVariant: 'rgba(30,30,30,0.72)',
                 surfaceContainer: 'rgba(28,28,28,0.82)',
                 surfaceContainerHigh: 'rgba(36,36,36,0.78)',
@@ -33,7 +33,7 @@ export const useHyperosTheme = (): AppTheme => {
                 outline: 'rgba(255,255,255,0.18)',
             }
             : {
-                surface: 'rgba(247,247,247,0.68)',
+                surface: 'transparent',
                 surfaceVariant: 'rgba(255,255,255,0.72)',
                 surfaceContainer: 'rgba(255,255,255,0.84)',
                 surfaceContainerHigh: 'rgba(238,238,238,0.78)',

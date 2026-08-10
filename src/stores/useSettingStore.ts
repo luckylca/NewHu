@@ -1,8 +1,17 @@
 // src/stores/useSettingStore.ts
 // 这里面放的是设置相关的信息，比如自动播放，快进倍速，选中的频道ID等
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { WallpaperBlurLevel } from '@/src/ui/theme/wallpaper';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
+
+function migrateWallpaperBlurLevel(saved: unknown, legacy: unknown): WallpaperBlurLevel {
+    if (saved === 'off' || saved === 'low' || saved === 'medium' || saved === 'high') return saved;
+    if (legacy === 0) return 'off';
+    if (typeof legacy === 'number' && legacy <= 15) return 'low';
+    if (typeof legacy === 'number' && legacy > 35) return 'high';
+    return 'medium';
+}
 
 interface SettingState {
     followSystemTheme: boolean;
@@ -12,20 +21,14 @@ interface SettingState {
 
     wallpaperUri: string | null;
     setWallpaperUri: (uri: string | null) => void;
-    wallpaperColor: string | null;
-    setWallpaperColor: (color: string | null) => void;
-    wallpaperOpacity: number;
-    setWallpaperOpacity: (opacity: number) => void;
-    wallpaperBlur: number;
-    setWallpaperBlur: (blur: number) => void;
+    wallpaperBlurLevel: WallpaperBlurLevel;
+    setWallpaperBlurLevel: (level: WallpaperBlurLevel) => void;
 
     disableAnimations: boolean; // 是否关闭动画
     setDisableAnimations: (disabled: boolean) => void; // 设置是否关闭动画
     commentDrawerAnimation: boolean;
     setCommentDrawerAnimation: (enabled: boolean) => void;
 
-    useMonetText: boolean;
-    setUseMonetText: (enabled: boolean) => void;
     cookie: string; // 自定义 cookie
     setCookie: (cookie: string) => void; // 设置 cookie
 
@@ -48,20 +51,14 @@ export const useSettingStore = create<SettingState>()(
             isDarkMode: false, // 默认不是暗黑模式
             setDarkMode: (isDark) => set({ isDarkMode: isDark }),
             wallpaperUri: null,
-            setWallpaperUri: (uri) => set({ wallpaperUri: uri, wallpaperColor: null }),
-            wallpaperColor: null,
-            setWallpaperColor: (color) => set({ wallpaperColor: color }),
-            wallpaperOpacity: 0.82,
-            setWallpaperOpacity: (opacity) => set({ wallpaperOpacity: opacity }),
-            wallpaperBlur: 8,
-            setWallpaperBlur: (blur) => set({ wallpaperBlur: blur }),
+            setWallpaperUri: (uri) => set({ wallpaperUri: uri }),
+            wallpaperBlurLevel: 'medium',
+            setWallpaperBlurLevel: (level) => set({ wallpaperBlurLevel: level }),
 
             disableAnimations: false,
             setDisableAnimations: (disabled) => set({ disableAnimations: disabled }),
             commentDrawerAnimation: true,
             setCommentDrawerAnimation: (enabled) => set({ commentDrawerAnimation: enabled }),
-            useMonetText: false,
-            setUseMonetText: (enabled) => set({ useMonetText: enabled }),
 
             cookie: '',
             setCookie: (cookie) => set({ cookie }),
@@ -78,6 +75,17 @@ export const useSettingStore = create<SettingState>()(
         {
             name: 'setting-store',
             storage: createJSONStorage(() => AsyncStorage),
+            version: 1,
+            migrate: (persistedState) => {
+                const stored = (persistedState ?? {}) as Record<string, unknown>;
+                const wallpaperBlurLevel = migrateWallpaperBlurLevel(stored.wallpaperBlurLevel, stored.wallpaperBlur);
+                const migrated = { ...stored };
+                delete migrated.wallpaperBlur;
+                delete migrated.wallpaperColor;
+                delete migrated.wallpaperOpacity;
+                delete migrated.useMonetText;
+                return { ...migrated, wallpaperBlurLevel } as unknown as SettingState;
+            },
             // 所有设置字段都是可序列化的，整体持久化即可
         }
     )

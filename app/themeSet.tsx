@@ -1,20 +1,19 @@
 import { useSettingStore } from '@/src/stores/useSettingStore';
-import { useMonetTextColor } from '@/src/hooks/useMonetTextColor';
 import { notify } from '@/src/stores/useNotificationStore';
-import { Button, Card, Icon, ListRow, Slider, Switch, Text, TopAppBar } from '@/src/ui';
-import { useTheme } from '@/src/ui/theme';
+import { Button, Card, Icon, ListRow, SegmentedControl, Switch, Text, TopAppBar } from '@/src/ui';
+import { getWallpaperBlurRadius, getWallpaperScrim, type WallpaperBlurLevel, useTheme, wallpaperConfig } from '@/src/ui/theme';
 import { File, Paths } from 'expo-file-system';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { launchImageLibrary } from 'react-native-image-picker';
-import { getImageAverageColor } from '@/src/utils/imageColor';
+
+const BLUR_LEVELS: Exclude<WallpaperBlurLevel, 'off'>[] = ['low', 'medium', 'high'];
 
 const ThemeSetScreen = () => {
     const router = useRouter();
     const theme = useTheme();
-    const wallpaperSecondaryText = useMonetTextColor(true);
 
     const followSystemTheme = useSettingStore((state) => state.followSystemTheme);
     const setFollowSystemTheme = useSettingStore((state) => state.setFollowSystemTheme);
@@ -22,13 +21,8 @@ const ThemeSetScreen = () => {
     const setDarkMode = useSettingStore((state) => state.setDarkMode);
     const wallpaperUri = useSettingStore((state) => state.wallpaperUri);
     const setWallpaperUri = useSettingStore((state) => state.setWallpaperUri);
-    const setWallpaperColor = useSettingStore((state) => state.setWallpaperColor);
-    const wallpaperOpacity = useSettingStore((state) => state.wallpaperOpacity);
-    const setWallpaperOpacity = useSettingStore((state) => state.setWallpaperOpacity);
-    const wallpaperBlur = useSettingStore((state) => state.wallpaperBlur);
-    const setWallpaperBlur = useSettingStore((state) => state.setWallpaperBlur);
-    const useMonetText = useSettingStore((state) => state.useMonetText);
-    const setUseMonetText = useSettingStore((state) => state.setUseMonetText);
+    const wallpaperBlurLevel = useSettingStore((state) => state.wallpaperBlurLevel);
+    const setWallpaperBlurLevel = useSettingStore((state) => state.setWallpaperBlurLevel);
 
     const [isPicking, setIsPicking] = useState(false);
 
@@ -63,11 +57,6 @@ const ThemeSetScreen = () => {
             const previousUri = wallpaperUri;
             setWallpaperUri(target.uri);
             removeStoredWallpaper(previousUri);
-            getImageAverageColor(target.uri)
-                .then((color) => {
-                    if (useSettingStore.getState().wallpaperUri === target.uri) setWallpaperColor(color);
-                })
-                .catch((error) => console.warn('分析壁纸颜色失败', error));
             notify('壁纸已应用');
         } catch (error) {
             console.error('导入壁纸失败', error);
@@ -105,13 +94,6 @@ const ThemeSetScreen = () => {
                             disabled={followSystemTheme}
                             trailing={<Switch value={isDarkMode} disabled={followSystemTheme} interactive={false} />}
                         />
-                        <View style={[styles.divider, { backgroundColor: theme.colors.dividerLine }]} />
-                        <ListRow
-                            title="字体莫奈取色"
-                            summary="根据壁纸明暗自动调整透明区域的文字"
-                            onPress={() => setUseMonetText(!useMonetText)}
-                            trailing={<Switch value={useMonetText} interactive={false} />}
-                        />
                     </Card>
                 </View>
 
@@ -124,8 +106,8 @@ const ThemeSetScreen = () => {
                                     <Image
                                         source={{ uri: wallpaperUri }}
                                         resizeMode="cover"
-                                        blurRadius={wallpaperBlur}
-                                        style={[StyleSheet.absoluteFill, { opacity: wallpaperOpacity }]}
+                                        blurRadius={getWallpaperBlurRadius(wallpaperBlurLevel)}
+                                        style={[StyleSheet.absoluteFill, { opacity: wallpaperConfig.opacity }]}
                                     />
                                 ) : (
                                     <View style={styles.emptyPreview}>
@@ -133,6 +115,12 @@ const ThemeSetScreen = () => {
                                         <Text type="body2" color={theme.colors.onSurfaceContainerHigh}>还没有选择壁纸</Text>
                                     </View>
                                 )}
+                                {wallpaperUri ? (
+                                    <View
+                                        pointerEvents="none"
+                                        style={[StyleSheet.absoluteFill, { backgroundColor: getWallpaperScrim(theme.dark) }]}
+                                    />
+                                ) : null}
                                 <View
                                     style={[
                                         styles.previewSample,
@@ -144,7 +132,7 @@ const ThemeSetScreen = () => {
                                     ]}
                                 >
                                     <Text type="headline1" weight="medium" color={theme.colors.onBackground}>壁纸预览</Text>
-                                    <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>文字与卡片会自动保持清晰</Text>
+                                    <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>主题蒙层与卡片保持内容清晰</Text>
                                 </View>
                             </View>
 
@@ -155,31 +143,38 @@ const ThemeSetScreen = () => {
                                 {wallpaperUri ? <Button onPress={clearWallpaper}>移除</Button> : null}
                             </View>
 
-                            <SliderSetting
-                                label="壁纸透明度"
-                                valueLabel={`${Math.round(wallpaperOpacity * 100)}%`}
-                                value={wallpaperOpacity}
-                                minimumValue={0.15}
-                                maximumValue={1}
-                                onValueChange={setWallpaperOpacity}
+                            <ListRow
+                                title="背景模糊"
+                                summary={wallpaperBlurLevel === 'off' ? '已关闭' : '仅模糊底层壁纸'}
+                                onPress={wallpaperUri
+                                    ? () => setWallpaperBlurLevel(wallpaperBlurLevel === 'off' ? 'medium' : 'off')
+                                    : undefined}
                                 disabled={!wallpaperUri}
+                                trailing={
+                                    <Switch
+                                        value={wallpaperBlurLevel !== 'off'}
+                                        disabled={!wallpaperUri}
+                                        interactive={false}
+                                    />
+                                }
                             />
-                            <SliderSetting
-                                label="高斯模糊"
-                                valueLabel={`${Math.round(wallpaperBlur)}`}
-                                value={wallpaperBlur}
-                                minimumValue={0}
-                                maximumValue={30}
-                                step={1}
-                                onValueChange={setWallpaperBlur}
-                                disabled={!wallpaperUri}
-                            />
+                            <View
+                                pointerEvents={wallpaperUri && wallpaperBlurLevel !== 'off' ? 'auto' : 'none'}
+                                style={[styles.blurLevel, (!wallpaperUri || wallpaperBlurLevel === 'off') && styles.disabled]}
+                            >
+                                <Text type="body1" weight="medium" color={theme.colors.onBackground}>模糊程度</Text>
+                                <SegmentedControl
+                                    tabs={['低', '中', '高']}
+                                    selected={wallpaperBlurLevel === 'off' ? 1 : BLUR_LEVELS.indexOf(wallpaperBlurLevel)}
+                                    onSelect={(index) => setWallpaperBlurLevel(BLUR_LEVELS[index])}
+                                />
+                            </View>
                         </View>
                     </Card>
                 </View>
 
-                <Text type="footnote1" color={wallpaperSecondaryText} style={styles.hint}>
-                    图片会保存在应用目录中。调整壁纸时，白天模式会加入轻微亮色遮罩，黑夜模式会自动压暗，避免正文与背景混在一起。
+                <Text type="footnote1" color={theme.colors.onBackgroundVariant} style={styles.hint}>
+                    图片会保存在应用目录中。全局主题蒙层会保持正文清晰，文字颜色不会根据图片内容动态变化。
                 </Text>
             </ScrollView>
 
@@ -192,36 +187,6 @@ function CardSectionTitle({ children }: { children: React.ReactNode }) {
     return (
         <View style={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: theme.spacing.xs }}>
             <Text type="footnote1" weight="bold" color={theme.colors.primary}>{children}</Text>
-        </View>
-    );
-}
-
-interface SliderSettingProps {
-    label: string;
-    valueLabel: string;
-    value: number;
-    minimumValue: number;
-    maximumValue: number;
-    step?: number;
-    disabled?: boolean;
-    onValueChange: (value: number) => void;
-}
-
-function SliderSetting({ label, valueLabel, disabled, ...sliderProps }: SliderSettingProps) {
-    const theme = useTheme();
-
-    return (
-        <View style={[styles.sliderRow, disabled && styles.disabled]}>
-            <View style={styles.sliderHeader}>
-                <Text type="body1" weight="medium" color={theme.colors.onBackground}>{label}</Text>
-                <Text type="body2" color={theme.colors.primary}>{valueLabel}</Text>
-            </View>
-            <Slider
-                {...sliderProps}
-                disabled={disabled}
-                accessibilityLabel={label}
-                style={styles.slider}
-            />
         </View>
     );
 }
@@ -276,17 +241,10 @@ const styles = StyleSheet.create({
     primaryAction: {
         flex: 1,
     },
-    sliderRow: {
-        paddingHorizontal: 4,
-    },
-    sliderHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-    },
-    slider: {
-        width: '100%',
-        marginTop: 8,
+    blurLevel: {
+        paddingHorizontal: 16,
+        paddingBottom: 6,
+        gap: 10,
     },
     disabled: {
         opacity: 0.5,

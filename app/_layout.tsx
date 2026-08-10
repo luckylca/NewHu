@@ -1,12 +1,12 @@
 // app/_layout.tsx
-import { AppWallpaper } from '@/src/components/AppWallpaper';
+import { AppBackground } from '@/src/components/background/AppBackground';
 import { GlobalNotificationHost } from '@/src/components/GlobalNotificationHost';
 import { useHyperosTheme } from '@/src/hooks/useHyperosTheme';
 import { ThemeProvider as UiThemeProvider } from '@/src/ui/theme';
 import { ThemeProvider as NavigationThemeProvider } from '@react-navigation/native'; // React Navigation 的导航主题
 import { Stack } from 'expo-router';
 import React from 'react';
-import { StatusBar, View } from 'react-native';
+import { StatusBar } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -23,8 +23,7 @@ export default function RootLayout() {
 		<GestureHandlerRootView style={{ flex: 1 }}>
 			<SafeAreaProvider>
 				<UiThemeProvider value={uiTheme}>
-					<View style={{ flex: 1 }}>
-						<AppWallpaper />
+					<AppBackground>
 						<NavigationThemeProvider value={navigationTheme}>
 							<StatusBar
 								barStyle={uiTheme.dark ? 'light-content' : 'dark-content'}
@@ -56,7 +55,7 @@ export default function RootLayout() {
 							</Stack>
 						</NavigationThemeProvider>
 						<GlobalNotificationHost />
-					</View>
+					</AppBackground>
 				</UiThemeProvider>
 			</SafeAreaProvider>
 		</GestureHandlerRootView>

@@ -13,7 +13,6 @@ import { notify } from '@/src/stores/useNotificationStore';
 import { PressIndication, Text } from "@/src/ui/primitives";
 import type { IconName } from "@/src/ui/primitives";
 import { useTheme } from "@/src/ui/theme";
-import { useMonetTextColor } from '@/src/hooks/useMonetTextColor';
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import RenderHtml from 'react-native-render-html';
 import { scheduleOnRN } from "react-native-worklets";
@@ -129,8 +128,8 @@ export default function Item() {
     const contentStore = useContentStore();
     const router = useRouter();
     const theme = useTheme();
-    const wallpaperText = useMonetTextColor();
-    const wallpaperSecondaryText = useMonetTextColor(true);
+    const primaryText = theme.colors.onBackground;
+    const secondaryText = theme.colors.onBackgroundVariant;
 
     const [origin, setOrigin] = useState({ x: 0, y: 0, width: 0, height: 0 });
     const [modalVisible, setModalVisible] = useState(false);
@@ -344,11 +343,11 @@ export default function Item() {
 
     // 1. 缓存 tagsStyles
     const tagsStyles = useMemo(() => ({
-        body: { color: wallpaperText, fontSize: 16, lineHeight: 28 },
+        body: { color: primaryText, fontSize: 16, lineHeight: 28 },
         p: { marginBottom: 16 },
         figure: { margin: 0, marginTop: 8, marginBottom: 8 },
         img: { borderRadius: theme.radius.tab }
-    }), [theme.radius.tab, wallpaperText]);
+    }), [primaryText, theme.radius.tab]);
 
     // 2. 缓存 renderers 对象
     const renderers = useMemo(() => ({
@@ -430,10 +429,10 @@ export default function Item() {
                         paddingBottom: 8,
                     }}
                 >
-                    <Text type="title2" weight="bold" color={wallpaperText}>
+                    <Text type="title2" weight="bold" color={primaryText}>
                         {title}
                     </Text>
-                    <PressIndication pressed={titlePressed} color={wallpaperText} radius={theme.radius.component} />
+                    <PressIndication pressed={titlePressed} color={primaryText} radius={theme.radius.component} />
                 </Pressable>
 
                 {/* 作者信息区域 */}
@@ -454,8 +453,8 @@ export default function Item() {
                     }
                     title={readData.authorName}
                     summary={readData.updatedTime ? new Date(readData.updatedTime * 1000).toLocaleDateString() : '最近更新'}
-                    titleColor={wallpaperText}
-                    summaryColor={wallpaperSecondaryText}
+                    titleColor={primaryText}
+                    summaryColor={secondaryText}
                     onPress={() => router.push({ pathname: '/people', params: { urlToken: readData.authorUrlToken } })}
                     style={{ paddingHorizontal: 0, marginBottom: 4 }}
                 />
@@ -485,20 +484,20 @@ export default function Item() {
                                 name={(voted || readData.voted) ? "thumb-up" : "thumb-up-outline"}
                                 count={readData.voteCount}
                                 alwaysShowCount
-                                color={(voted || readData.voted) ? theme.colors.primary : wallpaperSecondaryText}
+                                color={(voted || readData.voted) ? theme.colors.primary : secondaryText}
                                 onPress={pressVoteUp}
                             />
                             <ContentActionButton
                                 name="star-outline"
                                 count={readData.favoriteCount}
-                                color={wallpaperSecondaryText}
+                                color={secondaryText}
                                 onPress={() => console.log('点击了收藏')}
                             />
                             <ContentActionButton
                                 name="comment-outline"
                                 count={readData.commentCount}
                                 alwaysShowCount
-                                color={wallpaperSecondaryText}
+                                color={secondaryText}
                                 onPress={() => router.push({ pathname: '/item/[type]/[id]/comment', params: { id: readData.id, type } })}
                             />
                         </View>
