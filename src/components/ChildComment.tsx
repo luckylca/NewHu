@@ -12,6 +12,7 @@ type ChildCommentProps = {
     id: string;
     onClose: () => void;
     onReply?: (id: string, name?: string) => void;
+    initialFocusId?: string;
 };
 
 function normalizeComment(item: any): CommentViewModel | null {
@@ -42,7 +43,7 @@ function readOffset(next?: string) {
     }
 }
 
-export default function ChildComment({ visible, id, onClose, onReply }: ChildCommentProps) {
+export default function ChildComment({ visible, id, onClose, onReply, initialFocusId }: ChildCommentProps) {
     const theme = useTheme();
     const [comments, setComments] = useState<CommentViewModel[]>([]);
     const [rootComment, setRootComment] = useState<CommentViewModel | null>(null);
@@ -50,6 +51,7 @@ export default function ChildComment({ visible, id, onClose, onReply }: ChildCom
     const [refreshing, setRefreshing] = useState(false);
     const [rendered, setRendered] = useState(false);
     const animation = useRef(new Animated.Value(0)).current;
+    const listRef = useRef<FlatList<CommentViewModel>>(null);
     const offsetRef = useRef('');
     const inFlightRef = useRef(false);
     const hasMoreRef = useRef(true);
@@ -130,6 +132,21 @@ export default function ChildComment({ visible, id, onClose, onReply }: ChildCom
         return () => subscription.remove();
     }, [onClose, visible]);
 
+    useEffect(() => {
+        if (!visible || !initialFocusId || initialFocusId === rootComment?.id) return;
+        const index = comments.findIndex((item) => item.id === initialFocusId);
+        if (index >= 0) {
+            const timer = setTimeout(() => {
+                listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.45 });
+            }, 180);
+            return () => clearTimeout(timer);
+        }
+        if (comments.length > 0 && hasMoreRef.current) {
+            const timer = setTimeout(() => load(false), 120);
+            return () => clearTimeout(timer);
+        }
+    }, [comments, initialFocusId, load, rootComment?.id, visible]);
+
     const renderItem = useCallback(({ item }: { item: CommentViewModel }) => (
         <CommentItem
             item={item}
@@ -167,6 +184,7 @@ export default function ChildComment({ visible, id, onClose, onReply }: ChildCom
                     <Text type="headline2" weight="bold">{count > 0 ? `${count} 条回复` : '回复'}</Text>
                 </View>
             <FlatList
+                ref={listRef}
                 data={comments}
                 keyExtractor={(item) => item.id}
                 renderItem={renderItem}
@@ -181,6 +199,9 @@ export default function ChildComment({ visible, id, onClose, onReply }: ChildCom
                 windowSize={5}
                 removeClippedSubviews
                 showsVerticalScrollIndicator={false}
+                onScrollToIndexFailed={({ index }) => {
+                    listRef.current?.scrollToOffset({ offset: index * 180, animated: true });
+                }}
                 ListHeaderComponent={rootComment ? (
                     <View>
                         <CommentItem

@@ -1,5 +1,6 @@
 import { notify } from '@/src/stores/useNotificationStore';
 import { useSettingStore } from '@/src/stores/useSettingStore';
+import type { CardSwipeAction } from '@/src/stores/useSettingStore';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { Button, Card, Dialog, Divider, Icon, ListRow, Switch, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
@@ -19,7 +20,12 @@ export default function SettingsScreen() {
     const filterPaid = useSettingStore((state) => state.isPaid);
     const setFilterAds = useSettingStore((state) => state.setAds);
     const setFilterPaid = useSettingStore((state) => state.setPaid);
+    const leftSwipeAction = useSettingStore((state) => state.cardSwipeLeftAction);
+    const rightSwipeAction = useSettingStore((state) => state.cardSwipeRightAction);
+    const setLeftSwipeAction = useSettingStore((state) => state.setCardSwipeLeftAction);
+    const setRightSwipeAction = useSettingStore((state) => state.setCardSwipeRightAction);
     const [updateVisible, setUpdateVisible] = useState(false);
+    const [swipeSide, setSwipeSide] = useState<'left' | 'right' | null>(null);
     const [update, setUpdate] = useState({ loading: false, version: '' });
 
     const checkUpdate = async () => {
@@ -76,6 +82,24 @@ export default function SettingsScreen() {
                     <SettingRow icon="tune-variant" title="高级设置" summary="动画和调试选项" trailing={trailingChevron} onPress={() => router.push('/devmode')} />
                 </SettingsGroup>
 
+                <SettingsGroup title="滑动模式">
+                    <SettingRow
+                        icon="gesture-swipe-left"
+                        title="慢速左滑"
+                        summary={swipeActionLabel(leftSwipeAction)}
+                        trailing={trailingChevron}
+                        onPress={() => setSwipeSide('left')}
+                    />
+                    <Divider style={{ marginLeft: 60 }} />
+                    <SettingRow
+                        icon="gesture-swipe-right"
+                        title="慢速右滑"
+                        summary={swipeActionLabel(rightSwipeAction)}
+                        trailing={trailingChevron}
+                        onPress={() => setSwipeSide('right')}
+                    />
+                </SettingsGroup>
+
                 <SettingsGroup title="应用">
                     <SettingRow icon="cloud-download-outline" title="检查更新" summary={`当前版本 ${CURRENT_VERSION}`} trailing={trailingChevron} onPress={checkUpdate} />
                     <Divider style={{ marginLeft: 60 }} />
@@ -97,8 +121,36 @@ export default function SettingsScreen() {
                     <Button type="primary" onPress={() => setUpdateVisible(false)} disabled={update.loading}>知道了</Button>
                 </View>
             </Dialog>
+
+            <Dialog
+                visible={swipeSide != null}
+                onClose={() => setSwipeSide(null)}
+                title={swipeSide === 'left' ? '慢速左滑动作' : '慢速右滑动作'}
+            >
+                {(['share', 'dislike', 'none'] as CardSwipeAction[]).map((action) => {
+                    const selected = (swipeSide === 'left' ? leftSwipeAction : rightSwipeAction) === action;
+                    return (
+                        <ListRow
+                            key={action}
+                            title={swipeActionLabel(action)}
+                            trailing={selected ? <Icon name="check" size={22} color={theme.colors.primary} /> : null}
+                            onPress={() => {
+                                if (swipeSide === 'left') setLeftSwipeAction(action);
+                                else setRightSwipeAction(action);
+                                setSwipeSide(null);
+                            }}
+                        />
+                    );
+                })}
+            </Dialog>
         </View>
     );
+}
+
+function swipeActionLabel(action: CardSwipeAction) {
+    if (action === 'share') return '分享';
+    if (action === 'dislike') return '不喜欢';
+    return '无操作';
 }
 
 function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {

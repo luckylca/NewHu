@@ -7,12 +7,14 @@ import { Card, Divider, Icon, ListRow, SegmentedControl } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useDraftStore } from '@/src/stores/useDraftStore';
 
 const UserScreen = ({ navigation }: any) => {
     const theme = useTheme();
     const insets = useSafeAreaInsets();
     const userStore = useUserStore();
     const settingStore = useSettingStore();
+    const draftCount = useDraftStore((state) => state.drafts.length);
 
     const metaColor = theme.colors.onSurfaceSecondary;
 
@@ -58,6 +60,8 @@ const UserScreen = ({ navigation }: any) => {
 
             {/* 设置入口组 —— ListRow + Divider，Miuix 设置列表 */}
             <View style={{ marginBottom: theme.spacing.xl, marginHorizontal: theme.spacing.lg, borderRadius: theme.radius.component, backgroundColor: theme.colors.surfaceContainer, overflow: 'hidden' }}>
+                <ListRow title="草稿箱" summary={draftCount > 0 ? `${draftCount} 条草稿` : '暂无草稿'} onPress={() => router.push('/drafts')} />
+                <Divider style={{ marginLeft: theme.spacing.lg }} />
                 <ListRow title="收藏列表" onPress={() => router.push('/like')} />
                 <Divider style={{ marginLeft: theme.spacing.lg }} />
                 <ListRow title="浏览历史" onPress={() => router.push('/history')} />

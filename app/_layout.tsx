@@ -43,6 +43,7 @@ export default function RootLayout() {
 								<Stack.Screen name="devmode" options={{ title: '开发者模式' }} />
 								<Stack.Screen name="like" options={{ title: '收藏列表' }} />
 								<Stack.Screen name="history" options={{ title: '浏览历史' }} />
+								<Stack.Screen name="drafts" options={{ title: '草稿箱' }} />
 								<Stack.Screen name="webview" options={{ title: '登录' }} />
 								<Stack.Screen name="search" options={{ title: '搜索' }} />
 								<Stack.Screen name="userinfo" options={{ title: '用户信息' }} />

@@ -4,6 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
+export type CardSwipeAction = 'share' | 'dislike' | 'none';
+
 interface SettingState {
     followSystemTheme: boolean;
     setFollowSystemTheme: (follow: boolean) => void;
@@ -30,6 +32,10 @@ interface SettingState {
 
     mode: 'normal' | 'card';
     setMode: (mode: 'normal' | 'card') => void; // 设置模式的函数
+    cardSwipeLeftAction: CardSwipeAction;
+    cardSwipeRightAction: CardSwipeAction;
+    setCardSwipeLeftAction: (action: CardSwipeAction) => void;
+    setCardSwipeRightAction: (action: CardSwipeAction) => void;
 }
 
 export const useSettingStore = create<SettingState>()(
@@ -61,6 +67,10 @@ export const useSettingStore = create<SettingState>()(
 
             mode: 'normal', // 默认模式
             setMode: (mode) => set({ mode }),
+            cardSwipeLeftAction: 'share',
+            cardSwipeRightAction: 'dislike',
+            setCardSwipeLeftAction: (action) => set({ cardSwipeLeftAction: action }),
+            setCardSwipeRightAction: (action) => set({ cardSwipeRightAction: action }),
 
         }),
         {
