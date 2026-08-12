@@ -4,7 +4,7 @@ import { useTheme } from '@/src/ui/theme';
 import React, { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -133,50 +133,57 @@ export function BottomSheet({
 
     return (
         <Modal transparent statusBarTranslucent animationType="none" visible={rendered} onRequestClose={handleClose}>
-            <Animated.View style={[{ flex: 1, justifyContent: 'flex-end', alignItems: 'center' }, dimStyle]}>
-                <Pressable style={StyleSheet.absoluteFill} onPress={closeOnClickModal && allowDismiss ? handleClose : undefined} />
-                <Animated.View
-                    style={[
-                        {
-                            width: '100%',
-                            maxWidth: c.maxWidth,
-                            maxHeight: windowH - insets.top - 24,
-                            borderTopLeftRadius: c.radius,
-                            borderTopRightRadius: c.radius,
-                            backgroundColor: sheetBackground,
-                            paddingHorizontal: c.horizontalPadding,
-                            paddingBottom: insets.bottom,
-                            overflow: 'hidden',
-                        },
-                        sheetStyle,
-                    ]}
-                >
-                    {/* Overscroll strip — fills the gap when dragged up */}
+            <GestureHandlerRootView style={{ flex: 1 }}>
+                <Animated.View style={[{ flex: 1, justifyContent: 'flex-end', alignItems: 'center' }, dimStyle]}>
+                    <Pressable style={StyleSheet.absoluteFill} onPress={closeOnClickModal && allowDismiss ? handleClose : undefined} />
                     <Animated.View
-                        pointerEvents="none"
                         style={[
-                            { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: sheetBackground },
-                            overscrollHeight,
+                            {
+                                width: '100%',
+                                maxWidth: c.maxWidth,
+                                maxHeight: windowH - insets.top - 24,
+                                borderTopLeftRadius: c.radius,
+                                borderTopRightRadius: c.radius,
+                                backgroundColor: sheetBackground,
+                                paddingHorizontal: c.horizontalPadding,
+                                paddingBottom: insets.bottom,
+                                overflow: 'hidden',
+                            },
+                            sheetStyle,
                         ]}
-                    />
-                    {/* Drag handle area (only this region drags, like the source) */}
-                    <GestureDetector gesture={pan}>
-                        <View style={{ height: theme.spacing.xl, alignItems: 'center', justifyContent: 'center' }}>
-                            <Animated.View style={[{ height: c.handleHeight, borderRadius: 2, backgroundColor: theme.colors.onSurfaceVariantSummary }, handleStyle]} />
+                    >
+                        {/* Overscroll strip — fills the gap when dragged up */}
+                        <Animated.View
+                            pointerEvents="none"
+                            style={[
+                                { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: sheetBackground },
+                                overscrollHeight,
+                            ]}
+                        />
+                        {/* Drag handle area (only this region drags, like the source) */}
+                        <GestureDetector gesture={pan}>
+                            <View style={{ height: theme.spacing.xl, alignItems: 'center', justifyContent: 'center' }}>
+                                <Animated.View style={[{ height: c.handleHeight, borderRadius: 2, backgroundColor: theme.colors.onSurfaceVariantSummary }, handleStyle]} />
+                            </View>
+                        </GestureDetector>
+                        {(title != null || startAction != null || endAction != null) && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingBottom: 12 }}>
+                                <View style={{ flex: 0, justifyContent: 'flex-start' }}>{startAction}</View>
+                                <Text type="title4" weight="medium" color={theme.colors.onSurface} style={{ flex: 1, textAlign: 'center' }}>
+                                    {title}
+                                </Text>
+                                <View style={{ flex: 0, justifyContent: 'flex-end', marginLeft: 'auto' }}>{endAction}</View>
+                            </View>
+                        )}
+                        {/* Let the sheet measure its content. A flex:1 wrapper has no
+                            height when the sheet itself is content-sized, which collapses
+                            number pickers and buttons to an invisible zero-height area. */}
+                        <View style={{ width: '100%', minHeight: 0, flexGrow: 0, flexShrink: 1 }}>
+                            {typeof children === 'function' ? (children as (close: () => void) => ReactNode)(handleClose) : children}
                         </View>
-                    </GestureDetector>
-                    {(title != null || startAction != null || endAction != null) && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingBottom: 12 }}>
-                            <View style={{ flex: 0, justifyContent: 'flex-start' }}>{startAction}</View>
-                            <Text type="title4" weight="medium" color={theme.colors.onSurface} style={{ flex: 1, textAlign: 'center' }}>
-                                {title}
-                            </Text>
-                            <View style={{ flex: 0, justifyContent: 'flex-end', marginLeft: 'auto' }}>{endAction}</View>
-                        </View>
-                    )}
-                    <View style={{ flex: 1, minHeight: 0 }}>{typeof children === 'function' ? (children as (close: () => void) => ReactNode)(handleClose) : children}</View>
+                    </Animated.View>
                 </Animated.View>
-            </Animated.View>
+            </GestureHandlerRootView>
         </Modal>
     );
 }

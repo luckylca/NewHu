@@ -1,4 +1,5 @@
 import { getApiInstance, getRecommend, dislikeAnswer, dislikeArticle } from '@/src/api/ZhihuApi'; // 注入对应的不喜欢 API
+import { getRecommendNextCursor, getRecommendSessionToken, normalizeRecommendItem } from '@/src/services/recommendFeedService';
 import { useContentStore } from '@/src/stores/useContentStore';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { router } from 'expo-router';
@@ -12,6 +13,10 @@ import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
 import type { FeedItem, FeedItemInfo, FeedType } from '@/src/types/zhihu';
 import { short } from '@/src/utils/haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getNetworkStatus, useNetworkStore, type NetworkStatus } from '@/src/stores/useNetworkStore';
+import { notify } from '@/src/stores/useNotificationStore';
+import { getRecentFeed, saveFeedEntries, trimTransientFeedEntries } from '@/src/db/repositories/feedRepository';
+import { recordUserEvent } from '@/src/db/repositories/userEventRepository';
 
 const { width: WindowWidth } = Dimensions.get('window');
 const WindowHeight = Dimensions.get('window').height;
@@ -34,21 +39,6 @@ function getContentPreview(item: FeedItem) {
     return content || item.excerpt || '暂无内容';
 }
 
-function getSessionToken(next: unknown) {
-    if (typeof next !== 'string' || !next) return '';
-    try {
-        return new URL(next).searchParams.get('session_token') || '';
-    } catch {
-        const match = next.match(/[?&]session_token=([^&]+)/);
-        if (!match) return '';
-        try {
-            return decodeURIComponent(match[1]);
-        } catch {
-            return match[1];
-        }
-    }
-}
-
 // ==================== 普通模式 Item ====================
 export const RenderItem = memo(({ item, type, needToGet, hideTitle }: {
     item: FeedItem;
@@ -62,6 +52,7 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle }: {
     const cardBgColor = theme.colors.surfaceContainer;
 
     const openItem = useCallback(() => {
+        void recordUserEvent({ contentId: item.id, contentType: type, eventType: 'content_open' });
         router.push({
             pathname: `/item/[type]/[id]`,
             params: { id: item.id, type, needToGet: needToGet.toString() }
@@ -127,6 +118,7 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
     const textColor = theme.colors.onBackground;
 
     const openItem = useCallback(() => {
+        void recordUserEvent({ contentId: item.id, contentType: type, eventType: 'content_open' });
         router.push({
             pathname: `/item/[type]/[id]`,
             params: { id: item.id, type, needToGet: needToGet.toString() }
@@ -251,6 +243,7 @@ const HomeScreen = () => {
     const userHydrated = useStoreHydrated(useUserStore); // 等用户 store 完成水合再初始化 API
     const settingHydrated = useStoreHydrated(useSettingStore);
     const contentHydrated = useStoreHydrated(useContentStore);
+    const networkStatus = useNetworkStore((state) => state.status);
 
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [cardListHeight, setCardListHeight] = useState(0);
@@ -267,52 +260,33 @@ const HomeScreen = () => {
     const visibleFeedListRef = useRef(visibleFeedList);
     visibleFeedListRef.current = visibleFeedList;
     const loadDataRef = useRef<any>(null);
+    const loadOfflineFeedRef = useRef<(() => Promise<void>) | null>(null);
     const handledRefreshRequestRef = useRef(refreshRequest);
+    // Start from unknown so an offline cold start still enters the branch
+    // that loads the SQLite feed. Initializing this ref from the current
+    // value would skip that load when NetInfo resolves before the effect.
+    const previousNetworkStatusRef = useRef<NetworkStatus>('unknown');
+    const onlineFeedStartedRef = useRef(false);
 
     const flatListRef = useRef<FlatList>(null);
     const currentIndexRef = useRef(0);
 
-    const processFeedItem = (item: any): FeedItemInfo | null => {
-        const target = item.target;
-        const isAds = item.promotion_extra != null || item.advertisement != null;
-        const isPaid = Boolean(
-            target.paid_info
-            || target.paywall_info
-            || target.answer_type === 'paid'
-            || target.is_paid === true
-        );
+    const getFeedKey = (feed: FeedItemInfo) => `${feed.feedType}:${feed.item.id}`;
 
-        if (target.type === 'answer' || target.type === 'article') {
-            return {
-                feedType: target.type,
-                isAds: isAds,
-                isPaid: isPaid,
-                item: {
-                    id: target.id,
-                    title: target.title || '无标题',
-                    authorName: target.author?.name || '匿名用户',
-                    authorUrlToken: target.author?.url_token || '',
-                    authorAvatar: target.author?.avatar_url || '',
-                    excerpt: target.excerpt || '',
-                    updatedTime: target.updated_time || target.created || 0,
-                    voteCount: target.voteup_count || 0,
-                    favoriteCount: target.favorite_count || 0,
-                    commentCount: target.comment_count || 0,
-                    content: target.content || "",
-                    questionTitle: target.question?.title || '未知问题',
-                    questionId: target.question?.id || '',
-                    questionAuthorName: target.question?.author?.name || '匿名用户',
-                    questionAuthorAvatar: target.question?.author?.avatar_url || '',
-                    questionAuthorUrlToken: target.question?.author?.url_token || '',
-                    questionAnswerCount: target.question?.answer_count || 0,
-                    questionCreatedTime: target.question?.created || 0,
-                }
-            };
-        }
-        return null;
+    const loadOfflineFeed = async () => {
+        // Offline mode exposes only entries explicitly saved from the
+        // offline-cache page, so every visible item has its own body/comment
+        // cache policy and optional image resources.
+        const cached = await getRecentFeed(80, true);
+        // 网络可能在读取 SQLite 期间恢复；恢复在线后丢弃这次离线结果，
+        // 防止本地 Feed 异步回写到在线首页的最前面。
+        if (getNetworkStatus() !== 'offline') return;
+        feedListRef.current = cached;
+        setFeedList(cached);
+        sessionTokenRef.current = '';
     };
 
-    const getFeedKey = (feed: FeedItemInfo) => `${feed.feedType}:${feed.item.id}`;
+    loadOfflineFeedRef.current = loadOfflineFeed;
 
     const loadData = async (isRefresh = false) => {
         if (requestInFlightRef.current) return;
@@ -324,26 +298,35 @@ const HomeScreen = () => {
         }
 
         try {
+            if (networkStatus === 'offline') {
+                await loadOfflineFeed();
+                return;
+            }
+            if (networkStatus !== 'online') return;
             // 推荐接口的一页不一定都是回答/文章，也可能是视频、问题或推广项。
             // 首屏至少补够一批可展示内容，避免过滤/去重后只剩一条。
             const targetVisibleCount = isRefresh ? 8 : 4;
-            const maxPages = 5;
+            // 保持“去除重复推送”，但刷新时继续翻页寻找未推送过的内容。
+            // 已推送内容较多时，5 页可能仍然全部命中历史记录。
+            const maxPages = isRefresh ? 12 : 5;
             let nextToken = isRefresh ? '' : sessionTokenRef.current;
-            const nextItems: FeedItemInfo[] = [];
             const batchKeys = new Set<string>();
+            let visibleItemCount = 0;
+            let hasRenderedRefreshPage = false;
 
             for (let page = 0; page < maxPages; page += 1) {
-                const res = await getRecommend(nextToken);
+                const requestCursor = nextToken;
+                const res = await getRecommend(requestCursor);
                 const data: any[] = Array.isArray(res?.data) ? res.data : [];
                 const processedItems = data
                     .filter((item: any) => item?.target && (item.target.type === 'answer' || item.target.type === 'article'))
-                    .map(processFeedItem)
+                    .map(normalizeRecommendItem)
                     .filter((item: FeedItemInfo | null): item is FeedItemInfo => item !== null);
 
                 const existingKeys = new Set([
                     ...seenFeedKeysRef.current,
                     ...feedListRef.current.map(getFeedKey),
-                    ...nextItems.map(getFeedKey),
+                    ...batchKeys,
                 ]);
                 const acceptedItems = processedItems.filter((item: FeedItemInfo) => {
                     const key = getFeedKey(item);
@@ -351,7 +334,6 @@ const HomeScreen = () => {
                     batchKeys.add(key);
                     return true;
                 });
-                nextItems.push(...acceptedItems);
 
                 if (deduplicateFeed) {
                     const fetchedKeys = processedItems.map(getFeedKey);
@@ -359,27 +341,38 @@ const HomeScreen = () => {
                     seenFeedKeysRef.current = [...new Set([...seenFeedKeysRef.current, ...fetchedKeys])];
                 }
 
-                nextToken = getSessionToken(res?.paging?.next);
-                const visibleCount = nextItems.filter((item) => (
-                    !(filterAds && item.isAds) && !(filterPaid && item.isPaid)
-                )).length;
-                if (visibleCount >= targetVisibleCount || !nextToken || res?.paging?.is_end === true) break;
+                // Cursor 分页必须等待上一页返回 next 游标，不能安全地把
+                // 第 2/3 页同时发出；但每页拿到后立即落库并更新 UI，
+                // 避免首页为了凑满 8 条而长时间白屏。
+                const persistedPage = await saveFeedEntries(
+                    acceptedItems,
+                    'recommend',
+                    getRecommendSessionToken(requestCursor),
+                    deduplicateFeed,
+                );
+                if (persistedPage.length > 0) {
+                    const mergedData = isRefresh && !hasRenderedRefreshPage
+                        ? persistedPage
+                        : [...feedListRef.current, ...persistedPage];
+                    const uniqueData = mergedData.filter((value, index, array) =>
+                        array.findIndex((item) => getFeedKey(item) === getFeedKey(value)) === index
+                    );
+                    feedListRef.current = uniqueData;
+                    setFeedList(uniqueData);
+                    hasRenderedRefreshPage = true;
+                    visibleItemCount += persistedPage.filter((item) => (
+                        !(filterAds && item.isAds) && !(filterPaid && item.isPaid)
+                    )).length;
+                }
+
+                nextToken = getRecommendNextCursor(res?.paging?.next);
+                if (visibleItemCount >= targetVisibleCount || !nextToken || res?.paging?.is_end === true) break;
             }
             sessionTokenRef.current = nextToken;
-
-            if (isRefresh) {
-                feedListRef.current = nextItems;
-                setFeedList(nextItems);
-            } else {
-                const mergedData = [...feedListRef.current, ...nextItems];
-                const uniqueData = mergedData.filter((v, i, a) =>
-                    a.findIndex(t => getFeedKey(t) === getFeedKey(v)) === i
-                );
-                feedListRef.current = uniqueData;
-                setFeedList(uniqueData);
-            }
+            void trimTransientFeedEntries();
         } catch (error) {
             console.error('获取数据失败:', error);
+            if (isRefresh) notify({ message: '刷新失败，已保留当前内容', duration: 4000 });
         } finally {
             requestInFlightRef.current = false;
             setIsRefreshing(false);
@@ -401,12 +394,28 @@ const HomeScreen = () => {
     }, [refreshRequest]);
 
     useEffect(() => {
-        if (!userHydrated || !settingHydrated || !contentHydrated) return; // 等待持久化状态恢复后再初始化推荐流
-        getApiInstance(cookies);
-        loadData(true).then(() => loadData(false));
-        // 仅在用户 store 水合完成的那一次执行（水合前后各运行一次加载会产生重复数据）
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [contentHydrated, settingHydrated, userHydrated]);
+        if (!userHydrated || !settingHydrated || !contentHydrated) return;
+        const previous = previousNetworkStatusRef.current;
+
+        if (networkStatus === 'offline') {
+            onlineFeedStartedRef.current = false;
+            if (previous !== 'offline') {
+                notify({ message: '当前无网络，已进入离线模式', duration: 5000 });
+                void loadOfflineFeedRef.current?.();
+            }
+        } else if (networkStatus === 'online' && (!onlineFeedStartedRef.current || previous === 'offline')) {
+            onlineFeedStartedRef.current = true;
+            // 在线模式只显示本次推荐请求结果，不能把离线数据库里的 Feed
+            // 混进来；SQLite 仍然只负责历史去重和持久化。
+            feedListRef.current = [];
+            setFeedList([]);
+            sessionTokenRef.current = '';
+            if (cookies) getApiInstance(cookies);
+            void loadDataRef.current?.(true).then(() => loadDataRef.current?.(false));
+        }
+
+        previousNetworkStatusRef.current = networkStatus;
+    }, [contentHydrated, cookies, networkStatus, settingHydrated, userHydrated, setFeedList]);
 
     useEffect(() => {
         currentIndexRef.current = 0;
@@ -519,6 +528,11 @@ const HomeScreen = () => {
                         }}
                         data={visibleFeedList}
                         renderItem={renderCardListItem}
+                        ListEmptyComponent={networkStatus === 'offline' ? (
+                            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.spacing.xl }}>
+                                <Text type="body1" color={theme.colors.onSurfaceVariantSummary}>暂无可离线浏览的内容</Text>
+                            </View>
+                        ) : null}
                         keyExtractor={(item) => item.item.id.toString()}
                         snapToInterval={CARD_ITEM_HEIGHT}
                         snapToAlignment="start"
@@ -542,6 +556,11 @@ const HomeScreen = () => {
                     contentContainerStyle={{ alignItems: 'center', paddingTop: 0, paddingBottom: theme.spacing.md }}
                     data={visibleFeedList}
                     renderItem={renderListItem}
+                    ListEmptyComponent={networkStatus === 'offline' ? (
+                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.spacing.xl }}>
+                            <Text type="body1" color={theme.colors.onSurfaceVariantSummary}>暂无可离线浏览的内容</Text>
+                        </View>
+                    ) : null}
                     keyExtractor={(item) => item.item.id.toString()}
                     refreshing={isRefreshing}
                     onRefresh={() => loadData(true)}

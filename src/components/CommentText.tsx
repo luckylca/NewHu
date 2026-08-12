@@ -1,6 +1,8 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import { Image, Linking, Text as RNText,Dimensions,TouchableOpacity } from "react-native";
 import ImageReanimatedModal from "./ImageReanimatedModal";
+import { resolveImageUri } from "@/src/services/resourceService";
+import { useNetworkStore } from "@/src/stores/useNetworkStore";
 
 type Token =
     | { type: "text"; text: string }
@@ -118,7 +120,8 @@ export default function CommentText({
 }) {
     const tokens = useMemo(() => htmlToTokens(content), [content]);
     const [imageUrl, setImageUrl] = React.useState<string>("");
-    const [imageToken, setImageToken] = React.useState<{ width: number; height: number } | null>(null);
+    const imageToken = useMemo(() => tokens.find((token): token is Extract<Token, { type: "image" }> => token.type === "image") ?? null, [tokens]);
+    const networkStatus = useNetworkStore((state) => state.status);
     const [imageOrigin, setImageOrigin] = React.useState<{ x: number; y: number; width: number; height: number }>({ x: 0, y: 0, width: 0, height: 0 });
     const imageRef = React.useRef<any>(null);
     const [imageVisible, setImageVisible] = React.useState(false);
@@ -137,8 +140,6 @@ export default function CommentText({
                     </RNText>
                 );
             if (t.type === "image") {
-                setImageUrl(t.url);
-                setImageToken({ width: t.width, height: t.height });
                 return null;
             }
             const src = emojiMap[t.name];
@@ -153,6 +154,18 @@ export default function CommentText({
             );
         });
     }, [tokens, emojiMap]);
+
+    useEffect(() => {
+        let active = true;
+        if (!imageToken) {
+            setImageUrl("");
+            return () => { active = false; };
+        }
+        void resolveImageUri(imageToken.url, networkStatus === 'online').then((uri) => {
+            if (active) setImageUrl(uri || "");
+        });
+        return () => { active = false; };
+    }, [imageToken, networkStatus]);
 
     const imagePressHandler = () => {
         if (imageRef.current) {

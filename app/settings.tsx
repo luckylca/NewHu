@@ -1,4 +1,3 @@
-import { notify } from '@/src/stores/useNotificationStore';
 import { useSettingStore } from '@/src/stores/useSettingStore';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { Card, Divider, Icon, ListRow, Switch, TopAppBar } from '@/src/ui';
@@ -76,7 +75,7 @@ export default function SettingsScreen() {
                 </SettingsGroup>
 
                 <SettingsGroup title="应用">
-                    <SettingRow icon="broom" title="清理临时缓存" summary="保留账号、收藏和主题设置" trailing={trailingChevron} onPress={() => notify('当前没有需要清理的临时文件')} />
+                    <SettingRow icon="database-outline" title="存储管理" summary="查看缓存占用并清理临时数据" trailing={trailingChevron} onPress={() => router.push('/storage-management' as any)} />
                     <Divider style={{ marginLeft: 60 }} />
                     <SettingRow icon="information-outline" title="关于 NewHU" summary="版本信息与检查更新" trailing={trailingChevron} onPress={() => router.push('/about')} />
                 </SettingsGroup>

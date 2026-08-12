@@ -1,5 +1,5 @@
-import { cancelLikeComment, likeComment } from '@/src/api/ZhihuApi';
 import CommentText from '@/src/components/CommentText';
+import OfflineImage from '@/src/components/OfflineImage';
 import { EMOJI_URL_MAP } from '@/src/constants/emoji';
 import { Icon, Menu } from '@/src/ui';
 import { PressIndication, Text } from '@/src/ui/primitives';
@@ -7,10 +7,12 @@ import { useTheme } from '@/src/ui/theme';
 import { notify } from '@/src/stores/useNotificationStore';
 import { htmlToPlainText } from '@/src/utils/contentExport';
 import { short } from '@/src/utils/haptics';
+import { setCommentVote } from '@/src/services/offlineActions';
+import { getNetworkStatus } from '@/src/stores/useNetworkStore';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Image, Pressable, View } from 'react-native';
+import { Animated, Pressable, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useSharedValue } from 'react-native-reanimated';
@@ -60,18 +62,24 @@ export const CommentItem = memo(function CommentItem({ item, onOpenReplies, onRe
     }, [item.isVote, item.voteCount]);
 
     const toggleLike = useCallback(async () => {
-        if (item.isAuthor) return;
+        if (item.isAuthor || item.id.startsWith('local:')) return;
         const nextLiked = !liked;
+        const nextCount = Math.max(0, voteCount + (nextLiked ? 1 : -1));
         setLiked(nextLiked);
-        setVoteCount((count) => count + (nextLiked ? 1 : -1));
+        setVoteCount(nextCount);
         try {
-            if (nextLiked) await likeComment(item.id);
-            else await cancelLikeComment(item.id);
-        } catch {
+            await setCommentVote(item.id, nextLiked, nextCount);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (getNetworkStatus() !== 'online' || /network|timeout|fetch|offline|internet/i.test(message)) {
+                notify('点赞已保存，联网后自动同步');
+                return;
+            }
             setLiked(!nextLiked);
-            setVoteCount((count) => count + (nextLiked ? -1 : 1));
+            setVoteCount(voteCount);
+            notify(message || '点赞同步失败');
         }
-    }, [item.id, item.isAuthor, liked]);
+    }, [item.id, item.isAuthor, liked, voteCount]);
 
     const renderRightActions = useCallback((_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
         const translateX = dragX.interpolate({ inputRange: [-80, 0], outputRange: [0, 80], extrapolate: 'clamp' });
@@ -149,7 +157,7 @@ export const CommentItem = memo(function CommentItem({ item, onOpenReplies, onRe
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <Pressable onPress={openAuthor} hitSlop={4}>
                             {item.authorAvatar ? (
-                                <Image source={{ uri: item.authorAvatar }} style={{ width: 36, height: 36, borderRadius: 18, marginRight: 12, backgroundColor: theme.colors.surfaceContainerHigh }} />
+                                <OfflineImage source={{ uri: item.authorAvatar }} style={{ width: 36, height: 36, borderRadius: 18, marginRight: 12, backgroundColor: theme.colors.surfaceContainerHigh }} />
                             ) : (
                                 <View style={{ width: 36, height: 36, borderRadius: 18, marginRight: 12, backgroundColor: theme.colors.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center' }}>
                                     <Text type="footnote1" weight="medium">{item.authorName?.slice(0, 1) || '佚'}</Text>

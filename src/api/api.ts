@@ -8,11 +8,12 @@ import ZhihuClient from './client';
 interface ZhihuAPI {
     client: ZhihuClient;
     setCookie(cookie: string): void;
+    setTransferListener(listener?: (bytes: number, durationMs: number) => void): void;
     getMe(): Promise<any>;
     getUserInfo(urlToken: string): Promise<any>;
     getUserCollections(username: string, offset?: number): Promise<any>;
     getCollectionItems(collectionId: string, offset?: number): Promise<any>;
-    getRecommend(session_token?: string): Promise<any>;
+    getRecommend(cursor?: string): Promise<any>;
     getFollowingFeed(offset?: number): Promise<any>;
     getAnswer(answerId: string): Promise<any>;
     voteupAnswer(answerId: string): Promise<any>;
@@ -73,6 +74,10 @@ class ZhihuAPI {
         this.client.setCookie(cookie);
     }
 
+    setTransferListener(listener?: (bytes: number, durationMs: number) => void) {
+        this.client.setTransferListener(listener);
+    }
+
     // ==================== 用户相关 ====================
 
     /**
@@ -117,15 +122,24 @@ class ZhihuAPI {
     // ==================== 推荐流相关 ====================
 
     /**
-     * 获取首页推荐流
-     * @param {string} session_token - 分页 token（可选）
+     * 获取首页推荐流。
+     * `paging.next` 是完整分页地址，必须原样保留 after_id、session_token
+     * 等参数；只截取 session_token 会让分页提前结束或重复返回同一页。
      */
-    async getRecommend(session_token = '') {
-        let url = 'https://www.zhihu.com/api/v3/feed/topstory/recommend?limit=10&action=down&after_id=5&desktop=true';
-        if (session_token) {
-            url += `&session_token=${encodeURIComponent(session_token)}`;
+    async getRecommend(cursor = '') {
+        const firstPageUrl = 'https://www.zhihu.com/api/v3/feed/topstory/recommend?limit=10&action=down&after_id=5&desktop=true';
+        if (!cursor) return this.client.get(firstPageUrl);
+
+        try {
+            const nextUrl = new URL(cursor, 'https://www.zhihu.com');
+            if (nextUrl.hostname === 'www.zhihu.com' && nextUrl.pathname === '/api/v3/feed/topstory/recommend') {
+                return this.client.get(nextUrl.toString());
+            }
+        } catch {
+            // 兼容旧调用方传入的纯 session_token。
         }
-        return this.client.get(url);
+
+        return this.client.get(`${firstPageUrl}&session_token=${encodeURIComponent(cursor)}`);
     }
 
     /**

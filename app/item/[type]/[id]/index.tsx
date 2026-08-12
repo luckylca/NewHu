@@ -1,10 +1,12 @@
 // app/item/type/[id]/index.tsx
-import { addReadHistory, cancelVoteupAnswer, cancelVoteupArticle, getAnswer, getArticle, voteupAnswer, voteupArticle } from "@/src/api/ZhihuApi";
+import { addReadHistory, getAnswer, getArticle } from "@/src/api/ZhihuApi";
 import type { FeedDetail } from "@/src/types/zhihu";
 import ImageReanimatedModal from "@/src/components/ImageReanimatedModal";
 import LoadingView from "@/src/components/LoadingView";
+import OfflineImage from "@/src/components/OfflineImage";
 import { useContentStore } from "@/src/stores/useContentStore";
 import { useExportContentStore } from "@/src/stores/useExportContentStore";
+import { useNetworkStore } from "@/src/stores/useNetworkStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Image, Pressable, ScrollView, useWindowDimensions, View } from "react-native";
@@ -18,6 +20,10 @@ import { exportImage, exportPdf } from '@/src/utils/contentExport';
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import RenderHtml from 'react-native-render-html';
 import { scheduleOnRN } from "react-native-worklets";
+import { getContent, upsertContent } from "@/src/db/repositories/contentRepository";
+import { normalizeContent } from "@/src/db/mappers";
+import { setContentVote } from "@/src/services/offlineActions";
+import { normalizeRemoteUrl, resolveImageUri } from "@/src/services/resourceService";
 
 export type ItemParams = {
     id: string;
@@ -36,27 +42,65 @@ type ArrowEffect = {
 
 // 提取到组件外部的独立组件
 const CustomImageRenderer = React.memo(({ tnode, setOrigin, setImageUrl, setModalVisible }: any) => {
-    const attrs = tnode.attributes;
+    const attrs = tnode.attributes || {};
     const localImageRef = useRef<View>(null);
     const theme = useTheme();
+    const networkStatus = useNetworkStore((state) => state.status);
     const pressed = useSharedValue(0);
 
     // 知乎懒加载：真实地址在 data-original 或 data-actualsrc，src 只是占位 SVG
-    const src = attrs['data-original'] || attrs['data-actualsrc'] || attrs['data-src'] || attrs.src;
+    const imageCandidates = useMemo(() => {
+        // Keep a fallback for parser versions that expose data-* attributes
+        // on the underlying DOM node instead of tnode.attributes.
+        const currentAttrs = tnode.attributes || {};
+        const domAttrs = tnode.domNode?.attribs || {};
+        return [...new Set([
+            currentAttrs['data-actualsrc'], currentAttrs['data-original'], currentAttrs['data-src'], currentAttrs.src,
+            domAttrs['data-actualsrc'], domAttrs['data-original'], domAttrs['data-src'], domAttrs.src,
+        ].map((value) => normalizeRemoteUrl(value || '')).filter((value) => (
+            /^https?:\/\//i.test(value) && !/^data:image\/svg/i.test(value)
+        )))];
+    }, [tnode]);
+    const src = imageCandidates[0] || '';
     const { width: imgWidth, height: imgHeight } = attrs;
     const declaredAspect = imgWidth && imgHeight ? Number(imgWidth) / Number(imgHeight) : 16 / 9;
     const [aspectRatio, setAspectRatio] = useState(Number.isFinite(declaredAspect) ? declaredAspect : 16 / 9);
+    const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);
 
     useEffect(() => {
-        if (!src || src.startsWith('data:image/svg')) return;
-        Image.getSize(src, (width, height) => {
+        let active = true;
+        if (!imageCandidates.length) {
+            setResolvedSrc(null);
+            return () => { active = false; };
+        }
+        const resolve = async () => {
+            for (const candidate of imageCandidates) {
+                const uri = await resolveImageUri(candidate, networkStatus === 'online');
+                if (uri) {
+                    if (active) setResolvedSrc(uri);
+                    return;
+                }
+            }
+            if (active) setResolvedSrc(null);
+        };
+        void resolve();
+        return () => { active = false; };
+    }, [imageCandidates, networkStatus]);
+
+    useEffect(() => {
+        if (!resolvedSrc) return;
+        Image.getSize(resolvedSrc, (width, height) => {
             if (width > 0 && height > 0) setAspectRatio(width / height);
         });
-    }, [src]);
+    }, [resolvedSrc]);
 
     // 如果是占位 SVG 则不渲染
     if (!src || src.startsWith('data:image/svg')) {
         return null;
+    }
+
+    if (!resolvedSrc) {
+        return <View style={{ width: '100%', height: 120, marginVertical: 8, borderRadius: theme.radius.tabContour, backgroundColor: theme.colors.surfaceContainerHigh }} />;
     }
 
     return (
@@ -67,7 +111,7 @@ const CustomImageRenderer = React.memo(({ tnode, setOrigin, setImageUrl, setModa
                     if (localImageRef.current) {
                         localImageRef.current.measureInWindow((pageX, pageY, componentWidth, componentHeight) => {
                             setOrigin({ x: pageX, y: pageY, width: componentWidth, height: componentHeight });
-                            setImageUrl(src);
+                            setImageUrl(resolvedSrc);
                             setModalVisible(true);
                         });
                     }
@@ -77,7 +121,7 @@ const CustomImageRenderer = React.memo(({ tnode, setOrigin, setImageUrl, setModa
                 style={{ width: '100%', borderRadius: theme.radius.tabContour, overflow: 'hidden' }}
             >
                 <Image
-                    source={{ uri: src }}
+                    source={{ uri: resolvedSrc }}
                     style={{
                         width: '100%',
                         aspectRatio,
@@ -128,6 +172,7 @@ const ContentActionButton = ({ name, count, alwaysShowCount, color, onPress }: {
 export default function Item() {
     const { id, type, needToGet } = useLocalSearchParams<ItemParams>();
     const contentStore = useContentStore();
+    const networkStatus = useNetworkStore((state) => state.status);
     const router = useRouter();
     const theme = useTheme();
     const primaryText = theme.colors.onBackground;
@@ -141,6 +186,7 @@ export default function Item() {
     const { width } = useWindowDimensions();
 
     const [readData, setReadData] = useState<FeedDetail | null>(null);
+    const [hydrated, setHydrated] = useState(false);
     const [menuVisible, setMenuVisible] = useState(false);
     const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0, width: 0, height: 0 });
     const menuBtnRef = useRef<View>(null);
@@ -150,80 +196,49 @@ export default function Item() {
     const arrowIdRef = useRef(0);
     const titlePressed = useSharedValue(0);
     const setPendingExport = useExportContentStore((state) => state.setPending);
+    const contentType = type === 'answer' ? 'answer' : 'article';
 
     useEffect(() => {
-        addReadHistory(String(id), type === 'answer' ? 'answer' : 'article');
-        console.log('添加阅读历史：', { id, type });
-    }, [id, type]);
-
-    useEffect(() => {
-        if (needToGet === 'true') {
-            if (type === 'answer') {
-                getAnswer(String(id)).then((data) => {
-                    const tmpReadData: FeedDetail = {
-                        id: data.id,
-                        title: data.title || '无标题',
-                        authorName: data.author?.name || '匿名用户',
-                        authorUrlToken: data.author?.url_token || '',
-                        authorAvatar: data.author?.avatar_url || '',
-                        excerpt: data.excerpt || '',
-                        updatedTime: data.updated_time || data.created || 0,
-                        voteCount: data.voteup_count || 0,
-                        voted: data.relationship?.voting === 1,
-                        favoriteCount: data.favorite_count || 0,
-                        commentCount: data.comment_count || 0,
-                        content: data.content || "",
-                        questionTitle: data.question?.title || '未知问题',
-                        questionId: data.question?.id || '',
-                        questionAuthorName: data.question?.author?.name || '匿名用户',
-                        questionAuthorAvatar: data.question?.author?.avatar_url || '',
-                        questionAuthorUrlToken: data.question?.author?.url_token || '',
-                        questionAnswerCount: data.question?.answer_count || 0,
-                        questionCreatedTime: data.question?.created || 0,
-                    };
-                    console.log(tmpReadData.voted)
-                    setReadData(tmpReadData);
-                });
-            } else if (type === 'article') {
-                getArticle(String(id)).then((data) => {
-                    const tmpReadData: FeedDetail = {
-                        id: data.id,
-                        title: data.title || '无标题',
-                        authorName: data.author?.name || '匿名用户',
-                        authorUrlToken: data.author?.url_token || '',
-                        authorAvatar: data.author?.avatar_url || '',
-                        excerpt: data.excerpt || '',
-                        updatedTime: data.updated_time || data.created || 0,
-                        voteCount: data.voteup_count || 0,
-                        voted: data.relationship?.voting === 1,
-                        favoriteCount: data.favorite_count || 0,
-                        commentCount: data.comment_count || 0,
-                        content: data.content || "",
-                        questionTitle: data.question?.title || '未知问题',
-                        questionId: data.question?.id || '',
-                        questionAuthorName: data.question?.author?.name || '匿名用户',
-                        questionAuthorAvatar: data.question?.author?.avatar_url || '',
-                        questionAuthorUrlToken: data.question?.author?.url_token || '',
-                        questionAnswerCount: data.question?.answer_count || 0,
-                        questionCreatedTime: data.question?.created || 0,
-                    };
-                    setReadData(tmpReadData);
-                });
-            }
-        } else {
-            const tmpReadData = contentStore.feedList.find((item) => String(item.item.id) === String(id))?.item;
-            setReadData(tmpReadData ?? null);
+        if (networkStatus === 'online') {
+            void addReadHistory(String(id), type === 'answer' ? 'answer' : 'article').catch((error) => {
+                console.warn('阅读历史同步失败', error);
+            });
         }
-    }, [id, type, needToGet, contentStore.feedList]);
+        console.log('添加阅读历史：', { id, type });
+    }, [id, networkStatus, type]);
+
+    useEffect(() => {
+        let active = true;
+        const contentType = type === 'answer' ? 'answer' : 'article';
+        const load = async () => {
+            setHydrated(false);
+            const local = await getContent(String(id), contentType);
+            const fallback = contentStore.feedList.find((item) => String(item.item.id) === String(id))?.item;
+            if (!active) return;
+            setReadData((local as FeedDetail | null) ?? fallback ?? null);
+            setHydrated(true);
+
+            if (networkStatus !== 'online') return;
+            try {
+                const raw = contentType === 'answer' ? await getAnswer(String(id)) : await getArticle(String(id));
+                const fresh = normalizeContent(raw, contentType);
+                if (active) setReadData(fresh);
+                void upsertContent(fresh, contentType, { cacheState: 'transient', voted: fresh.voted }).catch((error) => {
+                    console.warn('详情写入本地缓存失败', error);
+                });
+            } catch (error) {
+                console.warn('详情后台刷新失败，继续使用本地内容', error);
+            }
+        };
+        void load();
+        return () => { active = false; };
+    }, [id, type, needToGet, contentStore.feedList, networkStatus]);
 
     useEffect(() => {
         if (!readData) return;
         setVoteCount(Number(readData.voteCount || 0));
         setVoted(Boolean(readData.voted));
     }, [readData]);
-
-    const voteupAction = type === 'answer' ? voteupAnswer : voteupArticle;
-    const cancelVoteupAction = type === 'answer' ? cancelVoteupAnswer : cancelVoteupArticle;
 
     const playArrowAnimation = (absoluteX: number, absoluteY: number) => {
         const arrowId = arrowIdRef.current + 1;
@@ -266,46 +281,32 @@ export default function Item() {
         });
     };
 
+    const commitVote = (nextVoted: boolean) => {
+        if (!readData) return;
+        const currentVoted = Boolean(readData.voted);
+        const nextCount = Math.max(0, Number(readData.voteCount || 0) + (currentVoted === nextVoted ? 0 : nextVoted ? 1 : -1));
+        const next = { ...readData, voted: nextVoted, voteCount: nextCount };
+        setVoted(nextVoted);
+        setVoteCount(nextCount);
+        setReadData(next);
+        void setContentVote(readData, contentType, nextVoted).catch((error) => {
+            notify(error instanceof Error ? error.message : '点赞同步失败，稍后会自动重试');
+        });
+    };
+
     const handleVoteUp = () => {
         if (voted) {
             notify(`已经点赞过了，当前已有 ${voteCount} 个赞`);
             console.log('重复点赞，已忽略');
             return;
         }
-        voteupAction(String(id));
-        setVoted(true);
-        const nextCount = voteCount + 1;
-        setVoteCount(nextCount);
-        notify(`点赞成功，当前已有 ${nextCount} 个赞`);
-        setReadData((prev: any) => ({
-            ...prev,
-            voted: true,
-            voteCount: Number(prev.voteCount || 0) + 1,
-        }));
+        commitVote(true);
+        notify(`点赞成功，当前已有 ${voteCount + 1} 个赞`);
     };
 
     const pressVoteUp = () => {
-        if (voted) {
-            setVoted(false);
-            cancelVoteupAction(String(id));
-            setVoteCount(voteCount - 1);
-            setReadData((prev: any) => ({
-                ...prev,
-                voted: false,
-                voteCount: Number(prev.voteCount || 0) - 1,
-            }));
-            return;
-        }
-        setVoted(true);
-        voteupAction(String(id));
-        const nextCount = voteCount + 1;
-        setVoteCount(nextCount);
-        notify(`点赞成功，当前已有 ${nextCount} 个赞`);
-        setReadData((prev: any) => ({
-            ...prev,
-            voted: true,
-            voteCount: Number(prev.voteCount || 0) + 1,
-        }));
+        commitVote(!voted);
+        notify(voted ? '已取消点赞' : `点赞成功，当前已有 ${voteCount + 1} 个赞`);
     };
 
     const handleTitlePress = () => {
@@ -416,8 +417,21 @@ export default function Item() {
     }), []);
 
 
-    if (!readData) {
+    if (!hydrated) {
         return <LoadingView />;
+    }
+
+    if (!readData) {
+        return (
+            <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+                <TopAppBar title="详情" back={() => router.back()} />
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.spacing.xl }}>
+                    <Text type="body1" color={secondaryText} style={{ textAlign: 'center' }}>
+                        当前没有网络，且本地没有这篇内容。联网后可重新打开。
+                    </Text>
+                </View>
+            </View>
+        );
     }
 
     const title = type === 'answer' ? readData.questionTitle : (readData.title || '未知标题');
@@ -464,10 +478,7 @@ export default function Item() {
                                 notify('当前内容还没有点赞');
                                 return;
                             }
-                            cancelVoteupAction(String(id));
-                            setVoted(false);
-                            setVoteCount((count: number) => Math.max(0, count - 1));
-                            setReadData((prev) => prev ? { ...prev, voted: false, voteCount: Math.max(0, Number(prev.voteCount || 0) - 1) } : prev);
+                            commitVote(false);
                             notify('已取消点赞');
                         }
                     },
@@ -501,7 +512,7 @@ export default function Item() {
                 <ListRow
                     icon={
                         readData.authorAvatar ? (
-                            <Image
+                            <OfflineImage
                                 source={{ uri: readData.authorAvatar }}
                                 style={{ width: 40, height: 40, borderRadius: theme.radius.full, backgroundColor: theme.colors.secondaryContainer }}
                             />

@@ -5,13 +5,37 @@ import { useHyperosTheme } from '@/src/hooks/useHyperosTheme';
 import { ThemeProvider as UiThemeProvider } from '@/src/ui/theme';
 import { ThemeProvider as NavigationThemeProvider } from '@react-navigation/native'; // React Navigation 的导航主题
 import { Stack } from 'expo-router';
-import React from 'react';
-import { StatusBar } from 'react-native';
+import React, { useEffect } from 'react';
+import { AppState, StatusBar } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { initializeDatabase } from '@/src/db/database';
+import { recoverRunningJobs } from '@/src/db/repositories/offlineCacheRepository';
+import { startNetworkMonitoring } from '@/src/services/networkService';
+import { syncOutbox } from '@/src/services/syncService';
+import { useNetworkStore } from '@/src/stores/useNetworkStore';
 
 export default function RootLayout() {
 	const uiTheme = useHyperosTheme();
+	const networkStatus = useNetworkStore((state) => state.status);
+
+	useEffect(() => {
+		void initializeDatabase().then(recoverRunningJobs).catch((error) => {
+			console.error('离线数据库初始化失败', error);
+		});
+		return startNetworkMonitoring();
+	}, []);
+
+	useEffect(() => {
+		if (networkStatus === 'online') void syncOutbox({ silent: true });
+	}, [networkStatus]);
+
+	useEffect(() => {
+		const subscription = AppState.addEventListener('change', (state) => {
+			if (state === 'active' && networkStatus === 'online') void syncOutbox({ silent: true });
+		});
+		return () => subscription.remove();
+	}, [networkStatus]);
 	// 自定义主题里已补齐 card/text/border/notification，可直接作为导航主题
 	const navigationTheme = {
 		dark: uiTheme.dark,
@@ -39,6 +63,8 @@ export default function RootLayout() {
 							>
 								<Stack.Screen name="(tabs)" />
 								<Stack.Screen name="settings" options={{ title: '设置' }} />
+								<Stack.Screen name="offline-cache" options={{ title: '离线缓存' }} />
+								<Stack.Screen name="storage-management" options={{ title: '存储管理' }} />
 								<Stack.Screen name="about" options={{ title: '关于 NewHU' }} />
 								<Stack.Screen name="animationSettings" options={{ title: '动画设置' }} />
 								<Stack.Screen name="devmode" options={{ title: '开发者模式' }} />

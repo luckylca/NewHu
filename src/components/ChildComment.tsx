@@ -1,8 +1,11 @@
 import { getChildComments } from '@/src/api/ZhihuApi';
+import { getCachedComments, getCommentById, getPageState, saveCommentPage } from '@/src/db/repositories/commentRepository';
+import type { FeedType } from '@/src/types/zhihu';
 import { Divider } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { useSettingStore } from '@/src/stores/useSettingStore';
+import { useNetworkStore } from '@/src/stores/useNetworkStore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, BackHandler, FlatList, InteractionManager, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { CommentItem } from './CommentItem';
@@ -11,6 +14,8 @@ import type { CommentViewModel } from './CommentItem';
 type ChildCommentProps = {
     visible: boolean;
     id: string;
+    contentId: string;
+    contentType: FeedType;
     onClose: () => void;
     onReply?: (id: string, name?: string) => void;
     initialFocusId?: string;
@@ -53,10 +58,11 @@ function readOffset(next?: string) {
     }
 }
 
-export default function ChildComment({ visible, id, onClose, onReply, initialFocusId }: ChildCommentProps) {
+export default function ChildComment({ visible, id, contentId, contentType, onClose, onReply, initialFocusId }: ChildCommentProps) {
     const theme = useTheme();
     const drawerAnimation = useSettingStore((state) => state.commentDrawerAnimation);
     const disableAnimations = useSettingStore((state) => state.disableAnimations);
+    const networkStatus = useNetworkStore((state) => state.status);
     const { height: windowHeight } = useWindowDimensions();
     const [comments, setComments] = useState<CommentViewModel[]>([]);
     const [rootComment, setRootComment] = useState<CommentViewModel | null>(null);
@@ -91,6 +97,22 @@ export default function ChildComment({ visible, id, onClose, onReply, initialFoc
         }
 
         try {
+            if (networkStatus !== 'online') {
+                const [cached, page, cachedRoot] = await Promise.all([
+                    getCachedComments(contentId, contentType, id, 'ts'),
+                    getPageState(contentId, contentType, id, 'ts'),
+                    getCommentById(id),
+                ]);
+                if (!visibleRef.current) return;
+                if (refresh) {
+                    setRootComment(cachedRoot);
+                    setCount(page?.totalCount || cached.length);
+                }
+                setComments(cached);
+                offsetRef.current = page?.nextOffset || '';
+                hasMoreRef.current = Boolean(page && !page.isEnd && page.nextOffset);
+                return;
+            }
             const response = await getChildComments(id, refresh ? '' : offsetRef.current, 'ts');
             if (!visibleRef.current) return;
             const next = readOffset(response?.paging?.next);
@@ -108,13 +130,24 @@ export default function ChildComment({ visible, id, onClose, onReply, initialFoc
                 const merged = [...current, ...incoming];
                 return merged.filter((item, index) => merged.findIndex((candidate) => candidate.id === item.id) === index);
             });
+            void saveCommentPage({
+                contentId,
+                contentType,
+                parentCommentId: id,
+                orderBy: 'ts',
+                comments: incoming,
+                nextOffset: next,
+                isEnd: !next || response?.paging?.is_end === true,
+                totalCount: Number(response?.counts?.total_counts || 0),
+                rootComment: normalizeComment(response?.root),
+            }).catch((error) => console.warn('回复写入本地缓存失败', error));
         } catch (error) {
             console.error('加载回复失败:', error);
         } finally {
             inFlightRef.current = false;
             setRefreshing(false);
         }
-    }, [id, visible]);
+    }, [contentId, contentType, id, networkStatus, visible]);
 
     useEffect(() => {
         let frame: number | undefined;

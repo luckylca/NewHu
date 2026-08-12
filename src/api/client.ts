@@ -9,6 +9,8 @@ interface Headers {
     [key: string]: string;
 }
 
+export type TransferListener = (bytes: number, durationMs: number) => void;
+
 interface SignatureResult {
     url: string;
     headers: Headers;
@@ -18,6 +20,7 @@ interface ZhihuClient {
     cookie: string;
     canLoad: boolean;
     setCookie(cookie: string): void;
+    setTransferListener(listener?: TransferListener): void;
     get(url: string): Promise<any>;
     post(url: string, data?: any, isJson?: boolean): Promise<any>;
     put(url: string, data?: any): Promise<any>;
@@ -27,6 +30,7 @@ interface ZhihuClient {
 
 class ZhihuClient {
     private useSignedGet = true;
+    private transferListener?: TransferListener;
 
     constructor(cookie: string) {
         if (!cookie) {
@@ -43,6 +47,10 @@ class ZhihuClient {
         this.cookie = cookie;
         this.canLoad = true;
         this.useSignedGet = true;
+    }
+
+    setTransferListener(listener?: TransferListener) {
+        this.transferListener = listener;
     }
 
     /**
@@ -86,6 +94,8 @@ class ZhihuClient {
             throw new Error('请求已被阻止');
         }
 
+        const startedAt = Date.now();
+
         // 生成签名
         const { url: finalUrl, headers } = generateSignature(url, this.cookie);
         const browserHeaders = {
@@ -112,6 +122,7 @@ class ZhihuClient {
             }
 
             const content = await response.text();
+            this.transferListener?.(content.length, Math.max(1, Date.now() - startedAt));
 
             if (!response.ok) {
                 this.handleError(response.status, content);

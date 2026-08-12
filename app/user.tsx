@@ -66,6 +66,8 @@ const UserScreen = ({ navigation }: any) => {
                 <Divider style={{ marginLeft: theme.spacing.lg }} />
                 <ListRow title="浏览历史" onPress={() => router.push('/history')} />
                 <Divider style={{ marginLeft: theme.spacing.lg }} />
+                <ListRow title="离线缓存" summary="批量获取内容并保存到本地" onPress={() => router.push('/offline-cache')} />
+                <Divider style={{ marginLeft: theme.spacing.lg }} />
                 <ListRow title="设置" onPress={() => router.push('/settings')} />
             </View>
         </ScrollView>

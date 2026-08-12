@@ -2,6 +2,11 @@ import { submitComment } from '@/src/api/ZhihuApi';
 import { EMOJI_URL_MAP } from '@/src/constants/emoji';
 import { getCommentDraftId, useDraftStore } from '@/src/stores/useDraftStore';
 import { notify } from '@/src/stores/useNotificationStore';
+import { enqueueAction, getPendingActionByTarget, markActionResult } from '@/src/db/repositories/outboxRepository';
+import { insertLocalComment } from '@/src/db/repositories/commentRepository';
+import { getNetworkStatus } from '@/src/stores/useNetworkStore';
+import { useUserStore } from '@/src/stores/useUserStore';
+import type { CommentViewModel } from './CommentItem';
 import { Button, Icon, Input, TopAppBar } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -30,6 +35,7 @@ export default function CommentEdit({ visible, name, contentType, contentId, rep
     const pageBackground = theme.dark ? '#161616' : '#F7F7F7';
     const draftId = getCommentDraftId(contentType, contentId, replyCommentId);
     const emojiEntries = Object.entries(EMOJI_URL_MAP);
+    const normalizedContentType = contentType === 'answer' ? 'answer' : 'article';
 
     useEffect(() => {
         if (!visible) return;
@@ -84,13 +90,64 @@ export default function CommentEdit({ visible, name, contentType, contentId, rep
         changeContent(`${contentRef.current}[${name}]`);
     }, [changeContent]);
 
+    const persistLocalComment = async (text: string, status: 'pending' | 'needs_user_action' = 'pending') => {
+        const localId = `local:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`;
+        const user = useUserStore.getState();
+        const localComment: CommentViewModel = {
+            id: localId,
+            content: text,
+            createdTime: Math.floor(Date.now() / 1000),
+            authorName: user.username || '我',
+            authorAvatar: user.avatar || undefined,
+            voteCount: 0,
+            isVote: false,
+            isAuthor: true,
+            childCommentCount: 0,
+            replyToAuthorName: name || undefined,
+        };
+        await insertLocalComment({
+            contentId,
+            contentType: normalizedContentType,
+            comment: localComment,
+            parentCommentId: replyCommentId || null,
+            orderBy: replyCommentId ? 'ts' : 'score',
+        });
+        const dependsOnAction = replyCommentId.startsWith('local:') ? await getPendingActionByTarget(replyCommentId) : null;
+        const actionId = await enqueueAction({
+            actionType: replyCommentId ? 'CREATE_REPLY' : 'CREATE_COMMENT',
+            targetType: normalizedContentType,
+            targetId: localId,
+            payload: {
+                contentType: normalizedContentType,
+                contentId,
+                text,
+                replyCommentId: replyCommentId || undefined,
+            },
+            dependsOnActionId: dependsOnAction?.id,
+        });
+        if (status === 'needs_user_action') {
+            await markActionResult(actionId, status, '提交结果未知，请确认知乎端是否已发表后再重试');
+        }
+    };
+
     const handleSend = async () => {
         const text = content.trim();
         if (!text || submitting) return;
         setSubmitting(true);
         try {
+            if (getNetworkStatus() !== 'online') {
+                await persistLocalComment(text);
+                contentRef.current = '';
+                setContent('');
+                setSaving(false);
+                removeDraft(draftId);
+                onClose();
+                onSubmitted?.();
+                notify('已保存到本地，联网后自动发表');
+                return;
+            }
             await submitComment({
-                contentType,
+                contentType: normalizedContentType,
                 contentId,
                 text,
                 replyCommentId: replyCommentId || undefined,
@@ -104,6 +161,22 @@ export default function CommentEdit({ visible, name, contentType, contentId, rep
             notify('评论已发表');
         } catch (error) {
             console.error('发表评论失败:', error);
+            const message = error instanceof Error ? error.message : String(error);
+            if (/network|timeout|fetch|offline|internet/i.test(message)) {
+                try {
+                    await persistLocalComment(text, 'needs_user_action');
+                    contentRef.current = '';
+                    setContent('');
+                    setSaving(false);
+                    removeDraft(draftId);
+                    onClose();
+                    onSubmitted?.();
+                    notify('提交结果未知，请先确认知乎端是否已发表，暂不自动重试');
+                    return;
+                } catch (saveError) {
+                    console.error('保存待确认评论失败:', saveError);
+                }
+            }
             notify('发表失败，请稍后重试');
         } finally {
             setSubmitting(false);

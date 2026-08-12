@@ -53,8 +53,8 @@ export async function getCollectionItems(collectionId: string, offset: number = 
 }
 
 // 获取推荐流内容。
-export async function getRecommend(session_token: string = "") {
-    const data = await requireApiInstance().getRecommend(session_token);
+export async function getRecommend(cursor: string = "") {
+    const data = await requireApiInstance().getRecommend(cursor);
     return data;
 }
 

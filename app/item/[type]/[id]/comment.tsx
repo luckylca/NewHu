@@ -4,6 +4,8 @@ import CommentEdit from '@/src/components/CommentEdit';
 import { CommentItem } from '@/src/components/CommentItem';
 import type { CommentViewModel } from '@/src/components/CommentItem';
 import { useDraftStore } from '@/src/stores/useDraftStore';
+import { useNetworkStore } from '@/src/stores/useNetworkStore';
+import { getCachedComments, getPageState, saveCommentPage } from '@/src/db/repositories/commentRepository';
 import { Icon, Menu, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
@@ -43,7 +45,9 @@ export default function CommentScreen() {
     const id = Array.isArray(params.id) ? params.id[0] : params.id;
     const type = Array.isArray(params.type) ? params.type[0] : params.type;
     const draftId = Array.isArray(params.draftId) ? params.draftId[0] : params.draftId;
-    const normalizedType = type === 'answer' ? 'answers' : type === 'article' ? 'articles' : type;
+    const contentType = type === 'answer' ? 'answer' : 'article';
+    const normalizedType = contentType === 'answer' ? 'answers' : 'articles';
+    const networkStatus = useNetworkStore((state) => state.status);
     const theme = useTheme();
     const router = useRouter();
 
@@ -98,6 +102,27 @@ export default function CommentScreen() {
         }
 
         try {
+            if (networkStatus !== 'online') {
+                // Offline cache fetches root comments by score. If the user
+                // changed the online sort to time before losing connectivity,
+                // don't show an empty list just because that second index was
+                // never cached.
+                let cached = await getCachedComments(id, contentType, null, sort);
+                let page = await getPageState(id, contentType, null, sort);
+                if (!cached.length && sort !== 'score') {
+                    cached = await getCachedComments(id, contentType, null, 'score');
+                    page = await getPageState(id, contentType, null, 'score');
+                }
+                if (!cached.length && sort === 'score') {
+                    cached = await getCachedComments(id, contentType, null, 'ts');
+                    page = await getPageState(id, contentType, null, 'ts');
+                }
+                setComments(cached);
+                setCommentCount(page?.totalCount || cached.length);
+                offsetRef.current = page?.nextOffset || '';
+                hasMoreRef.current = Boolean(page && !page.isEnd && page.nextOffset);
+                return;
+            }
             const response = await getRootComments(id, normalizedType, refresh ? '' : offsetRef.current, sort);
             const next = nextOffset(response?.paging?.next);
             offsetRef.current = next;
@@ -109,13 +134,23 @@ export default function CommentScreen() {
                 const merged = [...current, ...incoming];
                 return merged.filter((item, index) => merged.findIndex((candidate) => candidate.id === item.id) === index);
             });
+            void saveCommentPage({
+                contentId: id,
+                contentType,
+                parentCommentId: null,
+                orderBy: sort,
+                comments: incoming,
+                nextOffset: next,
+                isEnd: !next || response?.paging?.is_end === true,
+                totalCount: Number(response?.counts?.total_counts || 0),
+            }).catch((error) => console.warn('评论写入本地缓存失败', error));
         } catch (error) {
             console.error('加载评论失败:', error);
         } finally {
             inFlightRef.current = false;
             setRefreshing(false);
         }
-    }, [id, normalizedType, sort]);
+    }, [contentType, id, networkStatus, normalizedType, sort]);
 
     useEffect(() => {
         setComments([]);
@@ -223,6 +258,8 @@ export default function CommentScreen() {
             <ChildComment
                 visible={Boolean(childId)}
                 id={childId}
+                contentId={id || ''}
+                contentType={contentType}
                 initialFocusId={childFocusId}
                 onClose={() => {
                     setChildId('');
