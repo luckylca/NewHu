@@ -58,12 +58,19 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle }: {
             params: { id: item.id, type, needToGet: needToGet.toString() }
         });
     }, [item.id, type, needToGet]);
+    const prefetchItem = useCallback(() => {
+        router.prefetch({
+            pathname: '/item/[type]/[id]',
+            params: { id: item.id, type, needToGet: needToGet.toString() },
+        });
+    }, [item.id, needToGet, type]);
 
     return (
         <Card
             feedback="none"
             showIndication
             onPress={openItem}
+            onPressIn={prefetchItem}
             style={{ width: WindowWidth * 0.9, marginBottom: 10 }}
             contentStyle={{ backgroundColor: cardBgColor, paddingHorizontal: 16, paddingVertical: 14 }}
         >
@@ -124,6 +131,12 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
             params: { id: item.id, type, needToGet: needToGet.toString() }
         });
     }, [item.id, type, needToGet]);
+    const prefetchItem = useCallback(() => {
+        router.prefetch({
+            pathname: '/item/[type]/[id]',
+            params: { id: item.id, type, needToGet: needToGet.toString() },
+        });
+    }, [item.id, needToGet, type]);
 
     const [menuVisible, setMenuVisible] = useState(false);
     const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0, width: 1, height: 1 });
@@ -150,6 +163,7 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                     showIndication
                     holdDown={menuVisible}
                     onPress={openItem}
+                    onPressIn={prefetchItem}
                     onLongPress={openActionMenu}
                     style={{ flex: 1 }}
                     contentStyle={{ backgroundColor: cardBgColor, borderRadius: 24, padding: 20, flex: 1 }}
@@ -507,6 +521,7 @@ const HomeScreen = () => {
             <SearchBar
                 label="搜索知乎内容"
                 onPress={() => router.push('/search')}
+                onPressIn={() => router.prefetch('/search')}
                 inputProps={{
                     editable: false,
                     showSoftInputOnFocus: false,

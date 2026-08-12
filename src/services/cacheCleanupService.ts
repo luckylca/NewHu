@@ -21,7 +21,15 @@ export async function cleanupTransientCache(limitBytes = DEFAULT_LIMIT) {
         currentBytes -= Number(body.bytes || 0);
         deletedBytes += Number(body.bytes || 0);
     }
-    deletedBytes += await cleanupResourceFiles(100);
+    if (limitBytes === 0) {
+        // Comments can outlive a transient body (for example when a comment
+        // page was opened independently). A manual "clear" should remove
+        // those too while preserving local pending comments.
+        await db.runAsync("DELETE FROM comment_list_entries WHERE comment_id IN (SELECT id FROM comments WHERE cache_state = 'transient' AND local_only = 0)");
+        await db.runAsync("DELETE FROM comments WHERE cache_state = 'transient' AND local_only = 0");
+        await db.runAsync("DELETE FROM comment_page_state WHERE NOT EXISTS (SELECT 1 FROM offline_pins p WHERE p.content_id = comment_page_state.content_id AND p.content_type = comment_page_state.content_type AND p.status = 'active')");
+    }
+    deletedBytes += await cleanupResourceFiles(limitBytes === 0 ? 10000 : 100);
     await db.runAsync("DELETE FROM feed_entries WHERE id NOT IN (SELECT id FROM feed_entries ORDER BY fetched_at DESC, id DESC LIMIT 500)");
     summary = await getCacheSummary();
     return { deletedBytes, summary };

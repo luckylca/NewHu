@@ -62,13 +62,22 @@ export async function upsertContent(content: FeedItem | FeedDetail, type: FeedTy
                 first_seen_at, last_seen_at, last_accessed_at, has_body
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id, type) DO UPDATE SET
-                title = excluded.title,
-                excerpt = excluded.excerpt,
+                title = CASE
+                    WHEN TRIM(excluded.title) NOT IN ('', '无标题', '未知标题') THEN excluded.title
+                    ELSE contents.title
+                END,
+                excerpt = CASE
+                    WHEN TRIM(excluded.excerpt) NOT IN ('', '暂无简介') THEN excluded.excerpt
+                    ELSE contents.excerpt
+                END,
                 author_name = excluded.author_name,
                 author_url_token = excluded.author_url_token,
                 author_avatar = excluded.author_avatar,
                 question_id = excluded.question_id,
-                question_title = excluded.question_title,
+                question_title = CASE
+                    WHEN TRIM(excluded.question_title) NOT IN ('', '未知问题', '无标题') THEN excluded.question_title
+                    ELSE contents.question_title
+                END,
                 question_author_name = excluded.question_author_name,
                 question_author_avatar = excluded.question_author_avatar,
                 question_author_url_token = excluded.question_author_url_token,

@@ -4,8 +4,10 @@ import { getNetworkStatus } from '@/src/stores/useNetworkStore';
 import { normalizeComment, normalizeContent } from '@/src/db/mappers';
 import { downgradeContentComments, getCachedComments, getPageState, markCommentsPinned, saveCommentPage } from '@/src/db/repositories/commentRepository';
 import { getContent, markBodyCacheState, upsertContent } from '@/src/db/repositories/contentRepository';
-import { createCacheJob, removeOfflinePin, updateCacheJob, upsertOfflinePin } from '@/src/db/repositories/offlineCacheRepository';
+import { createCacheJob, purgeOfflineCacheRecords, removeOfflinePin, updateCacheJob, upsertOfflinePin } from '@/src/db/repositories/offlineCacheRepository';
+import type { OfflineCacheTarget } from '@/src/db/repositories/offlineCacheRepository';
 import { downloadResources, extractImageUrls, referenceResource } from './resourceService';
+import { File } from 'expo-file-system';
 import type { FeedType } from '@/src/types/zhihu';
 import type { RootCommentMode } from '@/src/db/types';
 
@@ -156,6 +158,24 @@ export async function removeCachedContent(contentId: string, contentType: FeedTy
         // Do not remove metadata or behavior records; only downgrade the body/comments.
         await downgradeContentComments(contentId, contentType);
     }
+}
+
+export async function removeCachedContents(targets: OfflineCacheTarget[]) {
+    const orphanedResources = await purgeOfflineCacheRecords(targets);
+    let releasedBytes = 0;
+    for (const resource of orphanedResources) {
+        if (!resource.localUri) continue;
+        try {
+            const file = new File(resource.localUri);
+            if (file.exists) {
+                releasedBytes += file.size || 0;
+                file.delete();
+            }
+        } catch {
+            // The database record is already gone; a missing/stale file is harmless.
+        }
+    }
+    return { removedCount: targets.length, releasedBytes };
 }
 
 export async function cacheContentFromId(contentId: string, contentType: FeedType, options: Omit<Parameters<typeof cacheContent>[0], 'content' | 'contentType'>) {

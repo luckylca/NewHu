@@ -139,6 +139,10 @@ export default function SearchScreen() {
         <Card
             feedback="none"
             showIndication
+            onPressIn={() => router.prefetch({
+                pathname: '/item/[type]/[id]',
+                params: { type: item.type, id: item.id, needToGet: 'true' },
+            })}
             onPress={() => router.push({
                 pathname: '/item/[type]/[id]',
                 params: { type: item.type, id: item.id, needToGet: 'true' },

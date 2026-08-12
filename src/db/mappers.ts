@@ -18,9 +18,11 @@ function getExcerpt(raw: any) {
 }
 
 export function normalizeContent(raw: any, type: FeedType, voted?: boolean): FeedDetail {
+    const questionTitle = raw?.question?.title || '';
+    const title = raw?.title || (type === 'answer' ? questionTitle : '') || '';
     return {
         id: String(raw?.id ?? ''),
-        title: raw?.title || '无标题',
+        title,
         authorName: raw?.author?.name || '匿名用户',
         authorUrlToken: raw?.author?.url_token || '',
         authorAvatar: raw?.author?.avatar_url || '',
@@ -31,7 +33,7 @@ export function normalizeContent(raw: any, type: FeedType, voted?: boolean): Fee
         favoriteCount: Number(raw?.favorite_count || 0),
         commentCount: Number(raw?.comment_count || 0),
         content: raw?.content || '',
-        questionTitle: raw?.question?.title || '未知问题',
+        questionTitle: questionTitle || (type === 'answer' ? title : ''),
         questionId: String(raw?.question?.id || ''),
         questionAuthorName: raw?.question?.author?.name || '匿名用户',
         questionAuthorAvatar: raw?.question?.author?.avatar_url || '',

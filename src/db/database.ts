@@ -3,7 +3,7 @@ import { DATABASE_VERSION, MIGRATION_1 } from './schema';
 
 const DATABASE_NAME = 'newhu.db';
 let databasePromise: Promise<SQLiteDatabase> | null = null;
-type SerializedTransactionTask = (db: SQLiteDatabase) => Promise<void>;
+type SerializedTransactionTask<T> = (db: SQLiteDatabase) => Promise<T>;
 let serializedTransactionQueue: Promise<void> = Promise.resolve();
 
 async function migrate(db: SQLiteDatabase) {
@@ -27,6 +27,7 @@ async function openDatabase() {
     } catch {
         // WAL is an optimization; some older Android SQLite builds may reject it.
     }
+    await db.execAsync('PRAGMA busy_timeout = 5000;');
     await migrate(db);
     return db;
 }
@@ -42,12 +43,17 @@ export function getDatabase() {
  * BEGIN/COMMIT/ROLLBACK while still allowing their network work to run in
  * parallel.
  */
-export function withSerializedTransaction(task: SerializedTransactionTask) {
+export function withSerializedTransaction<T>(task: SerializedTransactionTask<T>): Promise<T> {
     const run = serializedTransactionQueue.then(async () => {
         const db = await getDatabase();
+        let result: T;
+        // This queue already serializes transactions. Keeping them on the
+        // shared connection avoids an exclusive second connection locking
+        // the other parallel cache workers while it commits.
         await db.withTransactionAsync(async () => {
-            await task(db);
+            result = await task(db);
         });
+        return result!;
     });
     serializedTransactionQueue = run.then(() => undefined, () => undefined);
     return run;

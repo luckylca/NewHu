@@ -32,6 +32,7 @@ export interface AppCardProps {
     /** Latch the press feedback on (e.g. while a long-press dialog is open). */
     holdDown?: boolean;
     onPress?: () => void;
+    onPressIn?: () => void;
     onLongPress?: (event: GestureResponderEvent) => void;
     style?: StyleProp<ViewStyle>;
     contentStyle?: StyleProp<ViewStyle>;
@@ -42,7 +43,7 @@ const SINK_AMOUNT = 0.94;
 const TILT_AMOUNT = 5.3;
 const TILT_PERSPECTIVE_FACTOR = 1.6;
 
-export function Card({ feedback = 'sink', showIndication, holdDown, onPress, onLongPress, style, contentStyle, children }: AppCardProps) {
+export function Card({ feedback = 'sink', showIndication, holdDown, onPress, onPressIn, onLongPress, style, contentStyle, children }: AppCardProps) {
     const theme = useTheme();
     const radius = theme.components.card.radius;
     const pressed = useSharedValue(0);
@@ -97,8 +98,9 @@ export function Card({ feedback = 'sink', showIndication, holdDown, onPress, onL
                 tiltY.value = locationX < halfW ? -TILT_AMOUNT : TILT_AMOUNT;
             }
             pressed.value = 1;
+            onPressIn?.();
         },
-        [feedback, cardWidth, cardHeight, tiltX, tiltY, pressed],
+        [feedback, cardWidth, cardHeight, onPressIn, tiltX, tiltY, pressed],
     );
 
     const handlePressOut = useCallback(() => {

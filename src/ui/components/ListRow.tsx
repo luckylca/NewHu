@@ -29,13 +29,14 @@ export interface AppListRowProps {
     /** End region — Switch / value / chevron. */
     trailing?: ReactNode;
     onPress?: () => void;
+    onPressIn?: () => void;
     disabled?: boolean;
     titleColor?: string;
     summaryColor?: string;
     style?: StyleProp<ViewStyle>;
 }
 
-export function ListRow({ title, summary, icon, trailing, onPress, disabled, titleColor: titleColorOverride, summaryColor: summaryColorOverride, style }: AppListRowProps) {
+export function ListRow({ title, summary, icon, trailing, onPress, onPressIn, disabled, titleColor: titleColorOverride, summaryColor: summaryColorOverride, style }: AppListRowProps) {
     const theme = useTheme();
     const c = theme.components.preference;
     const pressed = useSharedValue(0);
@@ -49,7 +50,10 @@ export function ListRow({ title, summary, icon, trailing, onPress, disabled, tit
             accessibilityRole={interactive ? 'button' : undefined}
             accessibilityState={{ disabled: !!disabled }}
             onPress={interactive ? onPress : undefined}
-            onPressIn={interactive ? () => (pressed.value = 1) : undefined}
+            onPressIn={interactive ? () => {
+                pressed.value = 1;
+                onPressIn?.();
+            } : undefined}
             onPressOut={interactive ? () => (pressed.value = 0) : undefined}
             style={[{ minHeight: c.minHeight, padding: c.padding, justifyContent: 'center' }, style]}
         >

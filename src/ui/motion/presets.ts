@@ -60,6 +60,11 @@ export const inputMotion = folmeSpring(1, 1500);
 /** Menu / ListPopup popup fraction. spring(dampingRatio 0.82, stiffness 362.5). */
 export const menuFraction = folmeSpring(0.82, 362.5);
 
+/** Storage page sections and donut settle. folmeSpring(damping 0.9, response 0.38). */
+export const storageEnter = folmeSpringByResponse(0.9, 0.38);
+/** Storage management controls. folmeSpring(damping 0.88, response 0.3). */
+export const storageManage = folmeSpringByResponse(0.88, 0.3);
+
 // ---- Tweens ----
 
 export interface TweenConfig {

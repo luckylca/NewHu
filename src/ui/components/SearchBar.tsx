@@ -26,6 +26,7 @@ export interface AppSearchBarProps {
     onSearch?: (text: string) => void;
     /** Use the collapsed bar as a navigation action instead of an editable field. */
     onPress?: () => void;
+    onPressIn?: () => void;
     /** Expanded = focused; drives the Cancel slide-in + results reveal. */
     expanded?: boolean;
     onExpandedChange?: (expanded: boolean) => void;
@@ -43,6 +44,7 @@ export function SearchBar({
     onChangeText,
     onSearch,
     onPress,
+    onPressIn,
     expanded = false,
     onExpandedChange,
     label = 'Search',
@@ -175,6 +177,7 @@ export function SearchBar({
                             accessibilityRole="button"
                             accessibilityLabel={label}
                             onPress={onPress}
+                            onPressIn={onPressIn}
                             style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: c.radius }}
                         />
                     ) : null}

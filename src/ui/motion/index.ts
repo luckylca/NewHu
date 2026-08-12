@@ -22,6 +22,8 @@ export {
     snackbarMotion,
     inputMotion,
     menuFraction,
+    storageEnter,
+    storageManage,
     pressIndication,
     tabIndicator,
     titleColorTween,

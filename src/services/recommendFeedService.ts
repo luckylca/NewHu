@@ -49,6 +49,8 @@ export function normalizeRecommendItem(item: any): FeedItemInfo | null {
         || target.is_paid === true,
     );
     const type = target.type as FeedType;
+    const questionTitle = String(target.question?.title || '').trim();
+    const title = String(target.title || (type === 'answer' ? questionTitle : '') || '').trim();
 
     return {
         feedType: type,
@@ -56,7 +58,7 @@ export function normalizeRecommendItem(item: any): FeedItemInfo | null {
         isPaid,
         item: {
             id: String(target.id),
-            title: target.title || '无标题',
+            title,
             authorName: target.author?.name || '匿名用户',
             authorUrlToken: target.author?.url_token || '',
             authorAvatar: target.author?.avatar_url || '',
@@ -66,7 +68,7 @@ export function normalizeRecommendItem(item: any): FeedItemInfo | null {
             favoriteCount: target.favorite_count || 0,
             commentCount: target.comment_count || 0,
             content: target.content || '',
-            questionTitle: target.question?.title || '未知问题',
+            questionTitle: questionTitle || (type === 'answer' ? title : ''),
             questionId: String(target.question?.id || ''),
             questionAuthorName: target.question?.author?.name || '匿名用户',
             questionAuthorAvatar: target.question?.author?.avatar_url || '',
