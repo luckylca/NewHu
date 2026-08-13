@@ -4,7 +4,7 @@ import { Button, Card, Checkbox, Icon, Switch, Text } from '@/src/ui';
 import { onboardingEnter, useReducedMotionPreference } from '@/src/ui/motion';
 import { useTheme } from '@/src/ui/theme';
 import { notification, toggle, NotificationFeedbackType } from '@/src/utils/haptics';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import React from 'react';
 import { BackHandler, Pressable, ScrollView, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
@@ -29,13 +29,15 @@ export default function OnboardingScreen() {
         entrance.value = reduced ? 1 : withSpring(1, onboardingEnter);
     }, [entrance, reduced, step]);
 
-    React.useEffect(() => {
-        const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-            if (step > 0) setStep((current) => current - 1);
-            return true;
-        });
-        return () => subscription.remove();
-    }, [step]);
+    useFocusEffect(
+        React.useCallback(() => {
+            const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+                if (step > 0) setStep((current) => current - 1);
+                return true;
+            });
+            return () => subscription.remove();
+        }, [step]),
+    );
 
     const contentStyle = useAnimatedStyle(() => ({
         opacity: entrance.value,

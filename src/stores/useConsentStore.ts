@@ -15,6 +15,7 @@ export interface ConsentState {
     termsVersion: string;
     termsAcceptedAt: number | null;
     aiInterestAnalysisEnabled: boolean;
+    onboardingCompletedThisSession: boolean;
     acceptRequiredAgreements: () => void;
     setAiInterestAnalysisEnabled: (enabled: boolean) => void;
     completeOnboarding: () => void;
@@ -30,6 +31,9 @@ export const useConsentStore = create<ConsentState>()(
             termsVersion: '',
             termsAcceptedAt: null,
             aiInterestAnalysisEnabled: false,
+            // Intentionally not persisted. The temporary onboarding test mode
+            // uses this to show the flow once on every cold app launch.
+            onboardingCompletedThisSession: false,
             acceptRequiredAgreements: () => {
                 const now = Date.now();
                 set({
@@ -51,6 +55,7 @@ export const useConsentStore = create<ConsentState>()(
                 set({
                     onboardingCompleted: true,
                     onboardingVersion: CURRENT_ONBOARDING_VERSION,
+                    onboardingCompletedThisSession: true,
                 });
             },
         }),
@@ -79,4 +84,3 @@ export function hasCurrentRequiredConsent(state: ConsentState) {
         state.termsVersion === CURRENT_TERMS_VERSION &&
         state.termsAcceptedAt != null;
 }
-

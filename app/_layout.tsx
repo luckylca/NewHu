@@ -22,6 +22,10 @@ import { useNetworkStore } from '@/src/stores/useNetworkStore';
 import { useSettingStore } from '@/src/stores/useSettingStore';
 import { getWallpaperBase } from '@/src/ui/theme/wallpaper';
 
+// Temporary QA switch: show onboarding once on every cold app launch without
+// clearing or overwriting the user's persisted consent choices.
+const SHOW_ONBOARDING_EVERY_LAUNCH_FOR_TESTING = true;
+
 void SplashScreen.preventAutoHideAsync();
 SplashScreen.setOptions({ duration: 180, fade: true });
 
@@ -33,7 +37,10 @@ export default function RootLayout() {
 	const disableAnimations = useSettingStore((state) => state.disableAnimations);
 	const systemReducedMotion = useReducedMotion();
 	const reducedMotion = disableAnimations || systemReducedMotion;
-	const consentReady = consentHydrated && hasCurrentRequiredConsent(consent);
+	const persistedConsentReady = consentHydrated && hasCurrentRequiredConsent(consent);
+	const consentReady = persistedConsentReady && (
+		!SHOW_ONBOARDING_EVERY_LAUNCH_FOR_TESTING || consent.onboardingCompletedThisSession
+	);
 	const splashHidden = React.useRef(false);
 	const routeBaseColor = getWallpaperBase(uiTheme.dark);
 	const renderRouteScene = React.useCallback(({ children }: { children: React.ReactNode }) => (

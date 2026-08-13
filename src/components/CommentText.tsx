@@ -169,8 +169,8 @@ export default function CommentText({
 
     const imagePressHandler = () => {
         if (imageRef.current) {
-            imageRef.current.measure((fx: number, fy: number, width: number, height: number, px: number, py: number) => {                
-                setImageOrigin({ x: px, y: py, width, height });
+            imageRef.current.measureInWindow((x: number, y: number, width: number, height: number) => {
+                setImageOrigin({ x, y, width, height });
                 setImageVisible(true);
             })
         }

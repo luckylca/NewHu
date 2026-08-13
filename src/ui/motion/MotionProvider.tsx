@@ -10,4 +10,3 @@ export function MotionProvider({ reduced, children }: { reduced: boolean; childr
 export function useReducedMotionPreference() {
     return useContext(MotionContext);
 }
-

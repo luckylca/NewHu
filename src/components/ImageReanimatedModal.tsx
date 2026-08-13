@@ -36,9 +36,15 @@ const ImageReanimatedModal = ({ origin, visible, url, onClose, onLongPress }: {
 
     useEffect(() => {
         if (visible) {
+            // Mount the transparent modal at the exact source rect first, then
+            // start the spring on the next frame. Starting the animation before
+            // Modal has committed can skip the first part of the shared motion.
+            progress.value = 0;
             setMounted(true);
-            progress.value = reducedMotion ? 1 : withSpring(1, { damping: 50, stiffness: 200, mass: 1 });
-            return;
+            const frame = requestAnimationFrame(() => {
+                progress.value = reducedMotion ? 1 : withSpring(1, { damping: 50, stiffness: 200, mass: 1 });
+            });
+            return () => cancelAnimationFrame(frame);
         }
 
         progress.value = withTiming(0, { duration: reducedMotion ? 100 : 220 }, (finished) => {
@@ -123,7 +129,9 @@ const ImageReanimatedModal = ({ origin, visible, url, onClose, onLongPress }: {
 const styles = StyleSheet.create({
     modalRoot: {
         flex: 1,
-        backgroundColor: '#000000',
+        // Keep the source page visible at progress=0. The separate backdrop
+        // fades to black while the image expands from its measured position.
+        backgroundColor: 'transparent',
     },
     backdrop: {
         ...StyleSheet.absoluteFillObject,

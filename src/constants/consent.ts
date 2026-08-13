@@ -1,4 +1,3 @@
 export const CURRENT_ONBOARDING_VERSION = 1;
 export const CURRENT_PRIVACY_VERSION = '2026-08-13';
 export const CURRENT_TERMS_VERSION = '2026-08-13';
-

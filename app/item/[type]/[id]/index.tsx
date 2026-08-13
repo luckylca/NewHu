@@ -88,7 +88,7 @@ function splitArticleHtml(html: string, targetLength = 3600) {
 // 提取到组件外部的独立组件
 const CustomImageRenderer = React.memo(({ tnode, setOrigin, setImageUrl, setModalVisible }: any) => {
     const attrs = tnode.attributes || {};
-    const localImageRef = useRef<View>(null);
+    const localImageRef = useRef<Image>(null);
     const theme = useTheme();
     const networkStatus = useNetworkStore((state) => state.status);
     const pressed = useSharedValue(0);
@@ -172,7 +172,7 @@ const CustomImageRenderer = React.memo(({ tnode, setOrigin, setImageUrl, setModa
     }
 
     return (
-        <View ref={localImageRef} collapsable={false} style={{ width: '100%', alignItems: 'center', marginVertical: 8 }}>
+        <View collapsable={false} style={{ width: '100%', alignItems: 'center', marginVertical: 8 }}>
             <Pressable
                 onPress={() => {
                     console.log('图片地址:', src);
@@ -189,6 +189,7 @@ const CustomImageRenderer = React.memo(({ tnode, setOrigin, setImageUrl, setModa
                 style={{ width: '100%', borderRadius: theme.radius.tabContour, overflow: 'hidden' }}
             >
                 <Image
+                    ref={localImageRef}
                     source={{ uri: resolvedSrc }}
                     style={{
                         width: '100%',
