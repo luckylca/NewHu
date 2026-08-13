@@ -1,5 +1,6 @@
 import { Icon, Text } from '@/src/ui/primitives';
 import { topAppBarHide, topAppBarShow } from '@/src/ui/motion';
+import { useReducedMotionPreference } from '@/src/ui/motion/MotionProvider';
 import { useTheme } from '@/src/ui/theme';
 import React from 'react';
 import type { ReactNode } from 'react';
@@ -54,6 +55,7 @@ const HIDDEN_TRANSLATION_Y = 20;
 
 export function TopAppBar({ title = '', largeTitle, subtitle, large = false, scrollY, expansion = 88, back, actions, navigation }: AppTopAppBarProps) {
     const theme = useTheme();
+    const reducedMotion = useReducedMotionPreference();
     const titleColor = theme.colors.onBackground;
     const subtitleColor = theme.colors.onSurfaceVariantSummary;
     const insets = useSafeAreaInsets();
@@ -77,8 +79,8 @@ export function TopAppBar({ title = '', largeTitle, subtitle, large = false, scr
     const smallTitleStyle = useAnimatedStyle(() => {
         const visible = smallVisible.value === 1;
         return {
-            opacity: visible ? withSpring(1, topAppBarShow) : withSpring(0, topAppBarHide),
-            transform: [{ translateY: visible ? withSpring(0, topAppBarShow) : withSpring(HIDDEN_TRANSLATION_Y, topAppBarHide) }],
+            opacity: reducedMotion ? (visible ? 1 : 0) : visible ? withSpring(1, topAppBarShow) : withSpring(0, topAppBarHide),
+            transform: [{ translateY: reducedMotion ? 0 : visible ? withSpring(0, topAppBarShow) : withSpring(HIDDEN_TRANSLATION_Y, topAppBarHide) }],
         };
     });
 

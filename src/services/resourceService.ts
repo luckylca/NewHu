@@ -77,6 +77,11 @@ async function ensureDirectory() {
 
 export async function resolveImageUri(remoteUrl: string, online = getNetworkStatus() === 'online') {
     if (!remoteUrl) return null;
+    // Online browsing should stay on the normal network path. Looking up and
+    // touching SQLite for every image created dozens of reads/writes while a
+    // long article was mounting, which competed directly with navigation and
+    // scrolling. The resource table is only needed to resolve an offline URI.
+    if (online) return normalizeRemoteUrl(remoteUrl);
     for (const candidate of remoteUrlCandidates(remoteUrl)) {
         const record = await getResource(candidate);
         if (record?.localUri) {

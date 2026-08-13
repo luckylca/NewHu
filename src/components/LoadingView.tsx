@@ -1,6 +1,7 @@
 import { Text } from "@/src/ui/primitives";
 import { useTheme } from "@/src/ui/theme";
-import { ActivityIndicator, View } from "react-native";
+import { View } from "react-native";
+import MiuixProgressIndicator from "@/src/components/MiuixProgressIndicator";
 
 const LoadingView = ({ message = "正在加载…" }: { message?: string }) => {
     const theme = useTheme();
@@ -15,11 +16,9 @@ const LoadingView = ({ message = "正在加载…" }: { message?: string }) => {
                 paddingHorizontal: 24,
             }}
         >
-            <ActivityIndicator
-                animating
-                size="large"
-                color={theme.colors.primary}
-            />
+            <View style={{ width: 160 }}>
+                <MiuixProgressIndicator indeterminate />
+            </View>
 
             <Text
                 type="headline1"

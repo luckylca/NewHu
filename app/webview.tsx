@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Modal, View } from 'react-native';
+import { Modal, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import CookieManager from '@react-native-cookies/cookies';
 import { useUserStore } from '@/src/stores/useUserStore';
@@ -8,6 +8,7 @@ import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import { getApiInstance } from '@/src/api/ZhihuApi';
+import MiuixProgressIndicator from '@/src/components/MiuixProgressIndicator';
 const ZhihuLoginWebView = () => {
 
     const userStore = useUserStore();
@@ -22,7 +23,6 @@ const ZhihuLoginWebView = () => {
                 const value = typeof item === 'object' ? item.value : item;
                 return `${key}=${value}`;
             }).join('; ');
-            console.log('✅ 成功获取完整 Cookie (包含 z_c0):', cookieString);
             if (cookieString.includes('z_c0')) {
                 userStore.setCookie(cookieString);
                 let apiInstance = getApiInstance(cookieString);
@@ -49,7 +49,7 @@ const ZhihuLoginWebView = () => {
         <View style={{ flex: 1 }}>
             <Modal visible={modalVisible} transparent>
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.windowDimming }}>
-                    <ActivityIndicator animating={true} size="large" color={theme.colors.onPrimary} />
+                    <View style={{ width: 160 }}><MiuixProgressIndicator indeterminate /></View>
                     <Text type="body1" style={{ marginTop: theme.spacing.sm, color: theme.colors.onPrimary }}>{statueText}</Text>
                 </View>
             </Modal>

@@ -65,6 +65,12 @@ export const storageEnter = folmeSpringByResponse(0.9, 0.38);
 /** Storage management controls. folmeSpring(damping 0.88, response 0.3). */
 export const storageManage = folmeSpringByResponse(0.88, 0.3);
 
+/** Checkbox SinkFeedback(0.85, spring(0.99, 986.96)). */
+export const checkboxSink = folmeSpring(0.99, 986.96);
+
+/** Onboarding content entrance. Kept short and critically damped. */
+export const onboardingEnter = folmeSpringByResponse(0.92, 0.36);
+
 // ---- Tweens ----
 
 export interface TweenConfig {
@@ -74,6 +80,22 @@ export interface TweenConfig {
 
 /** MiuixIndication overlay. 120ms linear. */
 export const pressIndication: TweenConfig = { duration: 120, easing: linearEasing };
+
+/** Checkbox background/foreground tween. */
+export const checkboxColor: TweenConfig = { duration: 300, easing: fastOutSlowIn };
+export const checkboxMarkShow: TweenConfig = { duration: 10, easing: fastOutSlowIn };
+export const checkboxMarkHide: TweenConfig = { duration: 150, easing: fastOutSlowIn };
+
+/** Shared durations for page-level motion; component-specific presets remain authoritative. */
+export const motion = {
+    duration: { instant: 0, fast: 120, normal: 200, slow: 300 },
+    spring: {
+        press: cardSink,
+        standard: folmeSpringByResponse(0.9, 0.38),
+        soft: folmeSpringByResponse(0.86, 0.46),
+        sheet: bottomSheetEnter,
+    },
+} as const;
 
 /** Slider drag overlay. 150ms FastOutSlowIn. */
 export const sliderDragOverlay: TweenConfig = { duration: 150, easing: fastOutSlowIn };

@@ -7,7 +7,8 @@ import { useTheme } from '@/src/ui/theme';
 import type { FeedType } from '@/src/types/zhihu';
 import { router } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Keyboard, View } from 'react-native';
+import { FlatList, Keyboard, View } from 'react-native';
+import MiuixProgressIndicator from '@/src/components/MiuixProgressIndicator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type SearchResult = {
@@ -139,10 +140,6 @@ export default function SearchScreen() {
         <Card
             feedback="none"
             showIndication
-            onPressIn={() => router.prefetch({
-                pathname: '/item/[type]/[id]',
-                params: { type: item.type, id: item.id, needToGet: 'true' },
-            })}
             onPress={() => router.push({
                 pathname: '/item/[type]/[id]',
                 params: { type: item.type, id: item.id, needToGet: 'true' },
@@ -204,7 +201,7 @@ export default function SearchScreen() {
                 ListEmptyComponent={
                     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.xxl }}>
                         {loading ? (
-                            <ActivityIndicator size="large" color={theme.colors.primary} />
+                            <View style={{ width: 150 }}><MiuixProgressIndicator indeterminate /></View>
                         ) : (
                             <>
                                 <Icon name={error ? 'alert-circle-outline' : 'magnify'} size={34} color={theme.colors.onSurfaceVariantActions} />
@@ -216,7 +213,7 @@ export default function SearchScreen() {
                     </View>
                 }
                 ListFooterComponent={loadingMore ? (
-                    <ActivityIndicator style={{ paddingVertical: theme.spacing.lg }} color={theme.colors.primary} />
+                    <View style={{ paddingVertical: theme.spacing.lg, paddingHorizontal: theme.spacing.xxl }}><MiuixProgressIndicator indeterminate height={4} /></View>
                 ) : null}
             />
         </View>

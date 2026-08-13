@@ -1,6 +1,6 @@
 import type { FeedItemInfo } from '@/src/types/zhihu';
-import { getDatabase } from '../database';
-import { contentToFeedItem, upsertContent } from './contentRepository';
+import { getDatabase, withSerializedTransaction } from '../database';
+import { contentToFeedItem } from './contentRepository';
 
 const now = () => Date.now();
 
@@ -35,17 +35,74 @@ export async function saveFeedEntries(items: FeedItemInfo[], source = 'recommend
 
     const timestamp = now();
     const batchId = `${timestamp}-${Math.random().toString(36).slice(2, 8)}`;
-    // upsertContent owns its transaction; keep feed-entry writes separate to
-    // avoid nesting transactions on the same SQLite connection.
-    for (let index = 0; index < itemsToPersist.length; index += 1) {
-        const item = itemsToPersist[index];
-        await upsertContent(item.item, item.feedType, { cacheState: 'transient' });
-        await db.runAsync(
-            `INSERT INTO feed_entries (content_id, content_type, source, position, session_id, batch_id, fetched_at, last_accessed_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            item.item.id, item.feedType, source, index, sessionId || null, batchId, timestamp, timestamp,
-        );
-    }
+    // Commit a recommendation page as one serialized transaction. The old
+    // per-item transaction loop repeatedly woke SQLite and the UI thread while
+    // the feed was scrolling.
+    await withSerializedTransaction(async (transaction) => {
+        for (let index = 0; index < itemsToPersist.length; index += 1) {
+            const item = itemsToPersist[index];
+            const content = item.item;
+            await transaction.runAsync(
+                `INSERT INTO contents (
+                    id, type, title, excerpt, author_name, author_url_token, author_avatar,
+                    question_id, question_title, question_author_name, question_author_avatar,
+                    question_author_url_token, question_answer_count, question_created_time,
+                    vote_count, comment_count, favorite_count, is_voted, created_at, updated_at,
+                    first_seen_at, last_seen_at, last_accessed_at, has_body
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id, type) DO UPDATE SET
+                    title = CASE WHEN TRIM(excluded.title) NOT IN ('', '无标题', '未知标题') THEN excluded.title ELSE contents.title END,
+                    excerpt = CASE WHEN TRIM(excluded.excerpt) NOT IN ('', '暂无简介') THEN excluded.excerpt ELSE contents.excerpt END,
+                    author_name = excluded.author_name,
+                    author_url_token = excluded.author_url_token,
+                    author_avatar = excluded.author_avatar,
+                    question_id = excluded.question_id,
+                    question_title = CASE WHEN TRIM(excluded.question_title) NOT IN ('', '未知问题', '无标题') THEN excluded.question_title ELSE contents.question_title END,
+                    question_author_name = excluded.question_author_name,
+                    question_author_avatar = excluded.question_author_avatar,
+                    question_author_url_token = excluded.question_author_url_token,
+                    question_answer_count = excluded.question_answer_count,
+                    question_created_time = excluded.question_created_time,
+                    vote_count = excluded.vote_count,
+                    comment_count = excluded.comment_count,
+                    favorite_count = excluded.favorite_count,
+                    updated_at = excluded.updated_at,
+                    last_seen_at = excluded.last_seen_at,
+                    last_accessed_at = excluded.last_accessed_at,
+                    has_body = MAX(contents.has_body, excluded.has_body)`,
+                content.id, item.feedType, content.title, content.excerpt, content.authorName, content.authorUrlToken,
+                content.authorAvatar, content.questionId, content.questionTitle, content.questionAuthorName,
+                content.questionAuthorAvatar, content.questionAuthorUrlToken, content.questionAnswerCount,
+                content.questionCreatedTime, content.voteCount, content.commentCount, content.favoriteCount,
+                0, content.updatedTime || 0, content.updatedTime || 0, timestamp, timestamp, timestamp,
+                content.content ? 1 : 0,
+            );
+            // Recommendation responses often include the full answer body.
+            // Preserve it as transient content without opening another transaction.
+            if (content.content) {
+                const existingBody = await transaction.getFirstAsync<{ cache_state: 'transient' | 'pinned' }>(
+                    'SELECT cache_state FROM content_bodies WHERE content_id = ? AND content_type = ?',
+                    content.id, item.feedType,
+                );
+                const cacheState = existingBody?.cache_state === 'pinned' ? 'pinned' : 'transient';
+                await transaction.runAsync(
+                    `INSERT INTO content_bodies (content_id, content_type, html, fetched_at, last_accessed_at, cache_state)
+                     VALUES (?, ?, ?, ?, ?, ?)
+                     ON CONFLICT(content_id, content_type) DO UPDATE SET
+                       html = excluded.html,
+                       fetched_at = excluded.fetched_at,
+                       last_accessed_at = excluded.last_accessed_at,
+                       cache_state = ?`,
+                    content.id, item.feedType, content.content, timestamp, timestamp, cacheState, cacheState,
+                );
+            }
+            await transaction.runAsync(
+                `INSERT INTO feed_entries (content_id, content_type, source, position, session_id, batch_id, fetched_at, last_accessed_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                content.id, item.feedType, source, index, sessionId || null, batchId, timestamp, timestamp,
+            );
+        }
+    });
     return itemsToPersist;
 }
 

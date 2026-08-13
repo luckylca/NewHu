@@ -1,5 +1,6 @@
 import { PressIndication } from '@/src/ui/primitives';
 import { cardSink, cardTilt } from '@/src/ui/motion';
+import { useReducedMotionPreference } from '@/src/ui/motion/MotionProvider';
 import { useTheme } from '@/src/ui/theme';
 import React, { useCallback, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -45,13 +46,13 @@ const TILT_PERSPECTIVE_FACTOR = 1.6;
 
 export function Card({ feedback = 'sink', showIndication, holdDown, onPress, onPressIn, onLongPress, style, contentStyle, children }: AppCardProps) {
     const theme = useTheme();
+    const reducedMotion = useReducedMotionPreference();
     const radius = theme.components.card.radius;
     const pressed = useSharedValue(0);
     const tiltX = useSharedValue(0);
     const tiltY = useSharedValue(0);
 
-    const [cardWidth, setCardWidth] = useState(0);
-    const [cardHeight, setCardHeight] = useState(0);
+    const cardSize = useRef({ width: 0, height: 0 });
     const [tiltOrigin, setTiltOrigin] = useState('50% 50%');
 
     const longPressFired = useRef(false);
@@ -63,25 +64,24 @@ export function Card({ feedback = 'sink', showIndication, holdDown, onPress, onP
     const animatedStyle = useAnimatedStyle(() => {
         if (feedback === 'sink') {
             return {
-                transform: [{ scale: withSpring(engaged.value === 1 ? SINK_AMOUNT : 1, cardSink) }],
+                transform: [{ scale: reducedMotion ? 1 : withSpring(engaged.value === 1 ? SINK_AMOUNT : 1, cardSink) }],
             };
         }
         if (feedback === 'tilt') {
             return {
                 transform: [
-                    { perspective: Math.max(cardWidth * TILT_PERSPECTIVE_FACTOR, 1) },
-                    { rotateX: withSpring(`${tiltX.value}deg`, cardTilt) },
-                    { rotateY: withSpring(`${tiltY.value}deg`, cardTilt) },
+                    { perspective: Math.max(cardSize.current.width * TILT_PERSPECTIVE_FACTOR, 1) },
+                    { rotateX: reducedMotion ? '0deg' : withSpring(`${tiltX.value}deg`, cardTilt) },
+                    { rotateY: reducedMotion ? '0deg' : withSpring(`${tiltY.value}deg`, cardTilt) },
                 ],
             };
         }
         return {};
-    }, [feedback, cardWidth]);
+    }, [feedback, reducedMotion]);
 
     const onLayout = useCallback((e: LayoutChangeEvent) => {
         const { width, height } = e.nativeEvent.layout;
-        setCardWidth(width);
-        setCardHeight(height);
+        cardSize.current = { width, height };
     }, []);
 
     const handlePressIn = useCallback(
@@ -89,8 +89,8 @@ export function Card({ feedback = 'sink', showIndication, holdDown, onPress, onP
             longPressFired.current = false;
             if (feedback === 'tilt') {
                 const { locationX, locationY } = e.nativeEvent;
-                const halfW = (cardWidth || 1) / 2;
-                const halfH = (cardHeight || 1) / 2;
+                const halfW = (cardSize.current.width || 1) / 2;
+                const halfH = (cardSize.current.height || 1) / 2;
                 const originX = locationX < halfW ? '100%' : '0%';
                 const originY = locationY < halfH ? '100%' : '0%';
                 setTiltOrigin(`${originX} ${originY}`);
@@ -100,7 +100,7 @@ export function Card({ feedback = 'sink', showIndication, holdDown, onPress, onP
             pressed.value = 1;
             onPressIn?.();
         },
-        [feedback, cardWidth, cardHeight, onPressIn, tiltX, tiltY, pressed],
+        [feedback, onPressIn, tiltX, tiltY, pressed],
     );
 
     const handlePressOut = useCallback(() => {

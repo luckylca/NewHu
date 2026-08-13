@@ -41,24 +41,10 @@ export function NavigationBar({ items = [], selected = 0, onSelect, renderIcon, 
                 {items.map((item, index) => {
                     const isSelected = index === selected;
                     return (
-                        <Pressable
+                        <NavigationItem
                             key={index}
-                            accessibilityRole="tab"
-                            accessibilityState={{ selected: isSelected }}
+                            selected={isSelected}
                             onPress={() => onSelect?.(index)}
-                            style={({ pressed }) => ({
-                                flex: 1,
-                                height: c.itemHeight,
-                                alignItems: 'center',
-                                justifyContent: 'flex-start',
-                                opacity: isSelected
-                                    ? pressed
-                                        ? theme.opacity.navPressedSelected
-                                        : theme.opacity.navSelected
-                                    : pressed
-                                        ? theme.opacity.navPressedUnselected
-                                        : theme.opacity.navUnselected,
-                            })}
                         >
                             <View style={{ width: c.iconSize, height: c.iconSize, marginTop: theme.spacing.sm, alignItems: 'center', justifyContent: 'center' }}>
                                 {renderIcon?.(item, index, isSelected)}
@@ -71,10 +57,27 @@ export function NavigationBar({ items = [], selected = 0, onSelect, renderIcon, 
                             >
                                 {item.label}
                             </Text>
-                        </Pressable>
+                        </NavigationItem>
                     );
                 })}
             </View>
         </View>
+    );
+}
+
+function NavigationItem({ selected, onPress, children }: { selected: boolean; onPress: () => void; children: ReactNode }) {
+    const theme = useTheme();
+    const c = theme.components.navigationBar;
+    return (
+        <Pressable
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
+            onPress={onPress}
+            style={({ pressed }) => ({ flex: 1, opacity: selected ? pressed ? theme.opacity.navPressedSelected : theme.opacity.navSelected : pressed ? theme.opacity.navPressedUnselected : theme.opacity.navUnselected })}
+        >
+            <View style={{ height: c.itemHeight, alignItems: 'center', justifyContent: 'flex-start' }}>
+                {children}
+            </View>
+        </Pressable>
     );
 }

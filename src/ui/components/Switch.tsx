@@ -1,4 +1,5 @@
 import { switchThumbOffset, switchThumbScale, switchTrackColor } from '@/src/ui/motion';
+import { useReducedMotionPreference } from '@/src/ui/motion/MotionProvider';
 import { useTheme } from '@/src/ui/theme';
 import React, { useCallback } from 'react';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -34,6 +35,7 @@ const SCALE_HOVER_PRESS = 1.127;
 
 export function Switch({ value = false, onValueChange, disabled = false, interactive = true }: AppSwitchProps) {
     const theme = useTheme();
+    const reducedMotion = useReducedMotionPreference();
     const c = theme.components.switch;
     const thumbInset = (c.height - c.thumbSize) / 2;
 
@@ -64,13 +66,13 @@ export function Switch({ value = false, onValueChange, disabled = false, interac
             : theme.colors.secondary;
 
     const trackStyle = useAnimatedStyle(() => ({
-        backgroundColor: withSpring(trackTarget, switchTrackColor),
+        backgroundColor: reducedMotion ? trackTarget : withSpring(trackTarget, switchTrackColor),
     }));
 
     // ---- thumb position + scale (spring-driven) ----
     const thumbX = useDerivedValue(() => {
         if (dragging.value === 1) return baseX + dragOffset.value;
-        return withSpring(baseX, switchThumbOffset);
+        return reducedMotion ? baseX : withSpring(baseX, switchThumbOffset);
     });
 
     const thumbScale = useDerivedValue(() => {
@@ -79,7 +81,7 @@ export function Switch({ value = false, onValueChange, disabled = false, interac
             pressed.value === 1 || dragging.value === 1 || Math.abs(dragOffset.value) > 0.01
                 ? SCALE_HOVER_PRESS
                 : 1;
-        return withSpring(target, switchThumbScale);
+        return reducedMotion ? 1 : withSpring(target, switchThumbScale);
     });
 
     const thumbStyle = useAnimatedStyle(() => ({

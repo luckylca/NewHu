@@ -1,5 +1,6 @@
 import { Text } from '@/src/ui/primitives';
 import { bottomSheetEnter, bottomSheetSettle, linearEasing, sheetHandlePress, sheetHandleRelease } from '@/src/ui/motion';
+import { useReducedMotionPreference } from '@/src/ui/motion/MotionProvider';
 import { useTheme } from '@/src/ui/theme';
 import React, { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -50,6 +51,7 @@ export function BottomSheet({
     children,
 }: AppBottomSheetProps) {
     const theme = useTheme();
+    const reducedMotion = useReducedMotionPreference();
     const c = theme.components.bottomSheet;
     const { height: windowH } = useWindowDimensions();
     const insets = useSafeAreaInsets();
@@ -64,16 +66,20 @@ export function BottomSheet({
     useEffect(() => {
         if (visible) {
             setRendered(true);
-            sheetY.value = withSpring(0, bottomSheetEnter);
-            dimOpacity.value = withTiming(1, { duration: 300, easing: linearEasing });
+            sheetY.value = reducedMotion ? 0 : withSpring(0, bottomSheetEnter);
+            dimOpacity.value = withTiming(1, { duration: reducedMotion ? 120 : 300, easing: linearEasing });
         } else if (rendered) {
             const finish = (finished: boolean | undefined) => {
                 if (finished) runOnJS(setRendered)(false);
             };
-            sheetY.value = withSpring(windowH, bottomSheetEnter, finish);
-            dimOpacity.value = withTiming(0, { duration: 250, easing: linearEasing });
+            if (reducedMotion) {
+                dimOpacity.value = withTiming(0, { duration: 100, easing: linearEasing }, finish);
+            } else {
+                sheetY.value = withSpring(windowH, bottomSheetEnter, finish);
+                dimOpacity.value = withTiming(0, { duration: 250, easing: linearEasing });
+            }
         }
-    }, [visible, rendered, windowH, sheetY, dimOpacity]);
+    }, [visible, rendered, windowH, reducedMotion, sheetY, dimOpacity]);
 
     const dragY = useSharedValue(0);
 

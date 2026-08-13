@@ -9,7 +9,7 @@ import { useExportContentStore } from "@/src/stores/useExportContentStore";
 import { useNetworkStore } from "@/src/stores/useNetworkStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Image, Pressable, ScrollView, useWindowDimensions, View } from "react-native";
+import { Animated, FlatList, Image, Pressable, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { Divider, Icon, ListRow, Menu, TopAppBar } from "@/src/ui";
 import { notify } from '@/src/stores/useNotificationStore';
@@ -19,6 +19,7 @@ import { useTheme } from "@/src/ui/theme";
 import { exportImage, exportPdf } from '@/src/utils/contentExport';
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import RenderHtml from 'react-native-render-html';
+import { DomUtils, parseDocument } from 'htmlparser2';
 import { scheduleOnRN } from "react-native-worklets";
 import { getContent, upsertContent } from "@/src/db/repositories/contentRepository";
 import { normalizeContent } from "@/src/db/mappers";
@@ -39,6 +40,50 @@ type ArrowEffect = {
     translateY: Animated.Value;
     opacity: Animated.Value;
 };
+
+const imageAspectCache = new Map<string, number>();
+const imageAspectRequests = new Map<string, Promise<number | null>>();
+
+function getImageAspect(uri: string) {
+    const cached = imageAspectCache.get(uri);
+    if (cached) return Promise.resolve(cached);
+    const pending = imageAspectRequests.get(uri);
+    if (pending) return pending;
+    const request = new Promise<number | null>((resolve) => {
+        Image.getSize(
+            uri,
+            (width, height) => {
+                const aspect = width > 0 && height > 0 ? width / height : null;
+                if (aspect) imageAspectCache.set(uri, aspect);
+                resolve(aspect);
+            },
+            () => resolve(null),
+        );
+    }).finally(() => imageAspectRequests.delete(uri));
+    imageAspectRequests.set(uri, request);
+    return request;
+}
+
+function splitArticleHtml(html: string, targetLength = 3600) {
+    try {
+        const blocks = parseDocument(html).children
+            .map((node) => DomUtils.getOuterHTML(node))
+            .filter((block) => block.trim().length > 0);
+        const chunks: string[] = [];
+        let current = '';
+        for (const block of blocks) {
+            if (current && current.length + block.length > targetLength) {
+                chunks.push(current);
+                current = '';
+            }
+            current += block;
+        }
+        if (current) chunks.push(current);
+        return chunks.length ? chunks : [html];
+    } catch {
+        return [html];
+    }
+}
 
 // 提取到组件外部的独立组件
 const CustomImageRenderer = React.memo(({ tnode, setOrigin, setImageUrl, setModalVisible }: any) => {
@@ -62,6 +107,7 @@ const CustomImageRenderer = React.memo(({ tnode, setOrigin, setImageUrl, setModa
         )))];
     }, [tnode]);
     const src = imageCandidates[0] || '';
+    const isEquation = /\/equation\?/i.test(src);
     const { width: imgWidth, height: imgHeight } = attrs;
     const declaredAspect = imgWidth && imgHeight ? Number(imgWidth) / Number(imgHeight) : 16 / 9;
     const [aspectRatio, setAspectRatio] = useState(Number.isFinite(declaredAspect) ? declaredAspect : 16 / 9);
@@ -73,9 +119,13 @@ const CustomImageRenderer = React.memo(({ tnode, setOrigin, setImageUrl, setModa
             setResolvedSrc(null);
             return () => { active = false; };
         }
+        if (networkStatus === 'online') {
+            setResolvedSrc(src);
+            return () => { active = false; };
+        }
         const resolve = async () => {
             for (const candidate of imageCandidates) {
-                const uri = await resolveImageUri(candidate, networkStatus === 'online');
+                const uri = await resolveImageUri(candidate, false);
                 if (uri) {
                     if (active) setResolvedSrc(uri);
                     return;
@@ -88,15 +138,33 @@ const CustomImageRenderer = React.memo(({ tnode, setOrigin, setImageUrl, setModa
     }, [imageCandidates, networkStatus]);
 
     useEffect(() => {
-        if (!resolvedSrc) return;
-        Image.getSize(resolvedSrc, (width, height) => {
-            if (width > 0 && height > 0) setAspectRatio(width / height);
+        if (!resolvedSrc || isEquation || (imgWidth && imgHeight)) return;
+        let active = true;
+        void getImageAspect(resolvedSrc).then((aspect) => {
+            if (active && aspect) setAspectRatio(aspect);
         });
-    }, [resolvedSrc]);
+        return () => { active = false; };
+    }, [imgHeight, imgWidth, isEquation, resolvedSrc]);
 
     // 如果是占位 SVG 则不渲染
     if (!src || src.startsWith('data:image/svg')) {
         return null;
+    }
+
+    // Zhihu formulas are tiny inline images. Keep their real rendering, but
+    // never run Image.getSize for the equation endpoint: that endpoint rejects
+    // the native size probe and used to generate many duplicate failures while
+    // the screen transition was running.
+    if (isEquation) {
+        const formulaWidth = Math.min(280, Math.max(20, String(attrs.alt || '').length * 11));
+        return (
+            <Image
+                source={{ uri: resolvedSrc || src }}
+                accessibilityLabel={attrs.alt || '公式'}
+                style={{ width: formulaWidth, height: 28 }}
+                resizeMode="contain"
+            />
+        );
     }
 
     if (!resolvedSrc) {
@@ -124,7 +192,7 @@ const CustomImageRenderer = React.memo(({ tnode, setOrigin, setImageUrl, setModa
                     source={{ uri: resolvedSrc }}
                     style={{
                         width: '100%',
-                        aspectRatio,
+                        ...(isEquation ? { height: 48 } : { aspectRatio }),
                         borderRadius: theme.radius.tabContour
                     }}
                     resizeMode="contain"
@@ -169,9 +237,40 @@ const ContentActionButton = ({ name, count, alwaysShowCount, color, onPress }: {
     );
 };
 
+const StableArticleBody = React.memo(function StableArticleBody({
+    contentWidth,
+    html,
+    tagsStyles,
+    renderers,
+}: {
+    contentWidth: number;
+    html: string;
+    tagsStyles: Record<string, object>;
+    renderers: Record<string, React.ComponentType<any> | ((props: any) => React.ReactNode)>;
+}) {
+    const source = useMemo(() => ({ html }), [html]);
+    return (
+        <RenderHtml
+            contentWidth={contentWidth}
+            source={source}
+            tagsStyles={tagsStyles}
+            enableExperimentalMarginCollapsing
+            enableExperimentalGhostLinesPrevention
+            renderers={renderers as any}
+            ignoredDomTags={['noscript']}
+            defaultTextProps={{ selectable: false }}
+        />
+    );
+});
+
 export default function Item() {
     const { id, type, needToGet } = useLocalSearchParams<ItemParams>();
-    const contentStore = useContentStore();
+    // Subscribe only to this item's fallback. Subscribing to the whole store
+    // made every feed append re-render the complete HTML document while the
+    // user was scrolling the detail page.
+    const fallbackContent = useContentStore((state) => (
+        state.feedList.find((item) => String(item.item.id) === String(id))?.item
+    ));
     const networkStatus = useNetworkStore((state) => state.status);
     const router = useRouter();
     const theme = useTheme();
@@ -213,9 +312,8 @@ export default function Item() {
         const load = async () => {
             setHydrated(false);
             const local = await getContent(String(id), contentType);
-            const fallback = contentStore.feedList.find((item) => String(item.item.id) === String(id))?.item;
             if (!active) return;
-            setReadData((local as FeedDetail | null) ?? fallback ?? null);
+            setReadData((local as FeedDetail | null) ?? fallbackContent ?? null);
             setHydrated(true);
 
             if (networkStatus !== 'online') return;
@@ -232,7 +330,7 @@ export default function Item() {
         };
         void load();
         return () => { active = false; };
-    }, [id, type, needToGet, contentStore.feedList, networkStatus]);
+    }, [id, type, needToGet, fallbackContent, networkStatus]);
 
     useEffect(() => {
         if (!readData) return;
@@ -327,6 +425,8 @@ export default function Item() {
 
     // 右滑返回：只在水平向右并且水平位移显著且垂直位移较小时触发
     const rightSwipe = Gesture.Pan()
+        .activeOffsetX(24)
+        .failOffsetY([-12, 12])
         .onEnd((e) => {
             const translationX = (e as any).translationX ?? 0;
             const translationY = (e as any).translationY ?? 0;
@@ -416,6 +516,9 @@ export default function Item() {
         )
     }), []);
 
+    const htmlContent = readData?.content || "<p>暂无正文内容</p>";
+    const articleChunks = useMemo(() => splitArticleHtml(htmlContent), [htmlContent]);
+
 
     if (!hydrated) {
         return <LoadingView />;
@@ -435,8 +538,6 @@ export default function Item() {
     }
 
     const title = type === 'answer' ? readData.questionTitle : (readData.title || '未知标题');
-    const htmlContent = readData.content || "<p>暂无正文内容</p>";
-
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
             <ImageReanimatedModal
@@ -485,101 +586,69 @@ export default function Item() {
                 ]}
             />
 
-            <ScrollView
-                contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xl, flexGrow: 1 }}
-                showsVerticalScrollIndicator={false}
-            >
-                {/* 标题 */}
-                <Pressable
-                    onPress={() => handleTitlePress()}
-                    onPressIn={() => (titlePressed.value = 1)}
-                    onPressOut={() => (titlePressed.value = 0)}
-                    style={{
-                        width: '100%',
-                        borderRadius: theme.radius.component,
-                        overflow: 'hidden',
-                        paddingTop: 8,
-                        paddingBottom: 8,
-                    }}
-                >
-                    <Text type="title2" weight="bold" color={primaryText}>
-                        {title}
-                    </Text>
-                    <PressIndication pressed={titlePressed} color={primaryText} radius={theme.radius.component} />
-                </Pressable>
-
-                {/* 作者信息区域 */}
-                <ListRow
-                    icon={
-                        readData.authorAvatar ? (
-                            <OfflineImage
-                                source={{ uri: readData.authorAvatar }}
-                                style={{ width: 40, height: 40, borderRadius: theme.radius.full, backgroundColor: theme.colors.secondaryContainer }}
-                            />
-                        ) : (
-                            <View style={{ width: 40, height: 40, borderRadius: theme.radius.full, backgroundColor: theme.colors.secondaryContainer, alignItems: 'center', justifyContent: 'center' }}>
-                                <Text type="body2" weight="medium" color={theme.colors.onSurfaceContainer}>
-                                    {readData.authorName?.substring(0, 1) || '佚'}
-                                </Text>
-                            </View>
-                        )
-                    }
-                    title={readData.authorName}
-                    summary={readData.updatedTime ? new Date(readData.updatedTime * 1000).toLocaleDateString() : '最近更新'}
-                    titleColor={primaryText}
-                    summaryColor={secondaryText}
-                    onPress={() => router.push({ pathname: '/people', params: { urlToken: readData.authorUrlToken } })}
-                    style={{ paddingHorizontal: 0, marginBottom: 4 }}
-                />
-
-                {/* 第一个分割线 */}
-                <Divider style={{ marginVertical: 16 }} />
-
-                <GestureDetector gesture={combinedGesture}>
-                    <View style={{ flex: 1 }} collapsable={false}>
-                        {/* HTML 正文渲染 */}
-                        <RenderHtml
-                            contentWidth={width - 32}
-                            source={{ html: htmlContent }}
-                            tagsStyles={tagsStyles}
-                            enableExperimentalMarginCollapsing={true}
-                            renderers={renderers}
-                            ignoredDomTags={['noscript']}
-                            defaultTextProps={{ selectable: false }}
-                        />
-
-                        {/* 第二个分割线 */}
-                        <Divider style={{ marginVertical: 16 }} />
-
-                        {/* 底部操作按钮区域 */}
-                        <View style={{ paddingLeft: 24, paddingRight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <ContentActionButton
-                                name={(voted || readData.voted) ? "thumb-up" : "thumb-up-outline"}
-                                count={readData.voteCount}
-                                alwaysShowCount
-                                color={(voted || readData.voted) ? theme.colors.primary : secondaryText}
-                                onPress={pressVoteUp}
-                            />
-                            <ContentActionButton
-                                name="star-outline"
-                                count={readData.favoriteCount}
-                                color={secondaryText}
-                                onPress={() => console.log('点击了收藏')}
-                            />
-                            <ContentActionButton
-                                name="comment-outline"
-                                count={readData.commentCount}
-                                alwaysShowCount
-                                color={secondaryText}
-                                onPress={() => router.push({ pathname: '/item/[type]/[id]/comment', params: { id: readData.id, type } })}
+            <FlatList
+                data={articleChunks}
+                keyExtractor={(_, index) => `${readData.id}:${index}`}
+                renderItem={({ item: chunk }) => (
+                    <GestureDetector gesture={combinedGesture}>
+                        <View collapsable={false}>
+                            <StableArticleBody
+                                contentWidth={width - 32}
+                                html={chunk}
+                                tagsStyles={tagsStyles}
+                                renderers={renderers}
                             />
                         </View>
-
-                        {/* 底部留白区域 */}
+                    </GestureDetector>
+                )}
+                contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xl, flexGrow: 1 }}
+                showsVerticalScrollIndicator={false}
+                initialNumToRender={2}
+                maxToRenderPerBatch={2}
+                updateCellsBatchingPeriod={64}
+                windowSize={5}
+                removeClippedSubviews
+                ListHeaderComponent={(
+                    <>
+                        <Pressable
+                            onPress={() => handleTitlePress()}
+                            onPressIn={() => (titlePressed.value = 1)}
+                            onPressOut={() => (titlePressed.value = 0)}
+                            style={{ width: '100%', borderRadius: theme.radius.component, overflow: 'hidden', paddingTop: 8, paddingBottom: 8 }}
+                        >
+                            <Text type="title2" weight="bold" color={primaryText}>{title}</Text>
+                            <PressIndication pressed={titlePressed} color={primaryText} radius={theme.radius.component} />
+                        </Pressable>
+                        <ListRow
+                            icon={readData.authorAvatar ? (
+                                <OfflineImage source={{ uri: readData.authorAvatar }} style={{ width: 40, height: 40, borderRadius: theme.radius.full, backgroundColor: theme.colors.secondaryContainer }} />
+                            ) : (
+                                <View style={{ width: 40, height: 40, borderRadius: theme.radius.full, backgroundColor: theme.colors.secondaryContainer, alignItems: 'center', justifyContent: 'center' }}>
+                                    <Text type="body2" weight="medium" color={theme.colors.onSurfaceContainer}>{readData.authorName?.substring(0, 1) || '佚'}</Text>
+                                </View>
+                            )}
+                            title={readData.authorName}
+                            summary={readData.updatedTime ? new Date(readData.updatedTime * 1000).toLocaleDateString() : '最近更新'}
+                            titleColor={primaryText}
+                            summaryColor={secondaryText}
+                            onPress={() => router.push({ pathname: '/people', params: { urlToken: readData.authorUrlToken } })}
+                            style={{ paddingHorizontal: 0, marginBottom: 4 }}
+                        />
+                        <Divider style={{ marginVertical: 16 }} />
+                    </>
+                )}
+                ListFooterComponent={(
+                    <>
+                        <Divider style={{ marginVertical: 16 }} />
+                        <View style={{ paddingLeft: 24, paddingRight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <ContentActionButton name={(voted || readData.voted) ? "thumb-up" : "thumb-up-outline"} count={readData.voteCount} alwaysShowCount color={(voted || readData.voted) ? theme.colors.primary : secondaryText} onPress={pressVoteUp} />
+                            <ContentActionButton name="star-outline" count={readData.favoriteCount} color={secondaryText} onPress={() => console.log('点击了收藏')} />
+                            <ContentActionButton name="comment-outline" count={readData.commentCount} alwaysShowCount color={secondaryText} onPress={() => router.push({ pathname: '/item/[type]/[id]/comment', params: { id: readData.id, type } })} />
+                        </View>
                         <View style={{ height: 40 }} />
-                    </View>
-                </GestureDetector>
-            </ScrollView>
+                    </>
+                )}
+            />
 
             {arrowEffects.map((arrow) => (
                 <Animated.View

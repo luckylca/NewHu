@@ -34,7 +34,6 @@ const UserScreen = ({ navigation }: any) => {
                 feedback="none"
                 showIndication
                 onPress={handlePress}
-                onPressIn={() => router.prefetch(userStore.isLoggedIn ? '/userinfo' : '/webview')}
                 style={{ margin: theme.spacing.lg }}
                 contentStyle={{ padding: theme.spacing.lg, flexDirection: 'row', alignItems: 'center' }}
             >
@@ -61,15 +60,15 @@ const UserScreen = ({ navigation }: any) => {
 
             {/* 设置入口组 —— ListRow + Divider，Miuix 设置列表 */}
             <View style={{ marginBottom: theme.spacing.xl, marginHorizontal: theme.spacing.lg, borderRadius: theme.radius.component, backgroundColor: theme.colors.surfaceContainer, overflow: 'hidden' }}>
-                <ListRow title="草稿箱" summary={draftCount > 0 ? `${draftCount} 条草稿` : '暂无草稿'} onPressIn={() => router.prefetch('/drafts')} onPress={() => router.push('/drafts')} />
+                <ListRow title="草稿箱" summary={draftCount > 0 ? `${draftCount} 条草稿` : '暂无草稿'} onPress={() => router.push('/drafts')} />
                 <Divider style={{ marginLeft: theme.spacing.lg }} />
-                <ListRow title="收藏列表" onPressIn={() => router.prefetch('/like')} onPress={() => router.push('/like')} />
+                <ListRow title="收藏列表" onPress={() => router.push('/like')} />
                 <Divider style={{ marginLeft: theme.spacing.lg }} />
-                <ListRow title="浏览历史" onPressIn={() => router.prefetch('/history')} onPress={() => router.push('/history')} />
+                <ListRow title="浏览历史" onPress={() => router.push('/history')} />
                 <Divider style={{ marginLeft: theme.spacing.lg }} />
-                <ListRow title="离线缓存" summary="批量获取内容并保存到本地" onPressIn={() => router.prefetch('/offline-cache')} onPress={() => router.push('/offline-cache')} />
+                <ListRow title="离线缓存" summary="批量获取内容并保存到本地" onPress={() => router.push('/offline-cache')} />
                 <Divider style={{ marginLeft: theme.spacing.lg }} />
-                <ListRow title="设置" onPressIn={() => router.prefetch('/settings')} onPress={() => router.push('/settings')} />
+                <ListRow title="设置" onPress={() => router.push('/settings')} />
             </View>
         </ScrollView>
     );

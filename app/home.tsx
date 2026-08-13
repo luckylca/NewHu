@@ -17,6 +17,7 @@ import { getNetworkStatus, useNetworkStore, type NetworkStatus } from '@/src/sto
 import { notify } from '@/src/stores/useNotificationStore';
 import { getRecentFeed, saveFeedEntries, trimTransientFeedEntries } from '@/src/db/repositories/feedRepository';
 import { recordUserEvent } from '@/src/db/repositories/userEventRepository';
+import { useConsentStore } from '@/src/stores/useConsentStore';
 
 const { width: WindowWidth } = Dimensions.get('window');
 const WindowHeight = Dimensions.get('window').height;
@@ -40,11 +41,12 @@ function getContentPreview(item: FeedItem) {
 }
 
 // ==================== 普通模式 Item ====================
-export const RenderItem = memo(({ item, type, needToGet, hideTitle }: {
+export const RenderItem = memo(({ item, type, needToGet, hideTitle, onOpenMenu }: {
     item: FeedItem;
     type: FeedType;
     needToGet: boolean;
     hideTitle?: boolean;
+    onOpenMenu?: (item: FeedItem, feedType: FeedType, event: GestureResponderEvent) => void;
 }) => {
     const title = (type === 'answer' && item.questionTitle) ? item.questionTitle : item.title;
     const theme = useTheme();
@@ -52,25 +54,24 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle }: {
     const cardBgColor = theme.colors.surfaceContainer;
 
     const openItem = useCallback(() => {
-        void recordUserEvent({ contentId: item.id, contentType: type, eventType: 'content_open' });
+        if (useConsentStore.getState().aiInterestAnalysisEnabled) {
+            void recordUserEvent({ contentId: item.id, contentType: type, eventType: 'content_open' });
+        }
         router.push({
             pathname: `/item/[type]/[id]`,
             params: { id: item.id, type, needToGet: needToGet.toString() }
         });
     }, [item.id, type, needToGet]);
-    const prefetchItem = useCallback(() => {
-        router.prefetch({
-            pathname: '/item/[type]/[id]',
-            params: { id: item.id, type, needToGet: needToGet.toString() },
-        });
-    }, [item.id, needToGet, type]);
+    const openActionMenu = useCallback((event: GestureResponderEvent) => {
+        onOpenMenu?.(item, type, event);
+    }, [item, onOpenMenu, type]);
 
     return (
         <Card
             feedback="none"
             showIndication
             onPress={openItem}
-            onPressIn={prefetchItem}
+            onLongPress={openActionMenu}
             style={{ width: WindowWidth * 0.9, marginBottom: 10 }}
             contentStyle={{ backgroundColor: cardBgColor, paddingHorizontal: 16, paddingVertical: 14 }}
         >
@@ -103,19 +104,20 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle }: {
 }, (prevProps, nextProps) => {
     return prevProps.item.id === nextProps.item.id &&
         prevProps.type === nextProps.type &&
+        prevProps.needToGet === nextProps.needToGet &&
+        prevProps.onOpenMenu === nextProps.onOpenMenu &&
         prevProps.hideTitle === nextProps.hideTitle;
 });
 RenderItem.displayName = 'RenderItem';
 
 // ==================== 卡片模式 Item ====================
-export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimations, hideTitle, onDislike, onShare }: {
+export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimations, hideTitle, onOpenMenu }: {
     item: FeedItem;
     type: FeedType;
     needToGet: boolean;
     disableAnimations?: boolean;
     hideTitle?: boolean;
-    onDislike?: (id: string) => void;
-    onShare?: () => void;
+    onOpenMenu?: (item: FeedItem, feedType: FeedType, event: GestureResponderEvent) => void;
 }) => {
     const title = (type === 'answer' && item.questionTitle) ? item.questionTitle : item.title;
 
@@ -125,28 +127,18 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
     const textColor = theme.colors.onBackground;
 
     const openItem = useCallback(() => {
-        void recordUserEvent({ contentId: item.id, contentType: type, eventType: 'content_open' });
+        if (useConsentStore.getState().aiInterestAnalysisEnabled) {
+            void recordUserEvent({ contentId: item.id, contentType: type, eventType: 'content_open' });
+        }
         router.push({
             pathname: `/item/[type]/[id]`,
             params: { id: item.id, type, needToGet: needToGet.toString() }
         });
     }, [item.id, type, needToGet]);
-    const prefetchItem = useCallback(() => {
-        router.prefetch({
-            pathname: '/item/[type]/[id]',
-            params: { id: item.id, type, needToGet: needToGet.toString() },
-        });
-    }, [item.id, needToGet, type]);
-
-    const [menuVisible, setMenuVisible] = useState(false);
-    const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0, width: 1, height: 1 });
 
     const openActionMenu = useCallback((event: GestureResponderEvent) => {
-        const { pageX, pageY } = event.nativeEvent;
-        setMenuAnchor({ x: pageX, y: pageY, width: 1, height: 1 });
-        setMenuVisible(true);
-        short();
-    }, []);
+        onOpenMenu?.(item, type, event);
+    }, [item, onOpenMenu, type]);
 
     const topSpacing = 0;
     const preview = getContentPreview(item);
@@ -161,9 +153,7 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                 <Card
                     feedback={disableAnimations ? 'none' : 'sink'}
                     showIndication
-                    holdDown={menuVisible}
                     onPress={openItem}
-                    onPressIn={prefetchItem}
                     onLongPress={openActionMenu}
                     style={{ flex: 1 }}
                     contentStyle={{ backgroundColor: cardBgColor, borderRadius: 24, padding: 20, flex: 1 }}
@@ -215,21 +205,14 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                     </View>
                 </Card>
             </View>
-            <Menu
-                visible={menuVisible}
-                onClose={() => setMenuVisible(false)}
-                anchor={menuAnchor}
-                items={[
-                    { label: '分享', onPress: onShare },
-                    { label: '不喜欢', onPress: () => onDislike?.(item.id) },
-                ]}
-            />
         </View>
     );
 }, (prevProps, nextProps) => {
     return prevProps.item.id === nextProps.item.id &&
         prevProps.disableAnimations === nextProps.disableAnimations &&
         prevProps.type === nextProps.type &&
+        prevProps.needToGet === nextProps.needToGet &&
+        prevProps.onOpenMenu === nextProps.onOpenMenu &&
         prevProps.hideTitle === nextProps.hideTitle;
 });
 RenderCardModeItem.displayName = 'RenderCardModeItem';
@@ -261,6 +244,8 @@ const HomeScreen = () => {
 
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [cardListHeight, setCardListHeight] = useState(0);
+    const [actionMenuTarget, setActionMenuTarget] = useState<{ item: FeedItem; type: FeedType } | null>(null);
+    const [actionMenuAnchor, setActionMenuAnchor] = useState({ x: 0, y: 0, width: 1, height: 1 });
     const requestInFlightRef = useRef(false);
     const visibleFeedList = useMemo(() => feedList.filter((feed) => (
         !(filterAds && feed.isAds) && !(filterPaid && feed.isPaid)
@@ -352,7 +337,7 @@ const HomeScreen = () => {
                 if (deduplicateFeed) {
                     const fetchedKeys = processedItems.map(getFeedKey);
                     addSeenFeedKeys(fetchedKeys);
-                    seenFeedKeysRef.current = [...new Set([...seenFeedKeysRef.current, ...fetchedKeys])];
+                    seenFeedKeysRef.current = [...new Set([...seenFeedKeysRef.current, ...fetchedKeys])].slice(-2000);
                 }
 
                 // Cursor 分页必须等待上一页返回 next 游标，不能安全地把
@@ -480,25 +465,53 @@ const HomeScreen = () => {
         void Share.share({ title: item.questionTitle || item.title, message: `${item.questionTitle || item.title}\n${url}` });
     }, []);
 
-    const renderListItem = useCallback(({ item }: { item: FeedItemInfo }) => (
-        <RenderItem
-            item={item.item}
-            type={item.feedType}
-            needToGet={true}
-        />
-    ), []);
+    const openActionMenu = useCallback((item: FeedItem, feedType: FeedType, event: GestureResponderEvent) => {
+        const { pageX, pageY } = event.nativeEvent;
+        setActionMenuTarget({ item, type: feedType });
+        setActionMenuAnchor({ x: pageX, y: pageY, width: 1, height: 1 });
+        short();
+    }, []);
+
+    const closeActionMenu = useCallback(() => setActionMenuTarget(null), []);
+
+    const actionMenuItems = useMemo(() => [
+        {
+            label: '分享',
+            onPress: () => {
+                if (actionMenuTarget) handleShareItem(actionMenuTarget.item, actionMenuTarget.type);
+            },
+        },
+        {
+            label: '不喜欢',
+            onPress: () => {
+                if (actionMenuTarget) handleDislikeItem(actionMenuTarget.item.id, actionMenuTarget.type);
+            },
+        },
+    ], [actionMenuTarget, handleDislikeItem, handleShareItem]);
+
+    const renderListItem = useCallback(({ item }: { item: FeedItemInfo }) => {
+        return (
+            <RenderItem
+                item={item.item}
+                type={item.feedType}
+                needToGet={true}
+                onOpenMenu={openActionMenu}
+            />
+        );
+    }, [openActionMenu]);
 
     // 关键改动：在这里把 item.feedType 作为形参绑定闭包传给 RenderCardModeItem
-    const renderCardListItem = useCallback(({ item }: { item: FeedItemInfo }) => (
-        <RenderCardModeItem
-            item={item.item}
-            type={item.feedType}
-            needToGet={true}
-            disableAnimations={disableAnimations}
-            onDislike={(id: string) => handleDislikeItem(id, item.feedType)}
-            onShare={() => handleShareItem(item.item, item.feedType)}
-        />
-    ), [disableAnimations, handleDislikeItem, handleShareItem]);
+    const renderCardListItem = useCallback(({ item }: { item: FeedItemInfo }) => {
+        return (
+            <RenderCardModeItem
+                item={item.item}
+                type={item.feedType}
+                needToGet={true}
+                disableAnimations={disableAnimations}
+                onOpenMenu={openActionMenu}
+            />
+        );
+    }, [disableAnimations, openActionMenu]);
 
     const handleMomentumScrollEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
         const offsetY = event.nativeEvent.contentOffset.y;
@@ -521,7 +534,6 @@ const HomeScreen = () => {
             <SearchBar
                 label="搜索知乎内容"
                 onPress={() => router.push('/search')}
-                onPressIn={() => router.prefetch('/search')}
                 inputProps={{
                     editable: false,
                     showSoftInputOnFocus: false,
@@ -560,6 +572,7 @@ const HomeScreen = () => {
                         maxToRenderPerBatch={3}
                         windowSize={3}
                         initialNumToRender={2}
+                        updateCellsBatchingPeriod={80}
                         onMomentumScrollEnd={handleMomentumScrollEnd}
                         getItemLayout={cardItemLayout}
                         removeClippedSubviews={true}
@@ -586,9 +599,16 @@ const HomeScreen = () => {
                     updateCellsBatchingPeriod={48}
                     windowSize={5}
                     initialNumToRender={4}
+                    maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
                     removeClippedSubviews={true}
                 />
             )}
+            <Menu
+                visible={actionMenuTarget !== null}
+                onClose={closeActionMenu}
+                anchor={actionMenuAnchor}
+                items={actionMenuItems}
+            />
         </View>
     );
 }

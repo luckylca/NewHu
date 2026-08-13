@@ -1,9 +1,10 @@
 import { Icon, PressIndication, Text } from '@/src/ui/primitives';
 import { snackbarMotion } from '@/src/ui/motion';
+import { useReducedMotionPreference } from '@/src/ui/motion/MotionProvider';
 import { useTheme } from '@/src/ui/theme';
-import React, { useEffect, useState } from 'react';
+import React, { useLayoutEffect } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 
 /**
  * Design System Snackbar (Miuix Snackbar).
@@ -32,37 +33,39 @@ export interface AppSnackbarProps {
 }
 
 const ENTER_OFFSET = 24;
+const REDUCED_DURATION = 120;
 
 export function Snackbar({ visible = false, message, actionLabel, onAction, withDismissAction = false, onDismiss, bottomInset = 0 }: AppSnackbarProps) {
     const theme = useTheme();
+    const reducedMotion = useReducedMotionPreference();
 
-    // Stay mounted while the exit animation plays.
-    const [rendered, setRendered] = useState(visible);
     const y = useSharedValue(ENTER_OFFSET);
     const opacity = useSharedValue(0);
 
-    useEffect(() => {
+    // Start the UI-thread animation in the same commit that mounts the host.
+    // A normal effect paints one static frame first, which was visible as a
+    // hitch when a notification appeared over a scrolling screen.
+    useLayoutEffect(() => {
         if (visible) {
-            setRendered(true);
-            y.value = withSpring(0, snackbarMotion);
-            opacity.value = withSpring(1, snackbarMotion);
-        } else if (rendered) {
-            y.value = withSpring(ENTER_OFFSET, snackbarMotion, (finished) => {
-                if (finished) runOnJS(setRendered)(false);
-            });
-            opacity.value = withSpring(0, snackbarMotion);
+            y.value = reducedMotion ? 0 : ENTER_OFFSET;
+            opacity.value = 0;
+            y.value = reducedMotion ? 0 : withSpring(0, snackbarMotion);
+            opacity.value = reducedMotion ? withTiming(1, { duration: REDUCED_DURATION }) : withSpring(1, snackbarMotion);
+        } else {
+            y.value = reducedMotion ? 0 : withSpring(ENTER_OFFSET, snackbarMotion);
+            opacity.value = reducedMotion
+                ? withTiming(0, { duration: REDUCED_DURATION })
+                : withSpring(0, snackbarMotion);
         }
-    }, [visible, rendered, y, opacity]);
+    }, [visible, reducedMotion, y, opacity]);
 
     const containerStyle = useAnimatedStyle(() => ({
         transform: [{ translateY: y.value }],
         opacity: opacity.value,
     }));
 
-    if (!rendered) return null;
-
     return (
-        <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end', alignItems: 'center' }]}>
+        <View pointerEvents={visible ? 'box-none' : 'none'} style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end', alignItems: 'center' }]}>
             <Animated.View style={[{ width: '100%', maxWidth: 420, paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.sm, bottom: bottomInset }, containerStyle]}>
                 <View
                     style={{
@@ -73,8 +76,8 @@ export function Snackbar({ visible = false, message, actionLabel, onAction, with
                         flexDirection: 'row',
                         alignItems: 'center',
                         shadowColor: '#000000',
-                        shadowOpacity: visible ? 0.1 : 0,
-                        shadowRadius: 10,
+                        shadowOpacity: 0,
+                        shadowRadius: 0,
                         shadowOffset: { width: 0, height: 0 },
                         elevation: visible ? 4 : 0,
                     }}

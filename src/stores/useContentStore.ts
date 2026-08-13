@@ -20,6 +20,8 @@ interface ContentState {
     addSeenFeedKeys: (keys: string[]) => void;
 }
 
+const MAX_IN_MEMORY_SEEN_KEYS = 2000;
+
 export const useContentStore = create<ContentState>()(
     persist(
         (set) => ({
@@ -49,7 +51,7 @@ export const useContentStore = create<ContentState>()(
                 const nextKeys = keys.filter((key) => !existing.has(key));
                 return nextKeys.length === 0
                     ? state
-                    : { seenFeedKeys: [...state.seenFeedKeys, ...nextKeys] };
+                    : { seenFeedKeys: [...state.seenFeedKeys, ...nextKeys].slice(-MAX_IN_MEMORY_SEEN_KEYS) };
             }),
         }),
         {

@@ -28,7 +28,7 @@ export interface PressIndicationProps {
  */
 export function PressIndication({ pressed, color, radius, style }: PressIndicationProps) {
     const animatedStyle = useAnimatedStyle(() => ({
-        opacity: pressed.value * 0.055,
+        opacity: pressed.value * 0.1,
     }));
 
     return (

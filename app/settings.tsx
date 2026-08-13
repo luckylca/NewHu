@@ -5,9 +5,9 @@ import { Text } from '@/src/ui/primitives';
 import type { IconName } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
-import React, { useEffect } from 'react';
+import React from 'react';
 import type { ReactNode } from 'react';
-import { InteractionManager, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 export default function SettingsScreen() {
     const theme = useTheme();
@@ -20,16 +20,6 @@ export default function SettingsScreen() {
     const setDeduplicateFeed = useSettingStore((state) => state.setDeduplicateFeed);
     const trailingChevron = <Icon name="chevron-right" size={22} color={theme.colors.onSurfaceVariantActions} />;
 
-    useEffect(() => {
-        // Storage management is the heaviest destination on this page. Mount
-        // it while Settings is idle so its first native layout and local-data
-        // query don't land inside the navigation transition.
-        const task = InteractionManager.runAfterInteractions(() => {
-            router.prefetch('/storage-management' as any);
-        });
-        return () => task.cancel();
-    }, []);
-
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
             <TopAppBar title="设置" back={() => router.back()} />
@@ -40,7 +30,6 @@ export default function SettingsScreen() {
                         title="账号管理"
                         summary={user.isLoggedIn ? `已登录 · ${user.username}` : '未登录'}
                         trailing={trailingChevron}
-                        onPressIn={() => router.prefetch(user.isLoggedIn ? '/userinfo' : '/webview')}
                         onPress={() => router.push(user.isLoggedIn ? '/userinfo' : '/webview')}
                     />
                 </SettingsGroup>
@@ -72,24 +61,25 @@ export default function SettingsScreen() {
                 </SettingsGroup>
 
                 <SettingsGroup title="外观与体验">
-                    <SettingRow icon="palette-outline" title="主题与壁纸" summary="颜色、壁纸、透明度和模糊" trailing={trailingChevron} onPressIn={() => router.prefetch('/themeSet')} onPress={() => router.push('/themeSet')} />
+                    <SettingRow icon="palette-outline" title="主题与壁纸" summary="颜色、壁纸、透明度和模糊" trailing={trailingChevron} onPress={() => router.push('/themeSet')} />
                     <Divider style={{ marginLeft: 60 }} />
                     <SettingRow
                         icon="animation-play-outline"
                         title="动画设置"
                         summary="抽屉与全局动画"
                         trailing={trailingChevron}
-                        onPressIn={() => router.prefetch('/animationSettings')}
                         onPress={() => router.push('/animationSettings')}
                     />
                     <Divider style={{ marginLeft: 60 }} />
-                    <SettingRow icon="tune-variant" title="高级设置" summary="Cookie 和调试选项" trailing={trailingChevron} onPressIn={() => router.prefetch('/devmode')} onPress={() => router.push('/devmode')} />
+                    <SettingRow icon="tune-variant" title="高级设置" summary="Cookie 和调试选项" trailing={trailingChevron} onPress={() => router.push('/devmode')} />
                 </SettingsGroup>
 
                 <SettingsGroup title="应用">
-                    <SettingRow icon="database-outline" title="存储管理" summary="空间占用与离线内容管理" trailing={trailingChevron} onPressIn={() => router.prefetch('/storage-management' as any)} onPress={() => router.push('/storage-management' as any)} />
+                    <SettingRow icon="shield-account-outline" title="隐私与个性化" summary="本地 AI、兴趣画像与协议" trailing={trailingChevron} onPress={() => router.push('/privacy-personalization' as any)} />
                     <Divider style={{ marginLeft: 60 }} />
-                    <SettingRow icon="information-outline" title="关于 NewHU" summary="版本信息与检查更新" trailing={trailingChevron} onPressIn={() => router.prefetch('/about')} onPress={() => router.push('/about')} />
+                    <SettingRow icon="database-outline" title="存储管理" summary="空间占用与离线内容管理" trailing={trailingChevron} onPress={() => router.push('/storage-management' as any)} />
+                    <Divider style={{ marginLeft: 60 }} />
+                    <SettingRow icon="information-outline" title="关于 NewHU" summary="版本信息与检查更新" trailing={trailingChevron} onPress={() => router.push('/about')} />
                 </SettingsGroup>
             </ScrollView>
         </View>

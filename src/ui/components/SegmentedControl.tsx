@@ -1,5 +1,6 @@
 import { Text } from '@/src/ui/primitives';
 import { tabIndicator } from '@/src/ui/motion';
+import { useReducedMotionPreference } from '@/src/ui/motion/MotionProvider';
 import { useTheme } from '@/src/ui/theme';
 import React, { useCallback, useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -18,6 +19,7 @@ const CONTROL_PADDING = 4;
 
 export function SegmentedControl({ tabs, selected = 0, onSelect }: AppSegmentedControlProps) {
     const theme = useTheme();
+    const reducedMotion = useReducedMotionPreference();
     const [width, setWidth] = useState(0);
     const count = Math.max(tabs.length, 1);
     const tabWidth = Math.max(0, (width - CONTROL_PADDING * 2) / count);
@@ -29,12 +31,11 @@ export function SegmentedControl({ tabs, selected = 0, onSelect }: AppSegmentedC
     const indicatorStyle = useAnimatedStyle(() => ({
         width: tabWidth,
         transform: [{
-            translateX: withTiming(
-                CONTROL_PADDING + selected * tabWidth,
-                tabIndicator,
-            ),
+            translateX: reducedMotion
+                ? CONTROL_PADDING + selected * tabWidth
+                : withTiming(CONTROL_PADDING + selected * tabWidth, tabIndicator),
         }],
-    }), [selected, tabWidth]);
+    }), [selected, tabWidth, reducedMotion]);
 
     return (
         <View

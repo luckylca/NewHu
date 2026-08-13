@@ -4,6 +4,8 @@ export { Card } from './Card';
 export type { AppCardProps, CardFeedback } from './Card';
 export { Switch } from './Switch';
 export type { AppSwitchProps } from './Switch';
+export { Checkbox } from './Checkbox';
+export type { AppCheckboxProps } from './Checkbox';
 export { Slider } from './Slider';
 export type { AppSliderProps } from './Slider';
 export { ListRow } from './ListRow';

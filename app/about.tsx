@@ -5,7 +5,8 @@ import { useTheme } from '@/src/ui/theme';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, View } from 'react-native';
+import MiuixProgressIndicator from '@/src/components/MiuixProgressIndicator';
 
 const CURRENT_VERSION = `v${Constants.expoConfig?.version ?? '1.0.0'}`;
 
@@ -83,7 +84,7 @@ export default function AboutScreen() {
                         </Text>
                     </View>
                     {update.loading ? (
-                        <ActivityIndicator size="small" color={theme.colors.primary} />
+                        <View style={{ width: 56 }}><MiuixProgressIndicator indeterminate height={4} /></View>
                     ) : (
                         <Icon name="chevron-right" size={24} color={theme.colors.onSurfaceVariantActions} />
                     )}

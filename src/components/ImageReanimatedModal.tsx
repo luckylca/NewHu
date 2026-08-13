@@ -14,6 +14,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useTheme } from '@/src/ui/theme';
+import { useReducedMotionPreference } from '@/src/ui/motion';
 
 type ImageOrigin = { x: number; y: number; width: number; height: number };
 
@@ -27,6 +28,7 @@ const ImageReanimatedModal = ({ origin, visible, url, onClose, onLongPress }: {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const insets = useSafeAreaInsets();
     const theme = useTheme();
+    const reducedMotion = useReducedMotionPreference();
     const progress = useSharedValue(0);
     const [mounted, setMounted] = React.useState(visible);
     const [menuVisible, setMenuVisible] = React.useState(false);
@@ -35,14 +37,14 @@ const ImageReanimatedModal = ({ origin, visible, url, onClose, onLongPress }: {
     useEffect(() => {
         if (visible) {
             setMounted(true);
-            progress.value = withSpring(1, { damping: 50, stiffness: 200, mass: 1 });
+            progress.value = reducedMotion ? 1 : withSpring(1, { damping: 50, stiffness: 200, mass: 1 });
             return;
         }
 
-        progress.value = withTiming(0, { duration: 220 }, (finished) => {
+        progress.value = withTiming(0, { duration: reducedMotion ? 100 : 220 }, (finished) => {
             if (finished) scheduleOnRN(setMounted, false);
         });
-    }, [visible, progress]);
+    }, [visible, reducedMotion, progress]);
 
     useEffect(() => {
         if (!visible) setMenuVisible(false);

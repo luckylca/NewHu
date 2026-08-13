@@ -1,5 +1,6 @@
 import { Text } from '@/src/ui/primitives';
 import { dialogContentExit, dialogDimEnter, dialogDimExit, dialogLargeEnter, dialogMobileEnter } from '@/src/ui/motion';
+import { useReducedMotionPreference } from '@/src/ui/motion/MotionProvider';
 import { useTheme } from '@/src/ui/theme';
 import React, { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -37,6 +38,7 @@ const LARGE_MIN_HEIGHT = 480;
 
 export function Dialog({ visible = false, onClose, title, summary, closeOnClickModal = true, children }: AppDialogProps) {
     const theme = useTheme();
+    const reducedMotion = useReducedMotionPreference();
     const dialogBackground = theme.dark ? '#242424' : '#FFFFFF';
     const c = theme.components.dialog;
     const { width: windowW, height: windowH } = useWindowDimensions();
@@ -56,27 +58,27 @@ export function Dialog({ visible = false, onClose, title, summary, closeOnClickM
         if (visible) {
             setRendered(true);
             // Enter.
-            dimOpacity.value = withTiming(1, dialogDimEnter);
+            dimOpacity.value = withTiming(1, reducedMotion ? { duration: 120 } : dialogDimEnter);
             if (isLarge) {
-                largeOpacity.value = withTiming(1, dialogDimEnter);
-                largeScale.value = withSpring(1, dialogLargeEnter);
+                largeOpacity.value = withTiming(1, reducedMotion ? { duration: 120 } : dialogDimEnter);
+                largeScale.value = reducedMotion ? 1 : withSpring(1, dialogLargeEnter);
             } else {
-                mobileY.value = withSpring(0, dialogMobileEnter);
+                mobileY.value = reducedMotion ? 0 : withSpring(0, dialogMobileEnter);
             }
         } else if (rendered) {
             // Exit: content tween 260ms Decelerate(1.5), dim 250ms.
             const finish = (finished: boolean | undefined) => {
                 if (finished) runOnJS(setRendered)(false);
             };
-            dimOpacity.value = withTiming(0, dialogDimExit, finish);
+            dimOpacity.value = withTiming(0, reducedMotion ? { duration: 100 } : dialogDimExit, finish);
             if (isLarge) {
-                largeOpacity.value = withTiming(0, dialogContentExit);
-                largeScale.value = withTiming(0.8, dialogContentExit);
+                largeOpacity.value = withTiming(0, reducedMotion ? { duration: 100 } : dialogContentExit);
+                largeScale.value = reducedMotion ? 1 : withTiming(0.8, dialogContentExit);
             } else {
-                mobileY.value = withTiming(windowH, dialogContentExit);
+                mobileY.value = reducedMotion ? 0 : withTiming(windowH, dialogContentExit);
             }
         }
-    }, [visible, rendered, isLarge, windowH, dimOpacity, largeOpacity, largeScale, mobileY]);
+    }, [visible, rendered, isLarge, windowH, reducedMotion, dimOpacity, largeOpacity, largeScale, mobileY]);
 
     const dimStyle = useAnimatedStyle(() => ({
         opacity: dimOpacity.value,

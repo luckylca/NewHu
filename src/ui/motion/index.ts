@@ -24,6 +24,12 @@ export {
     menuFraction,
     storageEnter,
     storageManage,
+    checkboxSink,
+    checkboxColor,
+    checkboxMarkShow,
+    checkboxMarkHide,
+    onboardingEnter,
+    motion,
     pressIndication,
     tabIndicator,
     titleColorTween,
@@ -38,3 +44,4 @@ export {
     menuDimOut,
 } from './presets';
 export type { TweenConfig } from './presets';
+export { MotionProvider, useReducedMotionPreference } from './MotionProvider';

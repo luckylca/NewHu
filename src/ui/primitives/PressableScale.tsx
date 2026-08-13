@@ -5,6 +5,7 @@ import type { PressableProps, StyleProp, ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import type { WithSpringConfig } from 'react-native-reanimated';
 import { cardSink } from '../motion';
+import { useReducedMotionPreference } from '../motion/MotionProvider';
 
 export interface PressableScaleProps extends PressableProps {
     /** Scale while pressed. */
@@ -24,9 +25,10 @@ export interface PressableScaleProps extends PressableProps {
  */
 export function PressableScale({ scale = 0.94, springConfig = cardSink, onPressIn, onPressOut, disabled, style, children, ...rest }: PressableScaleProps) {
     const pressed = useSharedValue(0);
+    const reducedMotion = useReducedMotionPreference();
 
     const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: withSpring(pressed.value === 1 ? scale : 1, springConfig) }],
+        transform: [{ scale: reducedMotion ? 1 : withSpring(pressed.value === 1 ? scale : 1, springConfig) }],
     }));
 
     return (
