@@ -5,16 +5,7 @@
 
 import { generateSignature } from './crypto';
 
-interface Headers {
-    [key: string]: string;
-}
-
 export type TransferListener = (bytes: number, durationMs: number) => void;
-
-interface SignatureResult {
-    url: string;
-    headers: Headers;
-}
 
 interface ZhihuClient {
     cookie: string;
@@ -23,6 +14,7 @@ interface ZhihuClient {
     setTransferListener(listener?: TransferListener): void;
     get(url: string): Promise<any>;
     post(url: string, data?: any, isJson?: boolean): Promise<any>;
+    postStream(url: string, data: any, onChunk: (chunk: string) => void): Promise<void>;
     put(url: string, data?: any): Promise<any>;
     delete(url: string): Promise<any>;
     request(url: string, method?: string, data?: any): Promise<any>;
@@ -193,6 +185,82 @@ class ZhihuClient {
     }
 
     /**
+     * POST 流式请求。
+     * 知乎 AI 返回 SSE/JSON 流，这里统一拆成文本分片交给页面消费，
+     * 同时保留普通 JSON 响应作为兼容回退。
+     */
+    async postStream(url: string, data: any, onChunk: (chunk: string) => void) {
+        if (!this.canLoad) {
+            throw new Error('请求已被阻止');
+        }
+
+        const { url: finalUrl, headers } = generateSignature(url, this.cookie);
+        headers['content-type'] = 'application/json';
+        headers.accept = 'text/event-stream, application/json';
+
+        const response = await fetch(finalUrl, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(data),
+            credentials: 'omit',
+        });
+
+        if (!response.ok) {
+            const content = await response.text();
+            this.handleError(response.status, content);
+            throw new Error(`流式请求失败: ${response.status}`);
+        }
+
+        const parsePayload = (payload: string) => {
+            const trimmed = payload.trim();
+            if (!trimmed || trimmed === '[DONE]') return;
+
+            const dataLines = trimmed
+                .split(/\r?\n/)
+                .filter((line) => line.startsWith('data:'))
+                .map((line) => line.slice(5).trim())
+                .filter(Boolean);
+            const candidate = dataLines.length > 0 ? dataLines.join('\n') : trimmed;
+
+            try {
+                const parsed = JSON.parse(candidate);
+                const text = extractStreamText(parsed);
+                if (text) onChunk(text);
+            } catch {
+                // 兼容服务端直接返回纯文本分片。
+                if (!candidate.startsWith('event:') && !candidate.startsWith(':')) onChunk(candidate);
+            }
+        };
+
+        if (!response.body || typeof (response.body as any).getReader !== 'function') {
+            parsePayload(await response.text());
+            return;
+        }
+
+        const reader = (response.body as any).getReader();
+        const decoder = typeof TextDecoder !== 'undefined' ? new TextDecoder() : null;
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+            buffer += decoder ? decoder.decode(bytes, { stream: true }) : String.fromCharCode(...bytes);
+
+            let boundary = buffer.search(/\r?\n\r?\n/);
+            while (boundary >= 0) {
+                const event = buffer.slice(0, boundary);
+                buffer = buffer.slice(boundary).replace(/^\r?\n\r?\n/, '');
+                parsePayload(event);
+                boundary = buffer.search(/\r?\n\r?\n/);
+            }
+        }
+
+        if (decoder) buffer += decoder.decode();
+        if (buffer.trim()) parsePayload(buffer);
+    }
+
+    /**
      * PUT 请求
      */
     async put(url: string, data: any = {}) {
@@ -285,6 +353,28 @@ class ZhihuClient {
                 throw new Error(`不支持的请求方法: ${method}`);
         }
     }
+}
+
+function extractStreamText(payload: any): string {
+    const candidates = [
+        payload?.content,
+        payload?.text,
+        payload?.answer,
+        payload?.delta,
+        payload?.message,
+        payload?.result,
+        payload?.data,
+        payload?.message_content,
+        payload?.data?.content,
+        payload?.data?.text,
+        payload?.data?.answer,
+        payload?.data?.delta,
+        payload?.data?.choices?.[0]?.delta?.content,
+        payload?.choices?.[0]?.delta?.content,
+    ];
+
+    const value = candidates.find((candidate) => typeof candidate === 'string');
+    return value ?? '';
 }
 
 // 导出

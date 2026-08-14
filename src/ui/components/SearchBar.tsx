@@ -16,7 +16,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-na
  * Capsule: bg surfaceContainerHigh, min-height 45, leading Search icon
  * (start 16 / end 8, onSurfaceContainerHigh), input font 17 Medium, label shown
  * only when empty AND collapsed, trailing clear X when query present. Focusing
- * expands the bar: a Cancel action slides in (spring stiffness 400 damping 40 =
+ * expands the bar: an action slides in (spring stiffness 400 damping 40 =
  * folmeSpring(1,400)) and the results content reveals. insideMargin 12×0.
  */
 
@@ -31,7 +31,16 @@ export interface AppSearchBarProps {
     expanded?: boolean;
     onExpandedChange?: (expanded: boolean) => void;
     label?: string;
+    /** Text for the trailing action. `cancelText` is kept for compatibility. */
+    actionText?: string;
+    onAction?: () => void;
     cancelText?: string;
+    /** Horizontal inset of the capsule row. */
+    horizontalPadding?: number;
+    /** Width reserved for the trailing action while expanded. */
+    actionWidth?: number;
+    /** Horizontal padding inside the trailing action. */
+    actionPaddingHorizontal?: number;
     placeholderTextColor?: string;
     inputProps?: Partial<TextInputProps>;
     /** Results area — shown only while expanded. */
@@ -48,7 +57,12 @@ export function SearchBar({
     expanded = false,
     onExpandedChange,
     label = 'Search',
+    actionText,
+    onAction,
     cancelText = 'Cancel',
+    horizontalPadding,
+    actionWidth = 88,
+    actionPaddingHorizontal,
     inputProps,
     children,
     style,
@@ -56,6 +70,8 @@ export function SearchBar({
     const theme = useTheme();
     const c = theme.components.searchBar;
     const inputRef = useRef<TextInput>(null);
+    const barPadding = horizontalPadding ?? theme.spacing.md;
+    const actionPadding = actionPaddingHorizontal ?? theme.spacing.md;
 
     const hasText = value.length > 0;
     const showLabel = !hasText && !expanded;
@@ -66,9 +82,9 @@ export function SearchBar({
     }, [expanded, cancelShown]);
 
     const cancelWidthStyle = useAnimatedStyle(() => ({
-        width: withSpring(cancelShown.value * 88, searchBarReveal),
+        width: withSpring(cancelShown.value * actionWidth, searchBarReveal),
         opacity: cancelShown.value,
-    }));
+    }), [actionWidth]);
 
     const resultsStyle = useAnimatedStyle(() => ({
         opacity: cancelShown.value,
@@ -85,6 +101,14 @@ export function SearchBar({
         inputRef.current?.blur();
     }, [onChangeText, onExpandedChange]);
 
+    const handleAction = useCallback(() => {
+        if (onAction) {
+            onAction();
+            return;
+        }
+        handleCancel();
+    }, [handleCancel, onAction]);
+
     const handleClear = useCallback(() => {
         onChangeText?.('');
         inputRef.current?.focus();
@@ -96,7 +120,7 @@ export function SearchBar({
 
     return (
         <View style={[{ width: '100%' }, style]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: theme.spacing.md }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: barPadding }}>
                 <View
                     style={{
                         flex: 1,
@@ -153,21 +177,35 @@ export function SearchBar({
                             accessibilityLabel="Clear"
                             onPress={handleClear}
                             hitSlop={8}
-                            style={{ paddingLeft: theme.spacing.sm, paddingRight: theme.spacing.lg, alignItems: 'center', justifyContent: 'center' }}
+                            style={{
+                                width: 40,
+                                height: c.minHeight,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                            }}
                         >
-                            {/* SearchCleanup glyph: circle fill 0.06, X 0.3, tinted onSurfaceContainerHighest */}
                             <View
                                 style={{
                                     width: 16,
                                     height: 16,
                                     borderRadius: 8,
-                                    backgroundColor: theme.colors.onSurfaceContainerHighest,
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    opacity: 0.06,
                                 }}
-                            />
-                            <View style={{ position: 'absolute', width: 16, height: 16, alignItems: 'center', justifyContent: 'center' }}>
+                            >
+                                <View
+                                    pointerEvents="none"
+                                    style={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        right: 0,
+                                        bottom: 0,
+                                        left: 0,
+                                        borderRadius: 8,
+                                        backgroundColor: theme.colors.onSurfaceContainerHighest,
+                                        opacity: 0.06,
+                                    }}
+                                />
                                 <Icon name="close" size={14} color={theme.colors.onSurfaceContainerHighest} style={{ opacity: 0.3 }} />
                             </View>
                         </Pressable>
@@ -183,20 +221,20 @@ export function SearchBar({
                     ) : null}
                 </View>
 
-                {/* Cancel — springs in from the right when expanded */}
+                {/* Trailing action — springs in from the right when expanded */}
                 <Animated.View
                     style={[
                         {
                             overflow: 'hidden',
                             flexDirection: 'row',
-                            justifyContent: 'flex-end',
+                            alignItems: 'center',
                         },
                         cancelWidthStyle,
                     ]}
                 >
-                    <Pressable accessibilityRole="button" onPress={handleCancel} style={{ paddingHorizontal: theme.spacing.md }}>
+                    <Pressable accessibilityRole="button" onPress={handleAction} style={{ paddingHorizontal: actionPadding }}>
                         <Text type="button" weight="bold" color={theme.colors.primary}>
-                            {cancelText}
+                            {actionText ?? cancelText}
                         </Text>
                     </Pressable>
                 </Animated.View>

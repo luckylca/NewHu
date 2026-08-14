@@ -1,5 +1,7 @@
 import { useUserStore } from "@/src/stores/useUserStore";
 import { useSettingStore } from "@/src/stores/useSettingStore";
+import { getApiInstance } from '@/src/api/ZhihuApi';
+import { notify } from '@/src/stores/useNotificationStore';
 import { router } from "expo-router";
 import React from "react";
 import { Image, ScrollView, View } from 'react-native';
@@ -20,11 +22,27 @@ const UserScreen = ({ navigation }: any) => {
 
     const isCardMode = settingStore.mode === 'card';
 
-    const handlePress = () => {
-        if(userStore.isLoggedIn){
-            router.push('/userinfo');
-        } else {
+    const handlePress = async () => {
+        if (!userStore.isLoggedIn) {
             router.push('/webview');
+            return;
+        }
+
+        let urlToken = userStore.urlToken;
+        if (!urlToken && userStore.cookies) {
+            try {
+                const data = await getApiInstance(userStore.cookies).getMe();
+                urlToken = String(data?.url_token ?? data?.urlToken ?? '');
+                if (urlToken) userStore.setUrlToken(urlToken);
+            } catch (error) {
+                console.error('获取个人主页信息失败:', error);
+            }
+        }
+
+        if (urlToken) {
+            router.push({ pathname: '/people', params: { urlToken } });
+        } else {
+            notify('暂时无法获取个人主页，请重新登录');
         }
     }
 
@@ -62,13 +80,13 @@ const UserScreen = ({ navigation }: any) => {
             <View style={{ marginBottom: theme.spacing.xl, marginHorizontal: theme.spacing.lg, borderRadius: theme.radius.component, backgroundColor: theme.colors.surfaceContainer, overflow: 'hidden' }}>
                 <ListRow title="草稿箱" summary={draftCount > 0 ? `${draftCount} 条草稿` : '暂无草稿'} onPress={() => router.push('/drafts')} />
                 <Divider style={{ marginLeft: theme.spacing.lg }} />
-                <ListRow title="收藏列表" onPress={() => router.push('/like')} />
+                <ListRow title="收藏列表" summary="查看保存的回答和文章" onPress={() => router.push('/like')} />
                 <Divider style={{ marginLeft: theme.spacing.lg }} />
-                <ListRow title="浏览历史" onPress={() => router.push('/history')} />
+                <ListRow title="浏览历史" summary="查看最近浏览过的内容" onPress={() => router.push('/history')} />
                 <Divider style={{ marginLeft: theme.spacing.lg }} />
                 <ListRow title="离线缓存" summary="批量获取内容并保存到本地" onPress={() => router.push('/offline-cache')} />
                 <Divider style={{ marginLeft: theme.spacing.lg }} />
-                <ListRow title="设置" onPress={() => router.push('/settings')} />
+                <ListRow title="设置" summary="管理账号、主题与应用偏好" onPress={() => router.push('/settings')} />
             </View>
         </ScrollView>
     );

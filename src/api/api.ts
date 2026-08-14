@@ -28,8 +28,30 @@ interface ZhihuAPI {
     unfavoriteAnswer(answerId: string): Promise<any>;
     dislikeArticle(articleId: string): Promise<any>;
     cancelDislikeArticle(articleId: string): Promise<any>;
-    search(keyword: string, offset?: number, type?: string): Promise<any>;
+    search(keyword: string, offset?: number, type?: string, options?: SearchOptions): Promise<any>;
+    getSearchSuggestions(keyword: string): Promise<any>;
+    getSearchCustomize(keyword: string): Promise<any>;
+    streamSearchAi(keyword: string, onChunk: (chunk: string) => void): Promise<void>;
 
+}
+
+export interface SearchOptions {
+    vertical?: string;
+    sort?: string;
+    timeInterval?: string;
+    searchSource?: 'Filter' | 'Normal';
+}
+
+export interface SearchAiPayload {
+    knowledge_ids: string[];
+    attachments: any[];
+    chat_mode: 'FAST';
+    message_content: string;
+    message_source_type: 'text';
+    push_interval: number;
+    quiz_type: 'QT_CHAT';
+    session_id: string;
+    zhida_source: 'ai_search_general';
 }
 
 function normalizeCommentType(contentType:string) {
@@ -348,8 +370,53 @@ class ZhihuAPI {
      * @param {number} offset - 偏移量
      * @param {string} type - 搜索类型（content/people/topic等）
      */
-    async search(keyword: string, offset: number = 0, type: string = 'general') {
-        return this.client.get(`https://www.zhihu.com/api/v4/search_v3?t=${type}&q=${encodeURIComponent(keyword)}&offset=${offset}&limit=20`);
+    async search(keyword: string, offset: number = 0, type: string = 'general', options: SearchOptions = {}) {
+        const params = new URLSearchParams({
+            gk_version: 'gz-gaokao',
+            t: type,
+            q: keyword,
+            correction: '1',
+            offset: String(offset),
+            limit: '20',
+            filter_fields: '',
+            lc_idx: '0',
+            show_all_topics: '0',
+            search_source: options.searchSource ?? (options.vertical || options.sort || options.timeInterval ? 'Filter' : 'Normal'),
+            zhida_source: 'ai_search_general',
+        });
+
+        if (options.vertical) params.set('vertical', options.vertical);
+        if (options.sort) params.set('sort', options.sort);
+        if (options.timeInterval) params.set('time_interval', options.timeInterval);
+
+        return this.client.get(`https://www.zhihu.com/api/v4/search_v3?${params.toString()}`);
+    }
+
+    /** 获取搜索输入框的候选词。 */
+    async getSearchSuggestions(keyword: string) {
+        return this.client.get(`https://www.zhihu.com/api/v4/search/suggest?q=${encodeURIComponent(keyword)}`);
+    }
+
+    /** 获取知乎当前可用的搜索筛选项。 */
+    async getSearchCustomize(keyword: string) {
+        return this.client.get(`https://www.zhihu.com/api/v4/search/customize?q=${encodeURIComponent(keyword)}`);
+    }
+
+    /** 请求知乎 AI 搜索，并逐段返回回答文本。 */
+    async streamSearchAi(keyword: string, onChunk: (chunk: string) => void) {
+        const payload: SearchAiPayload = {
+            knowledge_ids: ['KBT_GLOBAL', 'KBT_ZHIHU', 'KBT_PAPER', 'KBT_PERSONAL_KNOWLEDGE_BASE'],
+            attachments: [],
+            chat_mode: 'FAST',
+            message_content: keyword,
+            message_source_type: 'text',
+            push_interval: 50,
+            quiz_type: 'QT_CHAT',
+            session_id: '',
+            zhida_source: 'ai_search_general',
+        };
+
+        await this.client.postStream('https://zhida.zhihu.com/ai_ingress/stream/completion', payload, onChunk);
     }
     // ==================== 历史记录相关 ====================
 

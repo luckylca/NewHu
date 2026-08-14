@@ -1,4 +1,5 @@
 import ZhihuAPI from "./api";
+import type { SearchOptions } from './api';
 
 let apiInstance: ZhihuAPI | null = null;
 
@@ -168,9 +169,24 @@ export async function unfavoriteAnswer(answerId: string) {
 }
 
 // 搜索内容。
-export async function search(keyword: string, offset: number = 0, type: string = "general") {
-    const data = await requireApiInstance().search(keyword, offset, type);
+export async function search(keyword: string, offset: number = 0, type: string = "general", options: SearchOptions = {}) {
+    const data = await requireApiInstance().search(keyword, offset, type, options);
     return data;
+}
+
+// 获取搜索候选词。
+export async function getSearchSuggestions(keyword: string) {
+    return requireApiInstance().getSearchSuggestions(keyword);
+}
+
+// 获取搜索筛选项。
+export async function getSearchCustomize(keyword: string) {
+    return requireApiInstance().getSearchCustomize(keyword);
+}
+
+// 请求知乎 AI 搜索流。
+export async function streamSearchAi(keyword: string, onChunk: (chunk: string) => void) {
+    return requireApiInstance().streamSearchAi(keyword, onChunk);
 }
 
 // 添加阅读历史。

@@ -9,8 +9,10 @@ interface UserState {
     setCookie: (cookie: string) => void;
     username: string;
     avatar: string;
+    urlToken: string;
     isLoggedIn: boolean;
-    login: (name: string, cookie: string, avatar: string) => void;
+    setUrlToken: (urlToken: string) => void;
+    login: (name: string, cookie: string, avatar: string, urlToken?: string) => void;
     logOut: () => void;
 }
 
@@ -20,18 +22,22 @@ export const useUserStore = create<UserState>()(
             cookies: undefined,
             username: 'lcaluckily',
             avatar: 'https://picx.zhimg.com/v2-1abe7b115ea0ab9e5dfe334d5a1fef38_r.jpg',
+            urlToken: '',
             isLoggedIn: false,
             setCookie: (cookie) => set({ cookies: cookie }),
-            login: (name, cookie, avatar) => set({
+            setUrlToken: (urlToken) => set({ urlToken }),
+            login: (name, cookie, avatar, urlToken = '') => set({
                 username: name,
                 cookies: cookie,
                 avatar,
+                urlToken,
                 isLoggedIn: true,
             }),
             logOut: () => set({
                 username: '',
                 cookies: undefined,
                 avatar: '',
+                urlToken: '',
                 isLoggedIn: false,
             }),
         }),
@@ -42,6 +48,7 @@ export const useUserStore = create<UserState>()(
                 cookies: state.cookies,
                 username: state.username,
                 avatar: state.avatar,
+                urlToken: state.urlToken,
                 isLoggedIn: state.isLoggedIn,
             }),
         }

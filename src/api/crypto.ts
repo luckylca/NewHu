@@ -248,22 +248,21 @@ class XZSE96V3 implements XZSE96V3 {
  * @returns {object} 包含 url 和 headers 的对象
  */
 function generateSignature(url: string, cookie: string): { url: string; headers: { [key: string]: string } } {
-    // 提取 API 路径
-    let path;
-    if (url.includes('https://www.zhihu.com')) {
-        const match = url.match(/zhihu\.com(.+)/);
-        if (!match) {
+    // 提取 API 路径。搜索 AI 使用 zhida.zhihu.com，和 www.zhihu.com
+    // 一样需要使用当前 Cookie 生成 x-zse-96 签名。
+    let path: string;
+    try {
+        const parsedUrl = new URL(url);
+        if (parsedUrl.hostname === 'www.zhihu.com' || parsedUrl.hostname === 'zhida.zhihu.com') {
+            path = `${parsedUrl.pathname}${parsedUrl.search}`;
+        } else if (parsedUrl.hostname === 'api.zhihu.com') {
+            path = `/api/v4${parsedUrl.pathname}${parsedUrl.search}`;
+            url = `https://www.zhihu.com${path}`;
+        } else {
             throw new Error('不支持的 URL 格式');
         }
-        path = match[1];
-    } else if (url.includes('https://api.zhihu.com')) {
-        const match = url.match(/zhihu\.com(.+)/);
-        if (!match) {
-            throw new Error('不支持的 URL 格式');
-        }
-        path = '/api/v4' + match[1];
-        url = 'https://www.zhihu.com' + path;
-    } else {
+    } catch (error) {
+        if (error instanceof Error && error.message === '不支持的 URL 格式') throw error;
         throw new Error('不支持的 URL 格式');
     }
 
