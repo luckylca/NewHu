@@ -2,7 +2,7 @@ import { PressIndication } from '@/src/ui/primitives';
 import { cardSink, cardTilt } from '@/src/ui/motion';
 import { useReducedMotionPreference } from '@/src/ui/motion/MotionProvider';
 import { useTheme } from '@/src/ui/theme';
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Pressable } from 'react-native';
 import type { GestureResponderEvent, LayoutChangeEvent, StyleProp, ViewStyle } from 'react-native';
@@ -18,8 +18,8 @@ import Animated, { useAnimatedStyle, useDerivedValue, useSharedValue, withSpring
  * Feedback:
  *   none — inert container.
  *   sink — scale 1.0 → 0.94, folmeSpring(0.8, 600).
- *   tilt — rotateX/Y ±5.3°, folmeSpring(0.6, 400), pivot follows the touch
- *          quadrant (perspective ≈ width × 1.6).
+ *   tilt — rotateX/Y ±9° (combined visual tilt ≈13°), folmeSpring(0.6, 400),
+ *          centered pivot keeps large cards from swinging around a corner.
  * Long-press after 500ms emits onLongPress and swallows the following click.
  * No default heavy shadow.
  */
@@ -41,7 +41,7 @@ export interface AppCardProps {
 }
 
 const SINK_AMOUNT = 0.94;
-const TILT_AMOUNT = 5.3;
+const TILT_AMOUNT = 9;
 const TILT_PERSPECTIVE_FACTOR = 1.6;
 
 export function Card({ feedback = 'sink', showIndication, holdDown, onPress, onPressIn, onLongPress, style, contentStyle, children }: AppCardProps) {
@@ -51,9 +51,11 @@ export function Card({ feedback = 'sink', showIndication, holdDown, onPress, onP
     const pressed = useSharedValue(0);
     const tiltX = useSharedValue(0);
     const tiltY = useSharedValue(0);
+    // Reanimated worklets cannot reliably observe a mutable JS ref. Keep the
+    // measured width in a shared value so perspective never falls back to 1.
+    const cardWidth = useSharedValue(1000);
 
     const cardSize = useRef({ width: 0, height: 0 });
-    const [tiltOrigin, setTiltOrigin] = useState('50% 50%');
 
     const longPressFired = useRef(false);
 
@@ -70,7 +72,7 @@ export function Card({ feedback = 'sink', showIndication, holdDown, onPress, onP
         if (feedback === 'tilt') {
             return {
                 transform: [
-                    { perspective: Math.max(cardSize.current.width * TILT_PERSPECTIVE_FACTOR, 1) },
+                    { perspective: Math.max(cardWidth.value * TILT_PERSPECTIVE_FACTOR, 800) },
                     { rotateX: reducedMotion ? '0deg' : withSpring(`${tiltX.value}deg`, cardTilt) },
                     { rotateY: reducedMotion ? '0deg' : withSpring(`${tiltY.value}deg`, cardTilt) },
                 ],
@@ -82,7 +84,8 @@ export function Card({ feedback = 'sink', showIndication, holdDown, onPress, onP
     const onLayout = useCallback((e: LayoutChangeEvent) => {
         const { width, height } = e.nativeEvent.layout;
         cardSize.current = { width, height };
-    }, []);
+        cardWidth.value = width || 1000;
+    }, [cardWidth]);
 
     const handlePressIn = useCallback(
         (e: GestureResponderEvent) => {
@@ -91,9 +94,6 @@ export function Card({ feedback = 'sink', showIndication, holdDown, onPress, onP
                 const { locationX, locationY } = e.nativeEvent;
                 const halfW = (cardSize.current.width || 1) / 2;
                 const halfH = (cardSize.current.height || 1) / 2;
-                const originX = locationX < halfW ? '100%' : '0%';
-                const originY = locationY < halfH ? '100%' : '0%';
-                setTiltOrigin(`${originX} ${originY}`);
                 tiltX.value = locationY < halfH ? TILT_AMOUNT : -TILT_AMOUNT;
                 tiltY.value = locationX < halfW ? -TILT_AMOUNT : TILT_AMOUNT;
             }
@@ -141,7 +141,7 @@ export function Card({ feedback = 'sink', showIndication, holdDown, onPress, onP
                         overflow: 'hidden',
                         flexDirection: 'column',
                     },
-                    feedback === 'tilt' ? { transformOrigin: tiltOrigin } : undefined,
+                    feedback === 'tilt' ? { transformOrigin: '50% 50%' } : undefined,
                     contentStyle,
                     animatedStyle,
                 ]}

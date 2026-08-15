@@ -42,14 +42,14 @@ export async function getMe() {
 }
 
 // 获取用户的收藏夹列表。
-export async function getUserCollections(username: string, offset: number = 0) {
-    const data = await requireApiInstance().getUserCollections(username, offset);
+export async function getUserCollections(username: string, offset: number = 0, limit: number = 20) {
+    const data = await requireApiInstance().getUserCollections(username, offset, limit);
     return data;
 }
 
 // 获取收藏夹内的内容列表。
-export async function getCollectionItems(collectionId: string, offset: number = 0) {
-    const data = await requireApiInstance().getCollectionItems(collectionId, offset);
+export async function getCollectionItems(collectionId: string, offset: number = 0, limit: number = 20) {
+    const data = await requireApiInstance().getCollectionItems(collectionId, offset, limit);
     return data;
 }
 
@@ -165,6 +165,18 @@ export async function favoriteAnswer(answerId: string) {
 // 取消收藏回答。
 export async function unfavoriteAnswer(answerId: string) {
     const data = await requireApiInstance().unfavoriteAnswer(answerId);
+    return data;
+}
+
+// 收藏文章。
+export async function favoriteArticle(articleId: string) {
+    const data = await requireApiInstance().favoriteArticle(articleId);
+    return data;
+}
+
+// 取消收藏文章。
+export async function unfavoriteArticle(articleId: string) {
+    const data = await requireApiInstance().unfavoriteArticle(articleId);
     return data;
 }
 

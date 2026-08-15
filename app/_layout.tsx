@@ -118,6 +118,7 @@ export default function RootLayout() {
 								<Stack.Screen name="animationSettings" options={{ title: '动画设置' }} />
 								<Stack.Screen name="devmode" options={{ title: '开发者模式' }} />
 								<Stack.Screen name="like" options={{ title: '收藏列表' }} />
+								<Stack.Screen name="like/[id]" options={{ title: '收藏内容' }} />
 								<Stack.Screen name="history" options={{ title: '浏览历史' }} />
 								<Stack.Screen name="drafts" options={{ title: '草稿箱' }} />
 								<Stack.Screen name="webview" options={{ title: '登录' }} />

@@ -121,7 +121,7 @@ export default function DesignSystemShowcase() {
                         <Card feedback="tilt" onPress={() => {}}>
                             <View style={{ padding: 16 }}>
                                 <Text type="headline1" weight="medium" color={theme.colors.onSurfaceContainer}>tilt 卡片</Text>
-                                <Text type="body2" color={theme.colors.onSurfaceContainerVariant}>按点支点倾斜 ±8° · folmeSpring(0.6, 400)</Text>
+                                <Text type="body2" color={theme.colors.onSurfaceContainerVariant}>按点支点倾斜约 13° · folmeSpring(0.6, 400)</Text>
                             </View>
                         </Card>
                         <Card feedback="none">

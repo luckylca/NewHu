@@ -11,8 +11,8 @@ interface ZhihuAPI {
     setTransferListener(listener?: (bytes: number, durationMs: number) => void): void;
     getMe(): Promise<any>;
     getUserInfo(urlToken: string): Promise<any>;
-    getUserCollections(username: string, offset?: number): Promise<any>;
-    getCollectionItems(collectionId: string, offset?: number): Promise<any>;
+    getUserCollections(username: string, offset?: number, limit?: number): Promise<any>;
+    getCollectionItems(collectionId: string, offset?: number, limit?: number): Promise<any>;
     getRecommend(cursor?: string): Promise<any>;
     getFollowingFeed(offset?: number): Promise<any>;
     getAnswer(answerId: string): Promise<any>;
@@ -26,6 +26,8 @@ interface ZhihuAPI {
     getChildComments(commentId: string, offset?: string, sort?: string): Promise<any>;
     favoriteAnswer(answerId: string): Promise<any>;
     unfavoriteAnswer(answerId: string): Promise<any>;
+    favoriteArticle(articleId: string): Promise<any>;
+    unfavoriteArticle(articleId: string): Promise<any>;
     dislikeArticle(articleId: string): Promise<any>;
     cancelDislikeArticle(articleId: string): Promise<any>;
     search(keyword: string, offset?: number, type?: string, options?: SearchOptions): Promise<any>;
@@ -123,23 +125,20 @@ class ZhihuAPI {
      * @param {string} username - 用户名 (例如: lcaluckily)
      * @param {number} offset - 偏移量
      */
-    async getUserCollections(username: string, offset: number = 0) {
+    async getUserCollections(username: string, offset: number = 0, limit: number = 20) {
         // 你提供的 URL 中的 include 参数解码后如下：
         const include = 'data[*].updated_time,answer_count,follower_count,creator,description,is_following,comment_count,created_time;data[*].creator.kvip_info;data[*].creator.vip_info';
 
         // 使用 encodeURIComponent 确保特殊字符被正确编码
-        return this.client.get(`https://www.zhihu.com/api/v4/people/${username}/collections?include=${encodeURIComponent(include)}&offset=${offset}&limit=20`);
+        return this.client.get(`https://www.zhihu.com/api/v4/people/${encodeURIComponent(username)}/collections?include=${encodeURIComponent(include)}&offset=${offset}&limit=${limit}`);
     }
     /**
      * 获取收藏夹内的具体内容列表
      * @param {string} collectionId - 收藏夹 ID
      * @param {number} offset - 偏移量
      */
-    async getCollectionItems(collectionId: string, offset: number = 0) {
-        // include 参数非常重要，它决定了你能拿到多少详细内容（包括回答全文 content）
-        const include = 'data[*].content,intro,comment_count,voteup_count,created_time,updated_time,author,url,question,answer_count';
-
-        return this.client.get(`https://www.zhihu.com/api/v4/collections/${collectionId}/items?offset=${offset}&limit=20&include=${encodeURIComponent(include)}`);
+    async getCollectionItems(collectionId: string, offset: number = 0, limit: number = 20) {
+        return this.client.get(`https://www.zhihu.com/api/v4/collections/${encodeURIComponent(collectionId)}/items?offset=${offset}&limit=${limit}`);
     }
     // ==================== 推荐流相关 ====================
 
@@ -179,12 +178,12 @@ class ZhihuAPI {
      * @param {string} answerId - 回答 ID
      */
     async getAnswer(answerId: string) {
-        const include = 'author,content,voteup_count,comment_count,favlists_count,thanks_count,pagination_info,content,created_time,updated_time,reshipment_settings,mark_infos,is_collapsed,collapse_reason,is_normal,relationship.voting,relationship.is_author,suggest_edit.unnormal_details,commercial_info,relevant_info,excerpt,attachment';
+        const include = 'author,content,voteup_count,comment_count,favlists_count,thanks_count,pagination_info,content,created_time,updated_time,reshipment_settings,mark_infos,is_collapsed,collapse_reason,is_normal,relationship.voting,relationship.is_author,relationship.is_favorited,suggest_edit.unnormal_details,commercial_info,relevant_info,excerpt,attachment';
         return this.client.get(`https://www.zhihu.com/api/v4/answers/${answerId}?include=${include}`);
     }
     async getArticle(articleId: string, include?: string) {
         const defaultInclude =
-            'comment_count,content,voteup_count,created,updated,author,excerpt,can_comment,comment_permission,relationship.is_author, relationship.is_following, relationship.is_favorited';
+            'comment_count,content,voteup_count,favlists_count,created,updated,author,excerpt,can_comment,comment_permission,relationship.is_author,relationship.is_following,relationship.is_favorited';
         const includeParam = encodeURIComponent(include || defaultInclude);
         return this.client.get(`https://www.zhihu.com/api/v4/articles/${articleId}?include=${includeParam}`);
     }
@@ -360,6 +359,22 @@ class ZhihuAPI {
      */
     async unfavoriteAnswer(answerId: string) {
         return this.client.delete(`https://www.zhihu.com/api/v4/answers/${answerId}/favlists`);
+    }
+
+    /**
+     * 收藏文章
+     * @param {string} articleId - 文章 ID
+     */
+    async favoriteArticle(articleId: string) {
+        return this.client.post(`https://www.zhihu.com/api/v4/articles/${articleId}/favlists`, {});
+    }
+
+    /**
+     * 取消收藏文章
+     * @param {string} articleId - 文章 ID
+     */
+    async unfavoriteArticle(articleId: string) {
+        return this.client.delete(`https://www.zhihu.com/api/v4/articles/${articleId}/favlists`);
     }
 
     // ==================== 搜索相关 ====================

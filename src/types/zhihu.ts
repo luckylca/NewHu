@@ -21,6 +21,8 @@ export interface FeedItem {
     // 统计字段
     voteCount: number;
     favoriteCount: number;
+    /** 当前登录用户是否已收藏；部分列表接口不会返回此字段。 */
+    favorited?: boolean;
     commentCount: number;
     // 正文（HTML）
     content: string;

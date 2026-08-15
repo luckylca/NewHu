@@ -59,9 +59,9 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, onOpenMenu }
         }
         router.push({
             pathname: `/item/[type]/[id]`,
-            params: { id: item.id, type, needToGet: needToGet.toString() }
+            params: { id: item.id, type, needToGet: needToGet.toString(), initialFavorited: item.favorited ? 'true' : 'false' }
         });
-    }, [item.id, type, needToGet]);
+    }, [item.favorited, item.id, type, needToGet]);
     const openActionMenu = useCallback((event: GestureResponderEvent) => {
         onOpenMenu?.(item, type, event);
     }, [item, onOpenMenu, type]);
@@ -132,9 +132,9 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
         }
         router.push({
             pathname: `/item/[type]/[id]`,
-            params: { id: item.id, type, needToGet: needToGet.toString() }
+            params: { id: item.id, type, needToGet: needToGet.toString(), initialFavorited: item.favorited ? 'true' : 'false' }
         });
-    }, [item.id, type, needToGet]);
+    }, [item.favorited, item.id, type, needToGet]);
 
     const openActionMenu = useCallback((event: GestureResponderEvent) => {
         onOpenMenu?.(item, type, event);

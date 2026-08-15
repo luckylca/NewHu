@@ -1,5 +1,5 @@
 // app/item/type/[id]/index.tsx
-import { addReadHistory, getAnswer, getArticle } from "@/src/api/ZhihuApi";
+import { addReadHistory, favoriteAnswer, favoriteArticle, getAnswer, getArticle, unfavoriteAnswer, unfavoriteArticle } from "@/src/api/ZhihuApi";
 import type { FeedDetail } from "@/src/types/zhihu";
 import ImageReanimatedModal from "@/src/components/ImageReanimatedModal";
 import LoadingView from "@/src/components/LoadingView";
@@ -20,7 +20,6 @@ import { exportImage, exportPdf } from '@/src/utils/contentExport';
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import RenderHtml from 'react-native-render-html';
 import { DomUtils, parseDocument } from 'htmlparser2';
-import { scheduleOnRN } from "react-native-worklets";
 import { getContent, upsertContent } from "@/src/db/repositories/contentRepository";
 import { normalizeContent } from "@/src/db/mappers";
 import { setContentVote } from "@/src/services/offlineActions";
@@ -30,6 +29,7 @@ export type ItemParams = {
     id: string;
     type: 'answer' | 'article';
     needToGet?: 'true' | 'false';
+    initialFavorited?: 'true' | 'false';
 };
 
 type ArrowEffect = {
@@ -265,7 +265,7 @@ const StableArticleBody = React.memo(function StableArticleBody({
 });
 
 export default function Item() {
-    const { id, type, needToGet } = useLocalSearchParams<ItemParams>();
+    const { id, type, needToGet, initialFavorited } = useLocalSearchParams<ItemParams>();
     // Subscribe only to this item's fallback. Subscribing to the whole store
     // made every feed append re-render the complete HTML document while the
     // user was scrolling the detail page.
@@ -292,6 +292,9 @@ export default function Item() {
     const menuBtnRef = useRef<View>(null);
     const [voted, setVoted] = useState(false);
     const [voteCount, setVoteCount] = useState(0);
+    const [favorited, setFavorited] = useState(false);
+    const [favoriteCount, setFavoriteCount] = useState(0);
+    const favoritePendingRef = useRef(false);
     const [arrowEffects, setArrowEffects] = useState<ArrowEffect[]>([]);
     const arrowIdRef = useRef(0);
     const titlePressed = useSharedValue(0);
@@ -321,6 +324,12 @@ export default function Item() {
             try {
                 const raw = contentType === 'answer' ? await getAnswer(String(id)) : await getArticle(String(id));
                 const fresh = normalizeContent(raw, contentType);
+                // 文章接口通常返回顶层 is_favorited，但回答接口可能完全不返回
+                // 收藏关系。若接口缺字段，沿用从“我的收藏夹”带进来的确定状态。
+                const remoteFavorited = raw?.relationship?.is_favorited ?? raw?.is_favorited;
+                if (remoteFavorited == null && initialFavorited === 'true') {
+                    fresh.favorited = true;
+                }
                 if (active) setReadData(fresh);
                 void upsertContent(fresh, contentType, { cacheState: 'transient', voted: fresh.voted }).catch((error) => {
                     console.warn('详情写入本地缓存失败', error);
@@ -331,12 +340,14 @@ export default function Item() {
         };
         void load();
         return () => { active = false; };
-    }, [id, type, needToGet, fallbackContent, networkStatus]);
+    }, [id, type, needToGet, initialFavorited, fallbackContent, networkStatus]);
 
     useEffect(() => {
         if (!readData) return;
         setVoteCount(Number(readData.voteCount || 0));
         setVoted(Boolean(readData.voted));
+        setFavoriteCount(Number(readData.favoriteCount || 0));
+        setFavorited(Boolean(readData.favorited));
     }, [readData]);
 
     const playArrowAnimation = (absoluteX: number, absoluteY: number) => {
@@ -408,6 +419,41 @@ export default function Item() {
         notify(voted ? '已取消点赞' : `点赞成功，当前已有 ${voteCount + 1} 个赞`);
     };
 
+    const pressFavorite = async () => {
+        if (!readData || favoritePendingRef.current) return;
+
+        const nextFavorited = !favorited;
+        const nextCount = Math.max(0, favoriteCount + (nextFavorited ? 1 : -1));
+        const nextData = { ...readData, favorited: nextFavorited, favoriteCount: nextCount };
+        favoritePendingRef.current = true;
+        setFavorited(nextFavorited);
+        setFavoriteCount(nextCount);
+        setReadData(nextData);
+
+        try {
+            if (contentType === 'answer') {
+                if (nextFavorited) await favoriteAnswer(String(readData.id));
+                else await unfavoriteAnswer(String(readData.id));
+            } else if (nextFavorited) {
+                await favoriteArticle(String(readData.id));
+            } else {
+                await unfavoriteArticle(String(readData.id));
+            }
+            void upsertContent(nextData, contentType, { cacheState: 'transient', voted: nextData.voted }).catch((error) => {
+                console.warn('收藏状态写入本地缓存失败', error);
+            });
+            notify(nextFavorited ? '已收藏' : '已取消收藏');
+        } catch (favoriteError) {
+            console.error('收藏操作失败:', favoriteError);
+            setFavorited(!nextFavorited);
+            setFavoriteCount(favoriteCount);
+            setReadData(readData);
+            notify(nextFavorited ? '收藏失败，请稍后重试' : '取消收藏失败，请稍后重试');
+        } finally {
+            favoritePendingRef.current = false;
+        }
+    };
+
     const handleTitlePress = () => {
         if (type === 'answer' && readData?.questionId) {
             console.log('跳转到问题详情，问题ID:', readData.questionId);
@@ -420,9 +466,15 @@ export default function Item() {
         handleVoteUp();
     };
 
-    const doubleTab = Gesture.Tap().numberOfTaps(2).onEnd((e) => {
-        scheduleOnRN(handleDoubleTapAt, e.absoluteX, e.absoluteY);
-    });
+    const doubleTap = Gesture.Tap()
+        .numberOfTaps(2)
+        .maxDelay(320)
+        .maxDistance(32)
+        .onEnd((e, success) => {
+            if (success) {
+                runOnJS(handleDoubleTapAt)(e.absoluteX, e.absoluteY);
+            }
+        });
 
     // 右滑返回：只在水平向右并且水平位移显著且垂直位移较小时触发
     const rightSwipe = Gesture.Pan()
@@ -439,7 +491,7 @@ export default function Item() {
         });
 
     // 双击和右滑互斥：优先尝试双击，失败则尝试右滑
-    const combinedGesture = Gesture.Exclusive(doubleTab, rightSwipe);
+    const combinedGesture = Gesture.Exclusive(doubleTap, rightSwipe);
 
     const openHeaderMenu = () => {
         menuBtnRef.current?.measureInWindow((x, y, width, height) => {
@@ -587,11 +639,11 @@ export default function Item() {
                 ]}
             />
 
-            <FlatList
-                data={articleChunks}
-                keyExtractor={(_, index) => `${readData.id}:${index}`}
-                renderItem={({ item: chunk }) => (
-                    <GestureDetector gesture={combinedGesture}>
+            <GestureDetector gesture={combinedGesture}>
+                <FlatList
+                    data={articleChunks}
+                    keyExtractor={(_, index) => `${readData.id}:${index}`}
+                    renderItem={({ item: chunk }) => (
                         <View collapsable={false}>
                             <StableArticleBody
                                 contentWidth={width - 32}
@@ -600,8 +652,7 @@ export default function Item() {
                                 renderers={renderers}
                             />
                         </View>
-                    </GestureDetector>
-                )}
+                    )}
                 contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xl, flexGrow: 1 }}
                 showsVerticalScrollIndicator={false}
                 initialNumToRender={2}
@@ -643,13 +694,19 @@ export default function Item() {
                         <Divider style={{ marginVertical: 16 }} />
                         <View style={{ paddingLeft: 24, paddingRight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                             <ContentActionButton name={(voted || readData.voted) ? "thumb-up" : "thumb-up-outline"} count={readData.voteCount} alwaysShowCount color={(voted || readData.voted) ? theme.colors.primary : secondaryText} onPress={pressVoteUp} />
-                            <ContentActionButton name="star-outline" count={readData.favoriteCount} color={secondaryText} onPress={() => console.log('点击了收藏')} />
+                            <ContentActionButton
+                                name={favorited ? 'star' : 'star-outline'}
+                                count={favoriteCount}
+                                color={favorited ? theme.colors.primary : secondaryText}
+                                onPress={() => { void pressFavorite(); }}
+                            />
                             <ContentActionButton name="comment-outline" count={readData.commentCount} alwaysShowCount color={secondaryText} onPress={() => router.push({ pathname: '/item/[type]/[id]/comment', params: { id: readData.id, type } })} />
                         </View>
                         <View style={{ height: 40 }} />
                     </>
                 )}
-            />
+                />
+            </GestureDetector>
 
             {arrowEffects.map((arrow) => (
                 <Animated.View
