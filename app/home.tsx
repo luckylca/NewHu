@@ -4,8 +4,8 @@ import { useContentStore } from '@/src/stores/useContentStore';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { router } from 'expo-router';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent, View, StyleSheet, Share } from 'react-native';
-import type { GestureResponderEvent } from 'react-native';
+import { Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent, RefreshControl, ScrollView, View, StyleSheet, Share } from 'react-native';
+import type { GestureResponderEvent, LayoutChangeEvent } from 'react-native';
 import { Card, Icon, Menu, SearchBar, Text } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { useSettingStore } from '../src/stores/useSettingStore';
@@ -27,6 +27,8 @@ const ITEM_WIDTH = WindowWidth * 0.88;
 const CARD_WIDTH = WindowWidth * 0.82; 
 const CARD_HEIGHT = WindowHeight * 0.65;
 const CARD_ITEM_HEIGHT = CARD_HEIGHT + 10;
+const WATERFALL_GAP = 12;
+const WATERFALL_INITIAL_RENDER_AHEAD = WindowHeight * 5;
 
 function getContentPreview(item: FeedItem) {
     const content = item.content
@@ -109,6 +111,95 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, onOpenMenu }
         prevProps.hideTitle === nextProps.hideTitle;
 });
 RenderItem.displayName = 'RenderItem';
+
+function estimateWaterfallHeight(feed: FeedItemInfo) {
+    const title = feed.feedType === 'answer' && feed.item.questionTitle ? feed.item.questionTitle : feed.item.title;
+    // A narrow waterfall column wraps Chinese titles earlier than a full-width card.
+    // Keep the placement estimate at least as tall as the rendered 3-line title,
+    // otherwise the next absolute-positioned card can visually overlap it.
+    const titleLines = title.length > 18 ? 3 : title.length > 9 ? 2 : 1;
+    const excerptLines = feed.item.excerpt.length > 180 ? 5 : feed.item.excerpt.length > 100 ? 4 : 3;
+    // Match WaterfallItem's actual padding, line heights and metadata row.
+    // The old estimate was 40–50dp taller than the rendered card, which made
+    // a tight waterfall look like cards were overlapping or leaving large gaps.
+    return 28 + titleLines * 23 + 8 + excerptLines * 20 + 12 + 15;
+}
+
+type WaterfallPlacement = {
+    feed: FeedItemInfo;
+    column: 0 | 1;
+    top: number;
+    height: number;
+};
+
+const WaterfallItem = memo(({ item, type, needToGet, measurementKey, onMeasured, onOpenMenu }: {
+    item: FeedItem;
+    type: FeedType;
+    needToGet: boolean;
+    measurementKey: string;
+    onMeasured?: (key: string, height: number) => void;
+    onOpenMenu?: (item: FeedItem, feedType: FeedType, event: GestureResponderEvent) => void;
+}) => {
+    const theme = useTheme();
+    const title = type === 'answer' && item.questionTitle ? item.questionTitle : item.title;
+    const metaColor = theme.colors.onSurfaceVariantSummary;
+    const openItem = useCallback(() => {
+        if (useConsentStore.getState().aiInterestAnalysisEnabled) {
+            void recordUserEvent({ contentId: item.id, contentType: type, eventType: 'content_open' });
+        }
+        router.push({
+            pathname: `/item/[type]/[id]`,
+            params: {
+                id: item.id,
+                type,
+                needToGet: needToGet.toString(),
+                initialFavorited: item.favorited ? 'true' : 'false'
+            }
+        });
+    }, [item.favorited, item.id, type, needToGet]);
+
+    const openActionMenu = useCallback((event: GestureResponderEvent) => {
+        onOpenMenu?.(item, type, event);
+    }, [item, onOpenMenu, type]);
+
+    const handleLayout = useCallback((event: LayoutChangeEvent) => {
+        onMeasured?.(measurementKey, event.nativeEvent.layout.height);
+    }, [measurementKey, onMeasured]);
+
+    const excerptLines = item.excerpt.length > 180 ? 5 : item.excerpt.length > 100 ? 4 : 3;
+    return (
+        <View onLayout={handleLayout} style={{ width: '100%' }}>
+            <Card
+                feedback="none"
+                onPress={openItem}
+                onLongPress={openActionMenu}
+                style={{ width: '100%' }}
+                contentStyle={{ paddingHorizontal: 13, paddingVertical: 14 }}
+            >
+                <Text type="headline1" weight="bold" color={theme.colors.onBackground} numberOfLines={3} style={{ lineHeight: 23 }}>
+                    {title || '无标题'}
+                </Text>
+                <Text type="body2" color={metaColor} numberOfLines={excerptLines} style={{ marginTop: 8, lineHeight: 20 }}>
+                    {item.excerpt || '暂无简介'}
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
+                    <Icon name="thumb-up-outline" size={15} color={metaColor} />
+                    <Text type="footnote1" style={{ marginLeft: 4, color: metaColor }}>{item.voteCount}</Text>
+                    <Icon name="comment-outline" size={15} color={metaColor} style={{ marginLeft: 12 }} />
+                    <Text type="footnote1" style={{ marginLeft: 4, color: metaColor }}>{item.commentCount}</Text>
+                </View>
+            </Card>
+        </View>
+    );
+}, (prevProps, nextProps) => (
+    prevProps.item.id === nextProps.item.id &&
+    prevProps.type === nextProps.type &&
+    prevProps.needToGet === nextProps.needToGet &&
+    prevProps.measurementKey === nextProps.measurementKey &&
+    prevProps.onMeasured === nextProps.onMeasured &&
+    prevProps.onOpenMenu === nextProps.onOpenMenu
+));
+WaterfallItem.displayName = 'WaterfallItem';
 
 // ==================== 卡片模式 Item ====================
 export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimations, hideTitle, onOpenMenu }: {
@@ -268,7 +359,32 @@ const HomeScreen = () => {
     const onlineFeedStartedRef = useRef(false);
 
     const flatListRef = useRef<FlatList>(null);
+    const waterfallScrollRef = useRef<ScrollView>(null);
+    const waterfallRenderWindowRef = useRef({ start: 0, end: WATERFALL_INITIAL_RENDER_AHEAD });
+    const [waterfallRenderWindow, setWaterfallRenderWindow] = useState(waterfallRenderWindowRef.current);
+    const waterfallMeasuredHeightsRef = useRef<Record<string, number>>({});
+    const [waterfallMeasuredHeights, setWaterfallMeasuredHeights] = useState<Record<string, number>>({});
+    const waterfallMeasureFrameRef = useRef<number | null>(null);
+    const waterfallLoadTriggerRef = useRef(0);
     const currentIndexRef = useRef(0);
+
+    const handleWaterfallMeasured = useCallback((key: string, height: number) => {
+        if (!Number.isFinite(height) || height <= 0) return;
+        const previous = waterfallMeasuredHeightsRef.current[key];
+        if (previous !== undefined && Math.abs(previous - height) < 1) return;
+        waterfallMeasuredHeightsRef.current[key] = height;
+        if (waterfallMeasureFrameRef.current !== null) return;
+        waterfallMeasureFrameRef.current = requestAnimationFrame(() => {
+            waterfallMeasureFrameRef.current = null;
+            setWaterfallMeasuredHeights({ ...waterfallMeasuredHeightsRef.current });
+        });
+    }, []);
+
+    useEffect(() => () => {
+        if (waterfallMeasureFrameRef.current !== null) {
+            cancelAnimationFrame(waterfallMeasureFrameRef.current);
+        }
+    }, []);
 
     const getFeedKey = (feed: FeedItemInfo) => `${feed.feedType}:${feed.item.id}`;
 
@@ -420,9 +536,13 @@ const HomeScreen = () => {
         currentIndexRef.current = 0;
         const frame = requestAnimationFrame(() => {
             flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+            waterfallScrollRef.current?.scrollTo({ y: 0, animated: false });
+            waterfallRenderWindowRef.current = { start: 0, end: WATERFALL_INITIAL_RENDER_AHEAD };
+            setWaterfallRenderWindow(waterfallRenderWindowRef.current);
+            waterfallLoadTriggerRef.current = 0;
         });
         return () => cancelAnimationFrame(frame);
-    }, [filterAds, filterPaid]);
+    }, [displayMode, filterAds, filterPaid]);
 
     // 联动优化：不喜欢（移除+网络请求+本地状态）统一处理器
     const handleDislikeItem = useCallback((id: string, feedType: FeedType) => {
@@ -513,6 +633,68 @@ const HomeScreen = () => {
         );
     }, [disableAnimations, openActionMenu]);
 
+    const waterfallColumnWidth = Math.max(0, (WindowWidth - 24 - WATERFALL_GAP) / 2);
+    const waterfallLayout = useMemo(() => {
+        const heights = [0, 0];
+        const placements: WaterfallPlacement[] = [];
+        visibleFeedList.forEach((feed) => {
+            const columnIndex = heights[0] <= heights[1] ? 0 : 1;
+            const measurementKey = getFeedKey(feed);
+            const height = waterfallMeasuredHeights[measurementKey] ?? estimateWaterfallHeight(feed);
+            // Each column owns its vertical cursor. This keeps every gap
+            // identical and lets the natural card-height difference create
+            // the masonry stagger without inserting artificial blank space.
+            const top = heights[columnIndex];
+            const placement: WaterfallPlacement = {
+                feed,
+                column: columnIndex as 0 | 1,
+                top,
+                height,
+            };
+            placements.push(placement);
+            heights[columnIndex] = top + height + WATERFALL_GAP;
+        });
+        return {
+            placements,
+            contentHeight: Math.max(heights[0], heights[1]) + theme.spacing.xl,
+        };
+    }, [theme.spacing.xl, visibleFeedList, waterfallMeasuredHeights]);
+
+    const updateWaterfallRenderWindow = useCallback((offsetY: number) => {
+        const start = Math.max(0, offsetY - WindowHeight * 1.5);
+        const end = offsetY + WindowHeight * 3;
+        const previous = waterfallRenderWindowRef.current;
+        if (
+            Math.abs(start - previous.start) < WindowHeight * 0.45 &&
+            Math.abs(end - previous.end) < WindowHeight * 0.45
+        ) {
+            return;
+        }
+        const next = { start, end };
+        waterfallRenderWindowRef.current = next;
+        setWaterfallRenderWindow(next);
+    }, []);
+
+    const loadWaterfallMore = useCallback(() => {
+        void loadDataRef.current?.(false);
+    }, []);
+
+    const handleWaterfallScrollSettled = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+        updateWaterfallRenderWindow(contentOffset.y);
+        if (
+            contentSize.height > waterfallLoadTriggerRef.current &&
+            contentOffset.y + layoutMeasurement.height >= contentSize.height - 700
+        ) {
+            waterfallLoadTriggerRef.current = contentSize.height;
+            loadWaterfallMore();
+        }
+    }, [loadWaterfallMore, updateWaterfallRenderWindow]);
+
+    const renderedWaterfallItems = useMemo(() => waterfallLayout.placements.filter(({ top, height }) => (
+        top + height >= waterfallRenderWindow.start && top <= waterfallRenderWindow.end
+    )), [waterfallLayout.placements, waterfallRenderWindow.end, waterfallRenderWindow.start]);
+
     const handleMomentumScrollEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
         const offsetY = event.nativeEvent.contentOffset.y;
         const index = Math.round(offsetY / CARD_ITEM_HEIGHT);
@@ -578,6 +760,51 @@ const HomeScreen = () => {
                         removeClippedSubviews={true}
                     />
                 </View>
+            ) : displayMode === 'waterfall' ? (
+                <ScrollView
+                    ref={waterfallScrollRef}
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ flexGrow: 1 }}
+                    showsVerticalScrollIndicator={false}
+                    onScrollEndDrag={handleWaterfallScrollSettled}
+                    onMomentumScrollEnd={handleWaterfallScrollSettled}
+                    refreshControl={(
+                        <RefreshControl
+                            refreshing={isRefreshing}
+                            onRefresh={() => { void loadData(true); }}
+                            tintColor={theme.colors.primary}
+                        />
+                    )}
+                >
+                    {waterfallLayout.placements.length > 0 ? (
+                        <View style={{ position: 'relative', width: '100%', height: waterfallLayout.contentHeight }}>
+                            {renderedWaterfallItems.map(({ feed, column, top, height }) => (
+                                <View
+                                    key={`${feed.feedType}-${feed.item.id}`}
+                                    style={{
+                                        position: 'absolute',
+                                        top,
+                                        left: column === 0 ? 12 : 12 + waterfallColumnWidth + WATERFALL_GAP,
+                                        width: waterfallColumnWidth,
+                                    }}
+                                >
+                                    <WaterfallItem
+                                        item={feed.item}
+                                        type={feed.feedType}
+                                        needToGet={true}
+                                        measurementKey={`${feed.feedType}:${feed.item.id}`}
+                                        onMeasured={handleWaterfallMeasured}
+                                        onOpenMenu={openActionMenu}
+                                    />
+                                </View>
+                            ))}
+                        </View>
+                    ) : networkStatus === 'offline' ? (
+                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.spacing.xl }}>
+                            <Text type="body1" color={theme.colors.onSurfaceVariantSummary}>暂无可离线浏览的内容</Text>
+                        </View>
+                    ) : null}
+                </ScrollView>
             ) : (
                 <FlatList
                     style={{ flex: 1 }}

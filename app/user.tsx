@@ -3,7 +3,7 @@ import { useSettingStore } from "@/src/stores/useSettingStore";
 import { getApiInstance } from '@/src/api/ZhihuApi';
 import { notify } from '@/src/stores/useNotificationStore';
 import { router } from "expo-router";
-import React from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Image, ScrollView, View } from 'react-native';
 import { Card, Divider, Icon, ListRow, SegmentedControl } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
@@ -15,12 +15,33 @@ const UserScreen = ({ navigation }: any) => {
     const theme = useTheme();
     const insets = useSafeAreaInsets();
     const userStore = useUserStore();
-    const settingStore = useSettingStore();
+    const mode = useSettingStore((state) => state.mode);
+    const setMode = useSettingStore((state) => state.setMode);
     const draftCount = useDraftStore((state) => state.drafts.length);
 
     const metaColor = theme.colors.onSurfaceSecondary;
 
-    const isCardMode = settingStore.mode === 'card';
+    const modeUpdateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const modeToIndex = (value: 'normal' | 'card' | 'waterfall') => value === 'normal' ? 0 : value === 'card' ? 1 : 2;
+    const [selectedMode, setSelectedMode] = useState(() => modeToIndex(mode));
+
+    useEffect(() => {
+        setSelectedMode(modeToIndex(mode));
+    }, [mode]);
+
+    useEffect(() => () => {
+        if (modeUpdateTimerRef.current) clearTimeout(modeUpdateTimerRef.current);
+    }, []);
+
+    const handleModeSelect = useCallback((index: number) => {
+        setSelectedMode(index);
+        if (modeUpdateTimerRef.current) clearTimeout(modeUpdateTimerRef.current);
+        const nextMode = index === 0 ? 'normal' : index === 1 ? 'card' : 'waterfall';
+        modeUpdateTimerRef.current = setTimeout(() => {
+            setMode(nextMode);
+            modeUpdateTimerRef.current = null;
+        }, 220);
+    }, [setMode]);
 
     const handlePress = async () => {
         if (!userStore.isLoggedIn) {
@@ -70,9 +91,9 @@ const UserScreen = ({ navigation }: any) => {
 
             <View style={{ marginBottom: theme.spacing.lg, marginHorizontal: theme.spacing.lg }}>
                 <SegmentedControl
-                    tabs={['普通模式', '滑动模式']}
-                    selected={isCardMode ? 1 : 0}
-                    onSelect={(i) => settingStore.setMode(i === 1 ? 'card' : 'normal')}
+                    tabs={['普通模式', '滑动模式', '瀑布流']}
+                    selected={selectedMode}
+                    onSelect={handleModeSelect}
                 />
             </View>
 

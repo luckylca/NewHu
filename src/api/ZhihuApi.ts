@@ -35,6 +35,16 @@ export async function getUserInfo(url_token: string) {
     return data;
 }
 
+// 关注用户。
+export async function followUser(urlToken: string) {
+    return requireApiInstance().followUser(urlToken);
+}
+
+// 取消关注用户。
+export async function unfollowUser(urlToken: string) {
+    return requireApiInstance().unfollowUser(urlToken);
+}
+
 // 获取当前登录用户信息。
 export async function getMe() {
     const data = await requireApiInstance().getMe();

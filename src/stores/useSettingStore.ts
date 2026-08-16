@@ -39,8 +39,8 @@ interface SettingState {
     deduplicateFeed: boolean; // 是否剔除已经推送过的文章和回答
     setDeduplicateFeed: (enabled: boolean) => void;
 
-    mode: 'normal' | 'card';
-    setMode: (mode: 'normal' | 'card') => void; // 设置模式的函数
+    mode: 'normal' | 'card' | 'waterfall';
+    setMode: (mode: 'normal' | 'card' | 'waterfall') => void; // 设置模式的函数
 }
 
 export const useSettingStore = create<SettingState>()(

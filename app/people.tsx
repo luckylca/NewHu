@@ -1,5 +1,6 @@
-import { getUserActivities, getUserInfo } from "@/src/api/ZhihuApi";
-import { Divider, Icon, TopAppBar } from "@/src/ui";
+import { followUser, getUserActivities, getUserInfo, unfollowUser } from "@/src/api/ZhihuApi";
+import { Button, Divider, Icon, TopAppBar } from "@/src/ui";
+import { notify } from "@/src/stores/useNotificationStore";
 import { Text } from "@/src/ui/primitives";
 import { useTheme } from "@/src/ui/theme";
 import { Image } from "expo-image";
@@ -19,6 +20,8 @@ const PeopleScreen = () => {
     const secondaryText = theme.colors.onSurfaceSecondary
     const router = useRouter()
     const [userInfo, setUserInfo] = React.useState<any>(null)
+    const [isFollowing, setIsFollowing] = React.useState(false)
+    const [isFollowPending, setIsFollowPending] = React.useState(false)
     const [offsetString, setOffsetString] = React.useState("")
     const [pageNum, setPageNum] = React.useState(1)
 
@@ -31,6 +34,7 @@ const PeopleScreen = () => {
         if (urlToken) {
             getUserInfo(urlToken).then((data) => {
                 setUserInfo(data)
+                setIsFollowing(Boolean(data?.is_following))
             }).catch((error) => {
                 console.error("Failed to fetch user info:", error)
             })
@@ -45,6 +49,47 @@ const PeopleScreen = () => {
             }, 0);
         }
     }, [urlToken])
+
+    const handleToggleFollow = async () => {
+        if (!urlToken || isFollowPending) return;
+
+        const previousFollowing = isFollowing;
+        const nextFollowing = !previousFollowing;
+        setIsFollowPending(true);
+        setIsFollowing(nextFollowing);
+        setUserInfo((previous: any) => {
+            if (!previous) return previous;
+            const currentCount = Number(previous.follower_count) || 0;
+            return {
+                ...previous,
+                is_following: nextFollowing,
+                follower_count: Math.max(0, currentCount + (nextFollowing ? 1 : -1)),
+            };
+        });
+
+        try {
+            if (nextFollowing) {
+                await followUser(urlToken);
+            } else {
+                await unfollowUser(urlToken);
+            }
+        } catch (error) {
+            console.error('更新关注状态失败:', error);
+            setIsFollowing(previousFollowing);
+            setUserInfo((previous: any) => {
+                if (!previous) return previous;
+                const currentCount = Number(previous.follower_count) || 0;
+                return {
+                    ...previous,
+                    is_following: previousFollowing,
+                    follower_count: Math.max(0, currentCount + (previousFollowing ? 1 : -1)),
+                };
+            });
+            notify('关注操作失败，请稍后重试');
+        } finally {
+            setIsFollowPending(false);
+        }
+    }
 
 
     const fetchActivities = async (isRefresh = false) => {
@@ -166,6 +211,15 @@ const PeopleScreen = () => {
                                         ) : null}
                                     </View>
                                 </View>
+
+                                <Button
+                                    type={isFollowing ? 'default' : 'primary'}
+                                    disabled={isFollowPending}
+                                    onPress={handleToggleFollow}
+                                    style={{ alignSelf: 'flex-start', minWidth: 132, marginBottom: 8 }}
+                                >
+                                    {isFollowPending ? '处理中…' : isFollowing ? '取消关注' : '关注'}
+                                </Button>
 
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12 }}>
                                     {renderStats("关注了", userInfo.following_count)}

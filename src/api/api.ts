@@ -11,6 +11,8 @@ interface ZhihuAPI {
     setTransferListener(listener?: (bytes: number, durationMs: number) => void): void;
     getMe(): Promise<any>;
     getUserInfo(urlToken: string): Promise<any>;
+    followUser(urlToken: string): Promise<any>;
+    unfollowUser(urlToken: string): Promise<any>;
     getUserCollections(username: string, offset?: number, limit?: number): Promise<any>;
     getCollectionItems(collectionId: string, offset?: number, limit?: number): Promise<any>;
     getRecommend(cursor?: string): Promise<any>;
@@ -120,6 +122,17 @@ class ZhihuAPI {
         const include = 'locations,employments,gender,educations,business,voteup_count,thanked_Count,follower_count,following_count,cover_url,following_topic_count,following_question_count,following_favlists_count,following_columns_count,answer_count,articles_count,pins_count,question_count,commercial_question_count,favorite_count,favorited_count,logs_count,marked_answers_count,marked_answers_text,message_thread_token,account_status,is_active,is_force_renamed,is_bind_sina,sina_weibo_url,sina_weibo_name,show_sina_weibo,is_blocking,is_blocked,is_following,is_followed,mutual_followees_count,vote_to_count,vote_from_count,thank_to_count,thank_from_count,thanked_count,description,hosted_live_count,participated_live_count,allow_message,industry_category,org_name,org_homepage,badge[?(type=best_answerer)].topics';
         return this.client.get(`https://www.zhihu.com/api/v4/members/${urlToken}?include=${include}`);
     }
+
+    /** 关注用户 */
+    async followUser(urlToken: string) {
+        return this.client.post(`https://www.zhihu.com/api/v4/members/${encodeURIComponent(urlToken)}/followers`);
+    }
+
+    /** 取消关注用户 */
+    async unfollowUser(urlToken: string) {
+        return this.client.delete(`https://www.zhihu.com/api/v4/members/${encodeURIComponent(urlToken)}/followers`);
+    }
+
     /**
      * 获取用户的收藏夹列表
      * @param {string} username - 用户名 (例如: lcaluckily)
