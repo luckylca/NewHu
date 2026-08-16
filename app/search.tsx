@@ -86,6 +86,22 @@ function plainText(value: unknown) {
         .trim();
 }
 
+function normalizeAiAnswer(value: unknown) {
+    const withoutInternalTags = (text: string) => text
+        // Zhihu uses cite nodes as internal source anchors. The current card
+        // has no source-list renderer, so keep the answer readable instead of
+        // exposing internal cite IDs to the user.
+        .replace(/<cite\b[^>]*>[\s\S]*?<\/cite>/gi, '')
+        .replace(/<\/?mark\b[^>]*>/gi, '');
+
+    return withoutInternalTags(plainText(withoutInternalTags(String(value ?? ''))))
+        .replace(/^#{1,6}\s*/gm, '')
+        .replace(/\*\*(.*?)\*\*/g, '$1')
+        .replace(/__([^_]+)__/g, '$1')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
 function normalizeResult(raw: any, mode: SearchMode): SearchResult | null {
     const object = raw?.object ?? raw;
 
@@ -287,8 +303,10 @@ export default function SearchScreen() {
         try {
             await streamSearchAi(trimmed, (chunk) => {
                 if (requestId !== aiRequestIdRef.current) return;
+                const answer = normalizeAiAnswer(chunk);
+                if (!answer) return;
                 receivedAnswer = true;
-                setAiAnswer((current) => current + chunk);
+                setAiAnswer((current) => current + answer);
             });
             if (requestId === aiRequestIdRef.current && !receivedAnswer) setAiError('知乎 AI 暂时没有返回内容');
         } catch (aiSearchError) {

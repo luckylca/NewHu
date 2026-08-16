@@ -9,6 +9,7 @@ import { htmlToPlainText } from '@/src/utils/contentExport';
 import { short } from '@/src/utils/haptics';
 import { setCommentVote } from '@/src/services/offlineActions';
 import { getNetworkStatus } from '@/src/stores/useNetworkStore';
+import { commentMatchesContentAuthor, type CommentAuthorIdentity } from '@/src/utils/commentAuthor';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
@@ -27,6 +28,8 @@ export type CommentViewModel = {
     voteCount: number;
     isVote: boolean;
     isAuthor: boolean;
+    /** True when the API explicitly supplied the author relationship flag. */
+    isAuthorFromApi?: boolean;
     isHot?: boolean;
     isTop?: boolean;
     childCommentCount: number;
@@ -35,6 +38,7 @@ export type CommentViewModel = {
 
 type CommentItemProps = {
     item: CommentViewModel;
+    contentAuthor?: CommentAuthorIdentity;
     onOpenReplies?: (id: string) => void;
     onReply?: (id: string) => void;
     onNavigateAway?: () => void;
@@ -45,9 +49,12 @@ function formatTime(timestamp: number) {
     return new Date(timestamp * 1000).toLocaleString();
 }
 
-export const CommentItem = memo(function CommentItem({ item, onOpenReplies, onReply, onNavigateAway, style }: CommentItemProps) {
+export const CommentItem = memo(function CommentItem({ item, contentAuthor, onOpenReplies, onReply, onNavigateAway, style }: CommentItemProps) {
     const theme = useTheme();
     const router = useRouter();
+    const isContentAuthor = item.isAuthorFromApi === true
+        ? item.isAuthor
+        : item.isAuthor || commentMatchesContentAuthor(item, contentAuthor);
     const swipeableRef = useRef<Swipeable>(null);
     const pressed = useSharedValue(0);
     const likePressed = useSharedValue(0);
@@ -62,7 +69,7 @@ export const CommentItem = memo(function CommentItem({ item, onOpenReplies, onRe
     }, [item.isVote, item.voteCount]);
 
     const toggleLike = useCallback(async () => {
-        if (item.isAuthor || item.id.startsWith('local:')) return;
+        if (isContentAuthor || item.id.startsWith('local:')) return;
         const nextLiked = !liked;
         const nextCount = Math.max(0, voteCount + (nextLiked ? 1 : -1));
         setLiked(nextLiked);
@@ -79,7 +86,7 @@ export const CommentItem = memo(function CommentItem({ item, onOpenReplies, onRe
             setVoteCount(voteCount);
             notify(message || '点赞同步失败');
         }
-    }, [item.id, item.isAuthor, liked, voteCount]);
+    }, [isContentAuthor, item.id, liked, voteCount]);
 
     const renderRightActions = useCallback((_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
         const translateX = dragX.interpolate({ inputRange: [-80, 0], outputRange: [0, 80], extrapolate: 'clamp' });
@@ -149,7 +156,7 @@ export const CommentItem = memo(function CommentItem({ item, onOpenReplies, onRe
                     items={[
                         { label: '复制评论', onPress: () => void copyComment() },
                         { label: '回复', onPress: openReply },
-                        { label: liked ? '取消点赞' : '点赞', disabled: item.isAuthor, onPress: toggleLike },
+                        { label: liked ? '取消点赞' : '点赞', disabled: isContentAuthor || item.id.startsWith('local:'), onPress: toggleLike },
                     ]}
                 />
 
@@ -174,20 +181,21 @@ export const CommentItem = memo(function CommentItem({ item, onOpenReplies, onRe
                                 <Text type="footnote2" color={theme.colors.onSurfaceVariantSummary}>{formatTime(item.createdTime)}</Text>
                                 {item.isTop ? <CommentTag label="置顶" color={theme.colors.onTertiaryContainer} background={theme.colors.tertiaryContainer} /> : null}
                                 {item.isHot ? <CommentTag label="热" color={theme.colors.onSecondaryContainer} background={theme.colors.secondaryContainer} /> : null}
+                                {isContentAuthor ? <CommentTag label="作者" color={theme.colors.onPrimaryContainer} background={theme.colors.primaryContainer} /> : null}
                             </View>
                         </View>
 
                         <Pressable
                             onPress={toggleLike}
-                            disabled={item.isAuthor}
-                            onPressIn={item.isAuthor ? undefined : () => (likePressed.value = 1)}
-                            onPressOut={item.isAuthor ? undefined : () => (likePressed.value = 0)}
+                            disabled={isContentAuthor || item.id.startsWith('local:')}
+                            onPressIn={isContentAuthor || item.id.startsWith('local:') ? undefined : () => (likePressed.value = 1)}
+                            onPressOut={isContentAuthor || item.id.startsWith('local:') ? undefined : () => (likePressed.value = 0)}
                             hitSlop={8}
                             style={{ flexDirection: 'row', alignItems: 'center', padding: 4, borderRadius: 20, overflow: 'hidden' }}
                         >
-                            <Icon name={liked ? 'thumb-up' : 'thumb-up-outline'} size={18} color={item.isAuthor ? theme.colors.disabledOnSurface : liked ? theme.colors.primary : theme.colors.onSurfaceVariantSummary} />
+                            <Icon name={liked ? 'thumb-up' : 'thumb-up-outline'} size={18} color={isContentAuthor || item.id.startsWith('local:') ? theme.colors.disabledOnSurface : liked ? theme.colors.primary : theme.colors.onSurfaceVariantSummary} />
                             <Text type="footnote2" color={theme.colors.onSurfaceVariantSummary} style={{ marginLeft: 5 }}>{voteCount}</Text>
-                            {!item.isAuthor ? <PressIndication pressed={likePressed} color={theme.colors.onBackground} radius={20} /> : null}
+                            {!isContentAuthor && !item.id.startsWith('local:') ? <PressIndication pressed={likePressed} color={theme.colors.onBackground} radius={20} /> : null}
                         </Pressable>
                     </View>
 
@@ -208,6 +216,12 @@ export const CommentItem = memo(function CommentItem({ item, onOpenReplies, onRe
     && previous.item.isVote === next.item.isVote
     && previous.item.voteCount === next.item.voteCount
     && previous.item.replyToAuthorName === next.item.replyToAuthorName
+    && previous.item.isAuthor === next.item.isAuthor
+    && previous.item.isAuthorFromApi === next.item.isAuthorFromApi
+    && previous.item.isHot === next.item.isHot
+    && previous.item.isTop === next.item.isTop
+    && previous.contentAuthor?.name === next.contentAuthor?.name
+    && previous.contentAuthor?.urlToken === next.contentAuthor?.urlToken
 ));
 
 function CommentTag({ label, color, background }: { label: string; color: string; background: string }) {

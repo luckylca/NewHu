@@ -30,6 +30,8 @@ export type ItemParams = {
     type: 'answer' | 'article';
     needToGet?: 'true' | 'false';
     initialFavorited?: 'true' | 'false';
+    authorName?: string;
+    authorUrlToken?: string;
 };
 
 type ArrowEffect = {
@@ -700,7 +702,7 @@ export default function Item() {
                                 color={favorited ? theme.colors.primary : secondaryText}
                                 onPress={() => { void pressFavorite(); }}
                             />
-                            <ContentActionButton name="comment-outline" count={readData.commentCount} alwaysShowCount color={secondaryText} onPress={() => router.push({ pathname: '/item/[type]/[id]/comment', params: { id: readData.id, type } })} />
+                            <ContentActionButton name="comment-outline" count={readData.commentCount} alwaysShowCount color={secondaryText} onPress={() => router.push({ pathname: '/item/[type]/[id]/comment', params: { id: readData.id, type, authorName: readData.authorName, authorUrlToken: readData.authorUrlToken } })} />
                         </View>
                         <View style={{ height: 40 }} />
                     </>

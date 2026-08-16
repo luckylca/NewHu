@@ -1,5 +1,6 @@
 import type { CommentViewModel } from '@/src/components/CommentItem';
 import type { FeedDetail, FeedItem, FeedType } from '@/src/types/zhihu';
+import { readCommentAuthorFlag } from '@/src/utils/commentAuthor';
 import type { DbComment } from './types';
 
 function getExcerpt(raw: any) {
@@ -46,6 +47,7 @@ export function normalizeContent(raw: any, type: FeedType, voted?: boolean): Fee
 
 export function normalizeComment(raw: any, extra?: Partial<CommentViewModel>): CommentViewModel | null {
     if (!raw?.id) return null;
+    const apiAuthorFlag = readCommentAuthorFlag(raw);
     return {
         id: String(raw.id),
         content: raw.content ?? '',
@@ -55,7 +57,8 @@ export function normalizeComment(raw: any, extra?: Partial<CommentViewModel>): C
         authorAvatar: raw.author?.avatar_url,
         voteCount: Number(raw.like_count || 0),
         isVote: Boolean(raw.liked),
-        isAuthor: Boolean(raw.is_author),
+        isAuthor: apiAuthorFlag === true,
+        isAuthorFromApi: apiAuthorFlag !== undefined,
         isHot: Boolean(raw.hot),
         isTop: Boolean(raw.top),
         childCommentCount: Number(raw.child_comment_count || 0),

@@ -101,7 +101,8 @@ export default function CommentEdit({ visible, name, contentType, contentId, rep
             authorAvatar: user.avatar || undefined,
             voteCount: 0,
             isVote: false,
-            isAuthor: true,
+            // `isAuthor` means the content author, not the current user's own comment.
+            isAuthor: false,
             childCommentCount: 0,
             replyToAuthorName: name || undefined,
         };

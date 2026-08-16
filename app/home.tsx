@@ -171,6 +171,7 @@ const WaterfallItem = memo(({ item, type, needToGet, measurementKey, onMeasured,
         <View onLayout={handleLayout} style={{ width: '100%' }}>
             <Card
                 feedback="none"
+                showIndication
                 onPress={openItem}
                 onLongPress={openActionMenu}
                 style={{ width: '100%' }}

@@ -6,6 +6,7 @@ import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { useSettingStore } from '@/src/stores/useSettingStore';
 import { useNetworkStore } from '@/src/stores/useNetworkStore';
+import { readCommentAuthorFlag, type CommentAuthorIdentity } from '@/src/utils/commentAuthor';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, BackHandler, FlatList, InteractionManager, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { CommentItem } from './CommentItem';
@@ -19,6 +20,7 @@ type ChildCommentProps = {
     onClose: () => void;
     onReply?: (id: string, name?: string) => void;
     initialFocusId?: string;
+    contentAuthor?: CommentAuthorIdentity;
 };
 
 // Miuix BottomSheet: folmeSpring(0.9, 0.38)，换算后约为 stiffness 273 / damping 30。
@@ -32,6 +34,7 @@ const DRAWER_SPRING = {
 
 function normalizeComment(item: any): CommentViewModel | null {
     if (!item?.id) return null;
+    const apiAuthorFlag = readCommentAuthorFlag(item);
     return {
         id: String(item.id),
         content: item.content ?? '',
@@ -41,7 +44,8 @@ function normalizeComment(item: any): CommentViewModel | null {
         authorAvatar: item.author?.avatar_url,
         voteCount: Number(item.like_count || 0),
         isVote: Boolean(item.liked),
-        isAuthor: Boolean(item.is_author),
+        isAuthor: apiAuthorFlag === true,
+        isAuthorFromApi: apiAuthorFlag !== undefined,
         isHot: Boolean(item.hot),
         isTop: Boolean(item.top),
         childCommentCount: Number(item.child_comment_count || 0),
@@ -58,7 +62,7 @@ function readOffset(next?: string) {
     }
 }
 
-export default function ChildComment({ visible, id, contentId, contentType, onClose, onReply, initialFocusId }: ChildCommentProps) {
+export default function ChildComment({ visible, id, contentId, contentType, onClose, onReply, initialFocusId, contentAuthor }: ChildCommentProps) {
     const theme = useTheme();
     const drawerAnimation = useSettingStore((state) => state.commentDrawerAnimation);
     const disableAnimations = useSettingStore((state) => state.disableAnimations);
@@ -228,10 +232,11 @@ export default function ChildComment({ visible, id, contentId, contentType, onCl
     const renderItem = useCallback(({ item }: { item: CommentViewModel }) => (
         <CommentItem
             item={item}
+            contentAuthor={contentAuthor}
             onReply={(commentId) => onReply?.(commentId, item.authorName)}
             onNavigateAway={onClose}
         />
-    ), [onClose, onReply]);
+    ), [contentAuthor, onClose, onReply]);
 
     if (!rendered) return null;
 
@@ -283,6 +288,7 @@ export default function ChildComment({ visible, id, contentId, contentType, onCl
                     <View>
                         <CommentItem
                             item={rootComment}
+                            contentAuthor={contentAuthor}
                             onReply={(commentId) => onReply?.(commentId, rootComment.authorName)}
                             onNavigateAway={onClose}
                         />

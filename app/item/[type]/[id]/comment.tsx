@@ -6,15 +6,18 @@ import type { CommentViewModel } from '@/src/components/CommentItem';
 import { useDraftStore } from '@/src/stores/useDraftStore';
 import { useNetworkStore } from '@/src/stores/useNetworkStore';
 import { getCachedComments, getPageState, saveCommentPage } from '@/src/db/repositories/commentRepository';
+import { getContent } from '@/src/db/repositories/contentRepository';
 import { Icon, Menu, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
+import { readCommentAuthorFlag, type CommentAuthorIdentity } from '@/src/utils/commentAuthor';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, Keyboard, Modal, Pressable, View } from 'react-native';
 
 function normalizeComment(item: any): CommentViewModel | null {
     if (!item?.id) return null;
+    const apiAuthorFlag = readCommentAuthorFlag(item);
     return {
         id: String(item.id),
         content: item.content ?? '',
@@ -24,7 +27,8 @@ function normalizeComment(item: any): CommentViewModel | null {
         authorAvatar: item.author?.avatar_url,
         voteCount: Number(item.like_count || 0),
         isVote: Boolean(item.liked),
-        isAuthor: Boolean(item.is_author),
+        isAuthor: apiAuthorFlag === true,
+        isAuthorFromApi: apiAuthorFlag !== undefined,
         isHot: Boolean(item.hot),
         isTop: Boolean(item.top),
         childCommentCount: Number(item.child_comment_count || 0),
@@ -41,15 +45,21 @@ function nextOffset(next?: string) {
 }
 
 export default function CommentScreen() {
-    const params = useLocalSearchParams<{ id?: string; type?: string; draftId?: string }>();
+    const params = useLocalSearchParams<{ id?: string; type?: string; draftId?: string; authorName?: string; authorUrlToken?: string }>();
     const id = Array.isArray(params.id) ? params.id[0] : params.id;
     const type = Array.isArray(params.type) ? params.type[0] : params.type;
     const draftId = Array.isArray(params.draftId) ? params.draftId[0] : params.draftId;
+    const routeAuthorName = Array.isArray(params.authorName) ? params.authorName[0] : params.authorName;
+    const routeAuthorUrlToken = Array.isArray(params.authorUrlToken) ? params.authorUrlToken[0] : params.authorUrlToken;
     const contentType = type === 'answer' ? 'answer' : 'article';
     const normalizedType = contentType === 'answer' ? 'answers' : 'articles';
     const networkStatus = useNetworkStore((state) => state.status);
     const theme = useTheme();
     const router = useRouter();
+    const [contentAuthor, setContentAuthor] = useState<CommentAuthorIdentity>(() => ({
+        name: routeAuthorName,
+        urlToken: routeAuthorUrlToken,
+    }));
 
     const [comments, setComments] = useState<CommentViewModel[]>([]);
     const [commentCount, setCommentCount] = useState(0);
@@ -69,6 +79,24 @@ export default function CommentScreen() {
     const inFlightRef = useRef(false);
     const hasMoreRef = useRef(true);
     const openedDraftRef = useRef('');
+
+    useEffect(() => {
+        let active = true;
+        setContentAuthor({ name: routeAuthorName, urlToken: routeAuthorUrlToken });
+        if (!id) return () => { active = false; };
+
+        void getContent(id, contentType).then((cached) => {
+            if (!active || !cached) return;
+            setContentAuthor((current) => ({
+                name: current.name || cached.authorName,
+                urlToken: current.urlToken || cached.authorUrlToken,
+            }));
+        }).catch(() => {
+            // The API author flag still works when no local content record exists.
+        });
+
+        return () => { active = false; };
+    }, [contentType, id, routeAuthorName, routeAuthorUrlToken]);
 
     useEffect(() => {
         const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
@@ -160,10 +188,11 @@ export default function CommentScreen() {
     const renderComment = useCallback(({ item }: { item: CommentViewModel }) => (
         <CommentItem
             item={item}
+            contentAuthor={contentAuthor}
             onOpenReplies={item.childCommentCount > 0 ? setChildId : undefined}
             onReply={(commentId) => setReply({ id: commentId, name: item.authorName || '', rootCommentId: item.id })}
         />
-    ), []);
+    ), [contentAuthor]);
 
     const closeReply = useCallback(() => {
         if (reply?.fromDraft && reply.rootCommentId) {
@@ -260,6 +289,7 @@ export default function CommentScreen() {
                 id={childId}
                 contentId={id || ''}
                 contentType={contentType}
+                contentAuthor={contentAuthor}
                 initialFocusId={childFocusId}
                 onClose={() => {
                     setChildId('');

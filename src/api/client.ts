@@ -215,21 +215,51 @@ class ZhihuClient {
             const trimmed = payload.trim();
             if (!trimmed || trimmed === '[DONE]') return;
 
-            const dataLines = trimmed
-                .split(/\r?\n/)
-                .filter((line) => line.startsWith('data:'))
-                .map((line) => line.slice(5).trim())
+            const lines = trimmed.split(/\r?\n/);
+            const dataLines = lines
+                .filter((line) => /^data\s*:/.test(line))
+                .map((line) => line.replace(/^data\s*:/, '').trim())
                 .filter(Boolean);
-            const candidate = dataLines.length > 0 ? dataLines.join('\n') : trimmed;
+            const candidates = dataLines.length > 0
+                ? [dataLines.join('\n')]
+                : lines.length > 1
+                    ? [trimmed, ...lines.filter(Boolean)]
+                    : [trimmed];
+            const containsStructuredDataLine = dataLines.some((line) => /^[\[{]/.test(line));
 
-            try {
-                const parsed = JSON.parse(candidate);
-                const text = extractStreamText(parsed);
-                if (text) onChunk(text);
-            } catch {
-                // 兼容服务端直接返回纯文本分片。
-                if (!candidate.startsWith('event:') && !candidate.startsWith(':')) onChunk(candidate);
+            let extracted = false;
+            for (const candidate of candidates) {
+                if (!candidate || candidate === '[DONE]') continue;
+                try {
+                    const parsed = JSON.parse(candidate);
+                    const text = extractStreamText(parsed);
+                    if (text) {
+                        onChunk(text);
+                        extracted = true;
+                        break;
+                    }
+                } catch {
+                    // JSON/NDJSON 的结构化片段解析失败时不能把原始 JSON
+                    // 直接展示给用户；只有明确的普通文本分片才回退输出。
+                    const looksStructured = /^[\[{]/.test(candidate);
+                    if (!looksStructured && !containsStructuredDataLine && !candidate.startsWith('event:') && !candidate.startsWith(':')) {
+                        onChunk(candidate);
+                        extracted = true;
+                        break;
+                    }
+                }
             }
+
+            // Some proxies omit the blank line between SSE records. If the
+            // combined payload was structured JSON, try each data line as
+            // NDJSON; plain text stays combined and is emitted only once.
+            if (!extracted && dataLines.length > 1) {
+                for (const line of dataLines) {
+                    if (parsePayload(line)) extracted = true;
+                }
+            }
+
+            return extracted;
         };
 
         if (!response.body || typeof (response.body as any).getReader !== 'function') {
@@ -240,6 +270,29 @@ class ZhihuClient {
         const reader = (response.body as any).getReader();
         const decoder = typeof TextDecoder !== 'undefined' ? new TextDecoder() : null;
         let buffer = '';
+        let pendingSseData: string[] = [];
+
+        const flushSseData = () => {
+            if (!pendingSseData.length) return;
+            parsePayload(pendingSseData.map((line) => `data: ${line}`).join('\n'));
+            pendingSseData = [];
+        };
+
+        const parseLine = (line: string) => {
+            if (line.trim() === '') {
+                flushSseData();
+                return;
+            }
+            if (/^data\s*:/.test(line)) {
+                pendingSseData.push(line.replace(/^data\s*:/, '').trim());
+                return;
+            }
+            if (/^(event|id|retry)\s*:/.test(line) || line.startsWith(':')) return;
+
+            // 普通 NDJSON：每一行都是一个独立 JSON 对象。
+            flushSseData();
+            parsePayload(line);
+        };
 
         while (true) {
             const { done, value } = await reader.read();
@@ -247,17 +300,18 @@ class ZhihuClient {
             const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
             buffer += decoder ? decoder.decode(bytes, { stream: true }) : String.fromCharCode(...bytes);
 
-            let boundary = buffer.search(/\r?\n\r?\n/);
-            while (boundary >= 0) {
-                const event = buffer.slice(0, boundary);
-                buffer = buffer.slice(boundary).replace(/^\r?\n\r?\n/, '');
-                parsePayload(event);
-                boundary = buffer.search(/\r?\n\r?\n/);
+            let lineBoundary = buffer.search(/\r?\n/);
+            while (lineBoundary >= 0) {
+                const line = buffer.slice(0, lineBoundary);
+                buffer = buffer.slice(lineBoundary).replace(/^\r?\n/, '');
+                parseLine(line);
+                lineBoundary = buffer.search(/\r?\n/);
             }
         }
 
         if (decoder) buffer += decoder.decode();
-        if (buffer.trim()) parsePayload(buffer);
+        if (buffer.trim()) parseLine(buffer);
+        flushSseData();
     }
 
     /**
@@ -356,25 +410,39 @@ class ZhihuClient {
 }
 
 function extractStreamText(payload: any): string {
-    const candidates = [
-        payload?.content,
-        payload?.text,
-        payload?.answer,
-        payload?.delta,
-        payload?.message,
-        payload?.result,
-        payload?.data,
-        payload?.message_content,
-        payload?.data?.content,
-        payload?.data?.text,
-        payload?.data?.answer,
-        payload?.data?.delta,
-        payload?.data?.choices?.[0]?.delta?.content,
-        payload?.choices?.[0]?.delta?.content,
-    ];
+    if (typeof payload === 'string') {
+        const trimmed = payload.trim();
+        if (/^[\[{]/.test(trimmed)) {
+            try {
+                const nestedText = extractStreamText(JSON.parse(trimmed));
+                if (nestedText) return nestedText;
+            } catch {
+                // It is ordinary answer text that happens to start with JSON
+                // punctuation; keep it as-is below.
+            }
+        }
+        return payload;
+    }
+    if (Array.isArray(payload)) return payload.map(extractStreamText).join('');
+    if (!payload || typeof payload !== 'object') return '';
 
-    const value = candidates.find((candidate) => typeof candidate === 'string');
-    return value ?? '';
+    // `message_content` is the user's request, not the AI answer. Never use
+    // it as a display fallback, otherwise an echoed request can appear in the
+    // answer card.
+    const textKeys = ['content', 'text', 'answer', 'summary', 'completion', 'output_text', 'markdown'];
+    for (const key of textKeys) {
+        if (typeof payload[key] === 'string') {
+            const text = extractStreamText(payload[key]);
+            if (text) return text;
+        }
+    }
+
+    const nestedKeys = ['content', 'text', 'answer', 'data', 'result', 'message', 'delta', 'output', 'response', 'choices'];
+    for (const key of nestedKeys) {
+        const text = extractStreamText(payload[key]);
+        if (text) return text;
+    }
+    return '';
 }
 
 // 导出
