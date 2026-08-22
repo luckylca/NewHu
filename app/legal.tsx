@@ -6,12 +6,12 @@ import { ScrollView, View } from 'react-native';
 
 type LegalType = 'privacy' | 'terms';
 
-const COPY: Record<LegalType, { title: string; sections: Array<{ title: string; body: string }> }> = {
+const COPY: Record<LegalType, { title: string; sections: { title: string; body: string }[] }> = {
     privacy: {
         title: '隐私政策',
         sections: [
             { title: '我们在本机保存什么', body: '账号 Cookie、应用设置、推荐去重记录、离线内容和阅读记录会保存在你的设备中，用于登录、个性化设置、离线浏览和存储管理。' },
-            { title: '本地兴趣分析', body: '此功能默认关闭。开启后，当前版本只在设备本地记录你打开过哪些文章或回答，供后续本地兴趣分析使用。当前不会采集停留时间、搜索词、评论内容、点赞或收藏，也不会上传兴趣画像。' },
+            { title: '本地兴趣分析', body: '此功能默认关闭。开启后，应用会在设备本地处理内容曝光、打开、阅读进度、点赞、收藏与不喜欢信号，用于更新本地兴趣画像和推荐排序。应用不会分析评论内容、调用外部大模型或上传兴趣画像。' },
             { title: '网络请求', body: '在线浏览、搜索、评论与账号操作需要访问内容服务。关闭本地兴趣分析不影响这些基础阅读功能。' },
             { title: '你的控制权', body: '你可以在“设置 → 隐私与个性化”随时关闭本地兴趣分析并清除本地兴趣画像。卸载应用也会移除应用沙盒内的数据。' },
         ],
@@ -51,7 +51,7 @@ export default function LegalScreen() {
                     ))}
                 </Card>
                 <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary} style={{ marginTop: theme.spacing.lg, textAlign: 'center' }}>
-                    当前版本：2026-08-13
+                    当前版本：2026-08-22
                 </Text>
             </ScrollView>
         </View>

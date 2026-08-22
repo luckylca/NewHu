@@ -7,7 +7,7 @@ import { notification, toggle, NotificationFeedbackType } from '@/src/utils/hapt
 import { router, useFocusEffect } from 'expo-router';
 import React from 'react';
 import { BackHandler, Pressable, ScrollView, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const STEP_COUNT = 4;
@@ -191,7 +191,7 @@ function AiStep({ enabled, onChange }: { enabled: boolean; onChange: (value: boo
             <BrandMark icon="brain" />
             <View style={{ gap: theme.spacing.sm }}>
                 <Text type="title1" weight="bold">本地 AI 兴趣分析</Text>
-                <Text type="body1" color={theme.colors.onSurfaceSecondary} style={{ lineHeight: 25 }}>这是可选功能，默认关闭。开启后，当前版本只在本机记录你打开过哪些文章或回答。</Text>
+                <Text type="body1" color={theme.colors.onSurfaceSecondary} style={{ lineHeight: 25 }}>这是可选功能，默认关闭。开启后，推荐信号和兴趣画像只在本机处理。</Text>
             </View>
             <Card feedback="none" contentStyle={{ overflow: 'hidden' }}>
                 <Pressable onPress={() => onChange(!enabled)} style={{ padding: theme.spacing.lg, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md }}>
@@ -210,7 +210,7 @@ function AiStep({ enabled, onChange }: { enabled: boolean; onChange: (value: boo
                     </View>
                 ))}
             </View>
-            <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary} style={{ lineHeight: 20 }}>当前不会使用停留时间、搜索词、评论内容、点赞或收藏。</Text>
+            <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary} style={{ lineHeight: 20 }}>会使用曝光、打开、阅读进度、点赞、收藏与不喜欢信号；不会分析评论内容，也不会调用外部大模型。</Text>
         </View>
     );
 }

@@ -1,8 +1,9 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import type { SharedValue } from 'react-native-reanimated';
+import { pressIndication } from '@/src/ui/motion';
 
 export interface PressIndicationProps {
     /** 1 while pressed, 0 otherwise. */
@@ -28,7 +29,7 @@ export interface PressIndicationProps {
  */
 export function PressIndication({ pressed, color, radius, style }: PressIndicationProps) {
     const animatedStyle = useAnimatedStyle(() => ({
-        opacity: pressed.value * 0.1,
+        opacity: withTiming(pressed.value * 0.1, pressIndication),
     }));
 
     return (

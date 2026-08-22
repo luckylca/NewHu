@@ -1,6 +1,6 @@
 // src/stores/useSettingStore.ts
 // 这里面放的是设置相关的信息，比如自动播放，快进倍速，选中的频道ID等
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createSecureZustandStorage } from '@/src/services/secureZustandStorage';
 import type { WallpaperBlurLevel } from '@/src/ui/theme/wallpaper';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
@@ -77,7 +77,7 @@ export const useSettingStore = create<SettingState>()(
         }),
         {
             name: 'setting-store',
-            storage: createJSONStorage(() => AsyncStorage),
+            storage: createJSONStorage(() => createSecureZustandStorage('setting-store', 'cookie', 'newhu.zhihu.debug-cookie')),
             version: 1,
             migrate: (persistedState) => {
                 const stored = (persistedState ?? {}) as Record<string, unknown>;

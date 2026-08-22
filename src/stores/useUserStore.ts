@@ -1,6 +1,6 @@
 // src/store/useUserStore.ts
 // 用户账号与登录状态；Cookie 只保存在设备存储中，不写入源码。
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createSecureZustandStorage } from '@/src/services/secureZustandStorage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
@@ -43,7 +43,7 @@ export const useUserStore = create<UserState>()(
         }),
         {
             name: 'user-store',
-            storage: createJSONStorage(() => AsyncStorage),
+            storage: createJSONStorage(() => createSecureZustandStorage('user-store', 'cookies', 'newhu.zhihu.auth-cookie')),
             partialize: (state) => ({
                 cookies: state.cookies,
                 username: state.username,

@@ -24,6 +24,8 @@ import { getContent, upsertContent } from "@/src/db/repositories/contentReposito
 import { normalizeContent } from "@/src/db/mappers";
 import { setContentVote } from "@/src/services/offlineActions";
 import { normalizeRemoteUrl, resolveImageUri } from "@/src/services/resourceService";
+import { useConsentStore } from '@/src/stores/useConsentStore';
+import { recordProductV1Feedback } from '@/src/product-v1';
 
 export type ItemParams = {
     id: string;
@@ -289,6 +291,7 @@ export default function Item() {
 
     const [readData, setReadData] = useState<FeedDetail | null>(null);
     const [hydrated, setHydrated] = useState(false);
+    const [detailLoading, setDetailLoading] = useState(true);
     const [menuVisible, setMenuVisible] = useState(false);
     const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0, width: 0, height: 0 });
     const menuBtnRef = useRef<View>(null);
@@ -297,6 +300,8 @@ export default function Item() {
     const [favorited, setFavorited] = useState(false);
     const [favoriteCount, setFavoriteCount] = useState(0);
     const favoritePendingRef = useRef(false);
+    const readingStartedAtRef = useRef(Date.now());
+    const maxScrollRatioRef = useRef(0);
     const [arrowEffects, setArrowEffects] = useState<ArrowEffect[]>([]);
     const arrowIdRef = useRef(0);
     const titlePressed = useSharedValue(0);
@@ -317,27 +322,41 @@ export default function Item() {
         const contentType = type === 'answer' ? 'answer' : 'article';
         const load = async () => {
             setHydrated(false);
-            const local = await getContent(String(id), contentType);
-            if (!active) return;
-            setReadData((local as FeedDetail | null) ?? fallbackContent ?? null);
-            setHydrated(true);
-
-            if (networkStatus !== 'online') return;
             try {
-                const raw = contentType === 'answer' ? await getAnswer(String(id)) : await getArticle(String(id));
-                const fresh = normalizeContent(raw, contentType);
-                // 文章接口通常返回顶层 is_favorited，但回答接口可能完全不返回
-                // 收藏关系。若接口缺字段，沿用从“我的收藏夹”带进来的确定状态。
-                const remoteFavorited = raw?.relationship?.is_favorited ?? raw?.is_favorited;
-                if (remoteFavorited == null && initialFavorited === 'true') {
-                    fresh.favorited = true;
+                setDetailLoading(true);
+                const local = await getContent(String(id), contentType);
+                if (!active) return;
+                setReadData((local as FeedDetail | null) ?? fallbackContent ?? null);
+                setHydrated(true);
+
+                // Network status can be unknown for a short time on a cold
+                // start. Keep the detail spinner visible until NetInfo tells us
+                // whether a remote request can be attempted.
+                if (networkStatus !== 'online') return;
+                try {
+                    const raw = contentType === 'answer' ? await getAnswer(String(id)) : await getArticle(String(id));
+                    const fresh = normalizeContent(raw, contentType);
+                    // 文章接口通常返回顶层 is_favorited，但回答接口可能完全不返回
+                    // 收藏关系。若接口缺字段，沿用从“我的收藏夹”带进来的确定状态。
+                    const remoteFavorited = raw?.relationship?.is_favorited ?? raw?.is_favorited;
+                    if (remoteFavorited == null && initialFavorited === 'true') {
+                        fresh.favorited = true;
+                    }
+                    if (active) setReadData(fresh);
+                    void upsertContent(fresh, contentType, { cacheState: 'transient', voted: fresh.voted }).catch((error) => {
+                        console.warn('详情写入本地缓存失败', error);
+                    });
+                } catch (error) {
+                    console.warn('详情后台刷新失败，继续使用本地内容', error);
                 }
-                if (active) setReadData(fresh);
-                void upsertContent(fresh, contentType, { cacheState: 'transient', voted: fresh.voted }).catch((error) => {
-                    console.warn('详情写入本地缓存失败', error);
-                });
             } catch (error) {
-                console.warn('详情后台刷新失败，继续使用本地内容', error);
+                if (active) {
+                    setReadData((current) => current ?? fallbackContent ?? null);
+                    setHydrated(true);
+                }
+                console.warn('读取本地详情失败', error);
+            } finally {
+                if (active && networkStatus !== 'unknown') setDetailLoading(false);
             }
         };
         void load();
@@ -351,6 +370,28 @@ export default function Item() {
         setFavoriteCount(Number(readData.favoriteCount || 0));
         setFavorited(Boolean(readData.favorited));
     }, [readData]);
+
+    useEffect(() => {
+        if (!readData) return;
+        readingStartedAtRef.current = Date.now();
+        maxScrollRatioRef.current = 0;
+        return () => {
+            if (!useConsentStore.getState().aiInterestAnalysisEnabled) return;
+            const dwellMs = Date.now() - readingStartedAtRef.current;
+            if (dwellMs < 1000) return;
+            const textLength = String(readData.content || readData.excerpt || '').replace(/<[^>]+>/g, '').length;
+            const estimatedReadingMs = Math.max(15_000, textLength / 400 * 60_000);
+            void recordProductV1Feedback({
+                contentId: String(readData.id),
+                contentType,
+                eventType: 'read_session',
+                opened: true,
+                dwellMs,
+                estimatedReadingMs,
+                scrollRatio: maxScrollRatioRef.current,
+            });
+        };
+    }, [contentType, readData]);
 
     const playArrowAnimation = (absoluteX: number, absoluteY: number) => {
         const arrowId = arrowIdRef.current + 1;
@@ -404,6 +445,11 @@ export default function Item() {
         void setContentVote(readData, contentType, nextVoted).catch((error) => {
             notify(error instanceof Error ? error.message : '点赞同步失败，稍后会自动重试');
         });
+        if (nextVoted && useConsentStore.getState().aiInterestAnalysisEnabled) {
+            void recordProductV1Feedback({
+                contentId: String(readData.id), contentType, eventType: 'like', opened: true, liked: true,
+            });
+        }
     };
 
     const handleVoteUp = () => {
@@ -445,6 +491,11 @@ export default function Item() {
                 console.warn('收藏状态写入本地缓存失败', error);
             });
             notify(nextFavorited ? '已收藏' : '已取消收藏');
+            if (nextFavorited && useConsentStore.getState().aiInterestAnalysisEnabled) {
+                void recordProductV1Feedback({
+                    contentId: String(readData.id), contentType, eventType: 'favorite', opened: true, favorited: true,
+                });
+            }
         } catch (favoriteError) {
             console.error('收藏操作失败:', favoriteError);
             setFavorited(!nextFavorited);
@@ -579,6 +630,10 @@ export default function Item() {
         return <LoadingView />;
     }
 
+    if (!readData && detailLoading) {
+        return <LoadingView message="正在加载详情…" />;
+    }
+
     if (!readData) {
         return (
             <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -661,7 +716,13 @@ export default function Item() {
                 maxToRenderPerBatch={2}
                 updateCellsBatchingPeriod={64}
                 windowSize={5}
-                removeClippedSubviews
+                    removeClippedSubviews
+                    scrollEventThrottle={120}
+                    onScroll={(event) => {
+                        const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+                        const scrollable = Math.max(1, contentSize.height - layoutMeasurement.height);
+                        maxScrollRatioRef.current = Math.max(maxScrollRatioRef.current, Math.min(1, contentOffset.y / scrollable));
+                    }}
                 ListHeaderComponent={(
                     <>
                         <Pressable

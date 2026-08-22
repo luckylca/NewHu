@@ -11,6 +11,7 @@ const MainScreens = () => {
     const [activeIndex, setActiveIndex] = React.useState(0);
     const pageViewRef = React.useRef<PagerView>(null);
     const requestFeedRefresh = useContentStore((state) => state.requestFeedRefresh);
+    const requestHomeScrollTop = useContentStore((state) => state.requestHomeScrollTop);
 
     const routes: tabRoute[] = React.useMemo(() => [
         { key: 'home', title: '首页', icon: 'home' },
@@ -22,6 +23,7 @@ const MainScreens = () => {
     };
 
     const handleTabPress = (index: number) => {
+        if (index === 0) requestHomeScrollTop();
         setActiveIndex(index);
         pageViewRef.current?.setPage(index);
     }

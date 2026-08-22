@@ -1,4 +1,4 @@
-export const DATABASE_VERSION = 1;
+export const DATABASE_VERSION = 2;
 
 export const MIGRATION_1 = `
 CREATE TABLE IF NOT EXISTS contents (
@@ -194,4 +194,51 @@ CREATE INDEX IF NOT EXISTS idx_comment_entries_list ON comment_list_entries(cont
 CREATE INDEX IF NOT EXISTS idx_resources_accessed ON resources(last_accessed_at);
 CREATE INDEX IF NOT EXISTS idx_pending_actions_status ON pending_actions(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_user_events_content ON user_events(content_id, content_type, created_at);
+`;
+
+export const MIGRATION_2 = `
+CREATE TABLE IF NOT EXISTS product_v1_state (
+  component TEXT PRIMARY KEY,
+  schema_version INTEGER NOT NULL,
+  product_version TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS product_v1_candidates (
+  namespace TEXT NOT NULL,
+  duplicate_key TEXT NOT NULL,
+  interest_id TEXT,
+  candidate_json TEXT NOT NULL,
+  embedding BLOB,
+  retrieved_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (namespace, duplicate_key)
+);
+
+CREATE TABLE IF NOT EXISTS product_v1_feedback (
+  event_id TEXT PRIMARY KEY,
+  article_id TEXT NOT NULL,
+  feed_session_id TEXT NOT NULL,
+  exposure_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS product_v1_cycles (
+  cycle_id TEXT PRIMARY KEY,
+  mode TEXT NOT NULL,
+  status TEXT NOT NULL,
+  trace_json TEXT NOT NULL,
+  started_at INTEGER NOT NULL,
+  completed_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_candidates_namespace_interest
+  ON product_v1_candidates(namespace, interest_id, retrieved_at);
+CREATE INDEX IF NOT EXISTS idx_product_feedback_article
+  ON product_v1_feedback(article_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_product_cycles_started
+  ON product_v1_cycles(started_at DESC);
 `;

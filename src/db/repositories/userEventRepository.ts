@@ -14,5 +14,9 @@ export async function clearInterestProfile() {
     await withSerializedTransaction(async (db) => {
         await db.runAsync('DELETE FROM user_events');
         await db.runAsync('DELETE FROM content_embeddings');
+        await db.runAsync('DELETE FROM product_v1_state');
+        await db.runAsync('DELETE FROM product_v1_candidates');
+        await db.runAsync('DELETE FROM product_v1_feedback');
+        await db.runAsync('DELETE FROM product_v1_cycles');
     });
 }

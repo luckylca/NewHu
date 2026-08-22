@@ -18,6 +18,7 @@ import { notify } from '@/src/stores/useNotificationStore';
 import { getRecentFeed, saveFeedEntries, trimTransientFeedEntries } from '@/src/db/repositories/feedRepository';
 import { recordUserEvent } from '@/src/db/repositories/userEventRepository';
 import { useConsentStore } from '@/src/stores/useConsentStore';
+import { processProductV1Feed, recordProductV1Exposure, recordProductV1Feedback } from '@/src/product-v1';
 
 const { width: WindowWidth } = Dimensions.get('window');
 const WindowHeight = Dimensions.get('window').height;
@@ -322,6 +323,7 @@ const HomeScreen = () => {
     const addSeenFeedKeys = useContentStore((state) => state.addSeenFeedKeys);
     const seenFeedKeys = useContentStore((state) => state.seenFeedKeys);
     const refreshRequest = useContentStore((state) => state.refreshRequest);
+    const scrollTopRequest = useContentStore((state) => state.scrollTopRequest);
     
     const cookies = useUserStore((state) => state.cookies);
     const disableAnimations = useSettingStore((state) => state.disableAnimations);
@@ -353,6 +355,7 @@ const HomeScreen = () => {
     const loadDataRef = useRef<any>(null);
     const loadOfflineFeedRef = useRef<(() => Promise<void>) | null>(null);
     const handledRefreshRequestRef = useRef(refreshRequest);
+    const handledScrollTopRequestRef = useRef(scrollTopRequest);
     // Start from unknown so an offline cold start still enters the branch
     // that loads the SQLite feed. Initializing this ref from the current
     // value would skip that load when NetInfo resolves before the effect.
@@ -460,12 +463,16 @@ const HomeScreen = () => {
                 // Cursor 分页必须等待上一页返回 next 游标，不能安全地把
                 // 第 2/3 页同时发出；但每页拿到后立即落库并更新 UI，
                 // 避免首页为了凑满 8 条而长时间白屏。
-                const persistedPage = await saveFeedEntries(
+                let persistedPage = await saveFeedEntries(
                     acceptedItems,
                     'recommend',
                     getRecommendSessionToken(requestCursor),
                     deduplicateFeed,
                 );
+                if (persistedPage.length > 0 && useConsentStore.getState().aiInterestAnalysisEnabled) {
+                    const rankedPage = await processProductV1Feed(persistedPage);
+                    persistedPage = await saveFeedEntries(rankedPage, 'product-v1', sessionTokenRef.current, false);
+                }
                 if (persistedPage.length > 0) {
                     const mergedData = isRefresh && !hasRenderedRefreshPage
                         ? persistedPage
@@ -497,17 +504,32 @@ const HomeScreen = () => {
 
     loadDataRef.current = loadData;
 
+    const scrollHomeToTop = useCallback(() => {
+        currentIndexRef.current = 0;
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+        waterfallScrollRef.current?.scrollTo({ y: 0, animated: true });
+        waterfallRenderWindowRef.current = { start: 0, end: WATERFALL_INITIAL_RENDER_AHEAD };
+        setWaterfallRenderWindow(waterfallRenderWindowRef.current);
+        waterfallLoadTriggerRef.current = 0;
+    }, []);
+
+    useEffect(() => {
+        if (handledScrollTopRequestRef.current === scrollTopRequest) return;
+        handledScrollTopRequestRef.current = scrollTopRequest;
+        scrollHomeToTop();
+    }, [scrollHomeToTop, scrollTopRequest]);
+
     useEffect(() => {
         if (handledRefreshRequestRef.current === refreshRequest) return;
         handledRefreshRequestRef.current = refreshRequest;
         const refresh = async () => {
+            scrollHomeToTop();
             currentIndexRef.current = 0;
-            flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
             await loadDataRef.current?.(true);
             await loadDataRef.current?.(false);
         };
         void refresh();
-    }, [refreshRequest]);
+    }, [refreshRequest, scrollHomeToTop]);
 
     useEffect(() => {
         if (!userHydrated || !settingHydrated || !contentHydrated) return;
@@ -575,6 +597,16 @@ const HomeScreen = () => {
         // 3. 将帖子 ID 同步推进本地维护的 store 的 unlikeList 阵列里
         addUnlikeItem(String(id));
 
+        if (useConsentStore.getState().aiInterestAnalysisEnabled) {
+            void recordProductV1Feedback({
+                contentId: String(id),
+                contentType: feedType,
+                eventType: 'explicit_not_interested',
+                hidden: true,
+                explicitNotInterested: true,
+            });
+        }
+
         // 4. 从当前的动态推荐流中剔除，引发重绘与完美贴合补位
         removeFeedItem(id);
     }, [removeFeedItem, addUnlikeItem]);
@@ -594,6 +626,17 @@ const HomeScreen = () => {
     }, []);
 
     const closeActionMenu = useCallback(() => setActionMenuTarget(null), []);
+
+    const reportExposure = useCallback((feed: FeedItemInfo) => {
+        if (!useConsentStore.getState().aiInterestAnalysisEnabled) return;
+        void recordProductV1Exposure(String(feed.item.id), feed.feedType);
+    }, []);
+
+    const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: { item: FeedItemInfo; isViewable: boolean }[] }) => {
+        for (const viewable of viewableItems) {
+            if (viewable.isViewable) reportExposure(viewable.item);
+        }
+    }).current;
 
     const actionMenuItems = useMemo(() => [
         {
@@ -683,6 +726,11 @@ const HomeScreen = () => {
     const handleWaterfallScrollSettled = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
         const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
         updateWaterfallRenderWindow(contentOffset.y);
+        for (const placement of waterfallLayout.placements) {
+            if (placement.top + placement.height >= contentOffset.y && placement.top <= contentOffset.y + layoutMeasurement.height) {
+                reportExposure(placement.feed);
+            }
+        }
         if (
             contentSize.height > waterfallLoadTriggerRef.current &&
             contentOffset.y + layoutMeasurement.height >= contentSize.height - 700
@@ -690,7 +738,7 @@ const HomeScreen = () => {
             waterfallLoadTriggerRef.current = contentSize.height;
             loadWaterfallMore();
         }
-    }, [loadWaterfallMore, updateWaterfallRenderWindow]);
+    }, [loadWaterfallMore, reportExposure, updateWaterfallRenderWindow, waterfallLayout.placements]);
 
     const renderedWaterfallItems = useMemo(() => waterfallLayout.placements.filter(({ top, height }) => (
         top + height >= waterfallRenderWindow.start && top <= waterfallRenderWindow.end
@@ -700,11 +748,13 @@ const HomeScreen = () => {
         const offsetY = event.nativeEvent.contentOffset.y;
         const index = Math.round(offsetY / CARD_ITEM_HEIGHT);
         currentIndexRef.current = index;
+        const visible = visibleFeedListRef.current[index];
+        if (visible) reportExposure(visible);
 
         if (visibleFeedListRef.current.length - index <= 5) {
             loadDataRef.current?.(false);
         }
-    }, []);
+    }, [reportExposure]);
 
     const cardItemLayout = useCallback((_data: any, index: number) => ({
         length: CARD_ITEM_HEIGHT,
@@ -757,6 +807,8 @@ const HomeScreen = () => {
                         initialNumToRender={2}
                         updateCellsBatchingPeriod={80}
                         onMomentumScrollEnd={handleMomentumScrollEnd}
+                        onViewableItemsChanged={onViewableItemsChanged}
+                        viewabilityConfig={{ itemVisiblePercentThreshold: 60 }}
                         getItemLayout={cardItemLayout}
                         removeClippedSubviews={true}
                     />
@@ -822,6 +874,8 @@ const HomeScreen = () => {
                     onRefresh={() => loadData(true)}
                     onEndReached={() => loadData(false)}
                     onEndReachedThreshold={0.8}
+                    onViewableItemsChanged={onViewableItemsChanged}
+                    viewabilityConfig={{ itemVisiblePercentThreshold: 60 }}
                     showsVerticalScrollIndicator={false}
                     maxToRenderPerBatch={4}
                     updateCellsBatchingPeriod={48}

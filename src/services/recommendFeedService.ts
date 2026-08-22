@@ -65,7 +65,7 @@ export function normalizeRecommendItem(item: any): FeedItemInfo | null {
             excerpt: getExcerpt(target),
             updatedTime: target.updated_time || target.created || 0,
             voteCount: target.voteup_count || 0,
-            favoriteCount: target.favorite_count || 0,
+            favoriteCount: target.favorite_count ?? target.favlists_count ?? 0,
             commentCount: target.comment_count || 0,
             content: target.content || '',
             questionTitle: questionTitle || (type === 'answer' ? title : ''),

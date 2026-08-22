@@ -42,9 +42,15 @@ export default function PrivacyPersonalizationScreen() {
                         </View>
                         <ListRow
                             title="本地 AI 兴趣分析"
-                            summary="只在本机记录打开过的内容，可随时关闭"
+                            summary="在本机处理推荐反馈与兴趣画像，可随时关闭"
                             trailing={<Switch value={enabled} interactive={false} />}
                             onPress={() => setAnalysis(!enabled)}
+                        />
+                        <Divider style={{ marginLeft: theme.spacing.lg }} />
+                        <ListRow
+                            title="Product V1 推荐"
+                            summary="兴趣比例、运行模式与本地模型状态"
+                            onPress={() => router.push('/product-v1' as any)}
                         />
                         <Divider style={{ marginLeft: theme.spacing.lg }} />
                         <ListRow title="清除兴趣画像" summary="删除本地阅读事件与模型数据" onPress={() => setConfirmClear(true)} />
@@ -61,7 +67,7 @@ export default function PrivacyPersonalizationScreen() {
                     </Card>
                 </View>
                 <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary} style={{ margin: theme.spacing.lg, lineHeight: 20 }}>
-                    当前版本不会记录停留时间、搜索词、评论内容、点赞或收藏；不开启也不影响正常阅读。
+                    开启后仅在本机处理曝光、打开、阅读进度、点赞、收藏与不喜欢信号；不会分析评论内容，也不会调用外部大模型。
                 </Text>
             </ScrollView>
             <Dialog visible={confirmClear} onClose={() => setConfirmClear(false)} title="清除兴趣画像？" summary="阅读事件和本地模型数据将被删除，离线缓存与浏览内容不受影响。">

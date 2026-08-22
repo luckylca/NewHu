@@ -1,0 +1,12 @@
+{
+  "training_split": "train",
+  "training_documents": 3993,
+  "requested_vocab_size": 12000,
+  "actual_vocab_size": 12000,
+  "min_frequency": 2,
+  "max_length": 256,
+  "pad_token_id": 0,
+  "unk_token_id": 1,
+  "cls_token_id": 2,
+  "sep_token_id": 3
+}

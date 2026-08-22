@@ -24,6 +24,7 @@ import { useSharedValue } from 'react-native-reanimated';
 export interface AppListRowProps {
     title?: string;
     summary?: string;
+    summaryNumberOfLines?: number;
     /** Start region — icon etc. */
     icon?: ReactNode;
     /** End region — Switch / value / chevron. */
@@ -36,7 +37,7 @@ export interface AppListRowProps {
     style?: StyleProp<ViewStyle>;
 }
 
-export function ListRow({ title, summary, icon, trailing, onPress, onPressIn, disabled, titleColor: titleColorOverride, summaryColor: summaryColorOverride, style }: AppListRowProps) {
+export function ListRow({ title, summary, summaryNumberOfLines = 1, icon, trailing, onPress, onPressIn, disabled, titleColor: titleColorOverride, summaryColor: summaryColorOverride, style }: AppListRowProps) {
     const theme = useTheme();
     const c = theme.components.preference;
     const pressed = useSharedValue(0);
@@ -66,7 +67,7 @@ export function ListRow({ title, summary, icon, trailing, onPress, onPressIn, di
                         </Text>
                     )}
                     {summary != null && (
-                        <Text type="body2" color={summaryColor} numberOfLines={1}>
+                        <Text type="body2" color={summaryColor} numberOfLines={summaryNumberOfLines}>
                             {summary}
                         </Text>
                     )}
@@ -77,7 +78,7 @@ export function ListRow({ title, summary, icon, trailing, onPress, onPressIn, di
                     </View>
                 )}
             </View>
-            {interactive && <PressIndication pressed={pressed} color={theme.colors.onBackground} />}
+            {!!onPress && <PressIndication pressed={pressed} color={theme.colors.onBackground} />}
         </Pressable>
     );
 }

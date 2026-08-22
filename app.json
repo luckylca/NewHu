@@ -44,7 +44,11 @@
           }
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "onnxruntime-react-native",
+      "./plugins/withOnnxruntimePackage",
+      "expo-secure-store",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,

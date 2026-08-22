@@ -13,6 +13,129 @@ export type PeopleParams = {
     urlToken:string
 };
 
+type PeopleHeaderProps = {
+    userInfo: any;
+    isFollowing: boolean;
+    isFollowPending: boolean;
+    onToggleFollow: () => void;
+};
+
+const PeopleHeader = React.memo(({ userInfo, isFollowing, isFollowPending, onToggleFollow }: PeopleHeaderProps) => {
+    const theme = useTheme();
+    const primaryText = theme.colors.onBackground;
+    const secondaryText = theme.colors.onSurfaceSecondary;
+    const coverSource = React.useMemo(() => ({ uri: userInfo.cover_url }), [userInfo.cover_url]);
+    const avatarSource = React.useMemo(() => ({ uri: userInfo.avatar_url }), [userInfo.avatar_url]);
+    const vipSource = React.useMemo(() => ({ uri: userInfo.vip_info?.vip_icon?.url }), [userInfo.vip_info?.vip_icon?.url]);
+
+    const renderStats = (label: string, value: number) => (
+        <View style={{ alignItems: 'center', flex: 1 }}>
+            <Text type="title4" weight="bold" color={primaryText}>{value || 0}</Text>
+            <Text type="footnote1" color={secondaryText}>{label}</Text>
+        </View>
+    );
+
+    return (
+        <View>
+            <Image
+                source={coverSource}
+                style={[{ width: '100%', height: 160 }, { backgroundColor: theme.colors.secondaryContainer }]}
+                contentFit="cover"
+            />
+
+            <View style={{ paddingHorizontal: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: -30, marginBottom: 16 }}>
+                    <Image
+                        source={avatarSource}
+                        style={[{ width: 80, height: 80, borderRadius: 40, borderWidth: 3 }, { borderColor: theme.colors.background }]}
+                        cachePolicy="memory-disk"
+                        transition={0}
+                    />
+                    <View style={{ flex: 1, marginLeft: 12, marginTop: 36 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text type="title2" weight="bold" color={primaryText}>
+                                {userInfo.name}
+                            </Text>
+                            {userInfo.vip_info?.is_vip && (
+                                <Image
+                                    source={vipSource}
+                                    style={{ width: 40, height: 16 }}
+                                    contentFit="contain"
+                                    cachePolicy="memory-disk"
+                                    transition={0}
+                                />
+                            )}
+                        </View>
+                        {userInfo.headline ? (
+                            <Text type="body2" numberOfLines={2} style={{ color: secondaryText, marginTop: 4 }}>
+                                {userInfo.headline}
+                            </Text>
+                        ) : null}
+                    </View>
+                </View>
+
+                <Button
+                    type={isFollowing ? 'default' : 'primary'}
+                    disabled={isFollowPending}
+                    onPress={onToggleFollow}
+                    style={{ alignSelf: 'flex-start', minWidth: 132, marginBottom: 8 }}
+                >
+                    {isFollowPending ? '处理中…' : isFollowing ? '取消关注' : '关注'}
+                </Button>
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12 }}>
+                    {renderStats("关注了", userInfo.following_count)}
+                    {renderStats("关注者", userInfo.follower_count)}
+                    {renderStats("获赞同", userInfo.voteup_count)}
+                    {renderStats("获收藏", userInfo.favorited_count)}
+                </View>
+
+                <Divider style={{ marginVertical: 16 }} />
+
+                <View style={{ marginBottom: 20 }}>
+                    {userInfo.description ? (
+                        <Text type="body2" color={primaryText} style={{ marginBottom: 12 }}>
+                            {userInfo.description}
+                        </Text>
+                    ) : null}
+
+                    <View style={{ gap: 8 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Icon name="briefcase-outline" size={18} color={secondaryText} />
+                            <Text type="body2" color={secondaryText}>
+                                {userInfo.business?.name || "未知行业"}
+                            </Text>
+                        </View>
+
+                        {userInfo.locations?.[0]?.name && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <Icon name="map-marker-outline" size={18} color={secondaryText} />
+                                <Text type="body2" color={secondaryText}>
+                                    {userInfo.locations[0].name}
+                                </Text>
+                            </View>
+                        )}
+
+                        {userInfo.ip_info && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <Icon name="ip-network-outline" size={18} color={secondaryText} />
+                                <Text type="body2" color={secondaryText}>
+                                    {userInfo.ip_info}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+                </View>
+
+                <View style={{ marginTop: 24 }}>
+                    <Text type="title4" weight="bold" color={primaryText} style={{ marginBottom: 12 }}>最新动态</Text>
+                </View>
+            </View>
+        </View>
+    );
+});
+PeopleHeader.displayName = 'PeopleHeader';
+
 const PeopleScreen = () => {
     const {urlToken} = useLocalSearchParams<PeopleParams>()
     const theme = useTheme()
@@ -162,13 +285,6 @@ const PeopleScreen = () => {
         }
     };
 
-    const renderStats = (label: string, value: number) => (
-        <View style={{ alignItems: 'center', flex: 1 }}>
-            <Text type="title4" weight="bold" color={primaryText}>{value || 0}</Text>
-            <Text type="footnote1" color={secondaryText}>{label}</Text>
-        </View>
-    );
-
     return (
         <View style={{ flex: 1 ,backgroundColor: theme.colors.background}}>
             <TopAppBar title={userInfo ? userInfo.name : "人物信息"} back={() => router.back()} />
@@ -177,100 +293,14 @@ const PeopleScreen = () => {
                     data={activities}
                     keyExtractor={(item, index) => item.id + index}
                     contentContainerStyle={{ paddingBottom: 40 }}
-                    ListHeaderComponent={() => (
-                        <View>
-                            <Image
-                                source={{ uri: userInfo.cover_url }}
-                                style={[{ width: '100%', height: 160 }, { backgroundColor: theme.colors.secondaryContainer }]}
-                                contentFit="cover"
-                            />
-
-                            <View style={{ paddingHorizontal: 16 }}>
-                                <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: -30, marginBottom: 16 }}>
-                                    <Image
-                                        source={{ uri: userInfo.avatar_url }}
-                                        style={[{ width: 80, height: 80, borderRadius: 40, borderWidth: 3 }, { borderColor: theme.colors.background }]}
-                                    />
-                                    <View style={{ flex: 1, marginLeft: 12, marginTop: 36 }}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                            <Text type="title2" weight="bold" color={primaryText}>
-                                                {userInfo.name}
-                                            </Text>
-                                            {userInfo.vip_info?.is_vip && (
-                                                <Image
-                                                    source={{ uri: userInfo.vip_info.vip_icon?.url }}
-                                                    style={{ width: 40, height: 16 }}
-                                                    contentFit="contain"
-                                                />
-                                            )}
-                                        </View>
-                                        {userInfo.headline ? (
-                                            <Text type="body2" numberOfLines={2} style={{ color: secondaryText, marginTop: 4 }}>
-                                                {userInfo.headline}
-                                            </Text>
-                                        ) : null}
-                                    </View>
-                                </View>
-
-                                <Button
-                                    type={isFollowing ? 'default' : 'primary'}
-                                    disabled={isFollowPending}
-                                    onPress={handleToggleFollow}
-                                    style={{ alignSelf: 'flex-start', minWidth: 132, marginBottom: 8 }}
-                                >
-                                    {isFollowPending ? '处理中…' : isFollowing ? '取消关注' : '关注'}
-                                </Button>
-
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12 }}>
-                                    {renderStats("关注了", userInfo.following_count)}
-                                    {renderStats("关注者", userInfo.follower_count)}
-                                    {renderStats("获赞同", userInfo.voteup_count)}
-                                    {renderStats("获收藏", userInfo.favorited_count)}
-                                </View>
-
-                                <Divider style={{ marginVertical: 16 }} />
-
-                                <View style={{ marginBottom: 20 }}>
-                                    {userInfo.description ? (
-                                        <Text type="body2" color={primaryText} style={{ marginBottom: 12 }}>
-                                            {userInfo.description}
-                                        </Text>
-                                    ) : null}
-
-                                    <View style={{ gap: 8 }}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                            <Icon name="briefcase-outline" size={18} color={secondaryText} />
-                                            <Text type="body2" color={secondaryText}>
-                                                {userInfo.business?.name || "未知行业"}
-                                            </Text>
-                                        </View>
-
-                                        {userInfo.locations?.[0]?.name && (
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                                <Icon name="map-marker-outline" size={18} color={secondaryText} />
-                                                <Text type="body2" color={secondaryText}>
-                                                    {userInfo.locations[0].name}
-                                                </Text>
-                                            </View>
-                                        )}
-
-                                        {userInfo.ip_info && (
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                                <Icon name="ip-network-outline" size={18} color={secondaryText} />
-                                                <Text type="body2" color={secondaryText}>
-                                                    {userInfo.ip_info}
-                                                </Text>
-                                            </View>
-                                        )}
-                                    </View>
-                                </View>
-
-                                <View style={{ marginTop: 24 }}>
-                                    <Text type="title4" weight="bold" color={primaryText} style={{ marginBottom: 12 }}>最新动态</Text>
-                                </View>
-                            </View>
-                        </View>
-                    )}
+                    ListHeaderComponent={
+                        <PeopleHeader
+                            userInfo={userInfo}
+                            isFollowing={isFollowing}
+                            isFollowPending={isFollowPending}
+                            onToggleFollow={handleToggleFollow}
+                        />
+                    }
                     renderItem={({ item }) => (
                         <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 4 }}>

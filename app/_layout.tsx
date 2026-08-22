@@ -22,10 +22,6 @@ import { useNetworkStore } from '@/src/stores/useNetworkStore';
 import { useSettingStore } from '@/src/stores/useSettingStore';
 import { getWallpaperBase } from '@/src/ui/theme/wallpaper';
 
-// Temporary QA switch: show onboarding once on every cold app launch without
-// clearing or overwriting the user's persisted consent choices.
-const SHOW_ONBOARDING_EVERY_LAUNCH_FOR_TESTING = true;
-
 void SplashScreen.preventAutoHideAsync();
 SplashScreen.setOptions({ duration: 180, fade: true });
 
@@ -38,9 +34,7 @@ export default function RootLayout() {
 	const systemReducedMotion = useReducedMotion();
 	const reducedMotion = disableAnimations || systemReducedMotion;
 	const persistedConsentReady = consentHydrated && hasCurrentRequiredConsent(consent);
-	const consentReady = persistedConsentReady && (
-		!SHOW_ONBOARDING_EVERY_LAUNCH_FOR_TESTING || consent.onboardingCompletedThisSession
-	);
+	const consentReady = persistedConsentReady;
 	const splashHidden = React.useRef(false);
 	const routeBaseColor = getWallpaperBase(uiTheme.dark);
 	const renderRouteScene = React.useCallback(({ children }: { children: React.ReactNode }) => (
@@ -112,6 +106,7 @@ export default function RootLayout() {
 								<Stack.Screen name="(tabs)" />
 								<Stack.Screen name="settings" options={{ title: '设置' }} />
 								<Stack.Screen name="privacy-personalization" options={{ title: '隐私与个性化' }} />
+								<Stack.Screen name="product-v1" options={{ title: 'Product V1 推荐' }} />
 								<Stack.Screen name="offline-cache" options={{ title: '离线缓存' }} />
 								<Stack.Screen name="storage-management" options={{ title: '存储管理' }} />
 								<Stack.Screen name="about" options={{ title: '关于 NewHU' }} />

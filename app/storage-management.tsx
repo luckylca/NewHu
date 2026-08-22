@@ -4,6 +4,11 @@ import { listOfflineCacheItems, getCacheSummary } from '@/src/db/repositories/of
 import type { OfflineCacheListItem } from '@/src/db/repositories/offlineCacheRepository';
 import { cleanupTransientCache } from '@/src/services/cacheCleanupService';
 import { removeCachedContents } from '@/src/services/offlineCacheService';
+import {
+    getProductV1RuntimeStorageStatus,
+    removeProductV1RuntimeAssets,
+    resetProductV1Runtime,
+} from '@/src/product-v1';
 import { notify } from '@/src/stores/useNotificationStore';
 import { Button, Card, Dialog, Divider, Icon, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
@@ -16,6 +21,7 @@ import { FlatList, InteractionManager, Pressable, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 type CacheSummary = Awaited<ReturnType<typeof getCacheSummary>>;
+type RuntimeAssetStatus = ReturnType<typeof getProductV1RuntimeStorageStatus>;
 
 const EMPTY_SUMMARY: CacheSummary = {
     transientBytes: 0,
@@ -30,6 +36,8 @@ const EMPTY_SUMMARY: CacheSummary = {
     readingCount: 0,
 };
 
+const EMPTY_RUNTIME_ASSETS: RuntimeAssetStatus = { bytes: 0, fileCount: 0, installed: false };
+
 function formatBytes(bytes: number) {
     if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
     if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -41,20 +49,27 @@ export default function StorageManagementScreen() {
     const theme = useTheme();
     const [items, setItems] = useState<OfflineCacheListItem[]>([]);
     const [summary, setSummary] = useState<CacheSummary>(EMPTY_SUMMARY);
+    const [runtimeAssets, setRuntimeAssets] = useState<RuntimeAssetStatus>(EMPTY_RUNTIME_ASSETS);
     const [loading, setLoading] = useState(true);
     const [cleaning, setCleaning] = useState(false);
     const [managing, setManaging] = useState(false);
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [confirmVisible, setConfirmVisible] = useState(false);
     const [deleting, setDeleting] = useState(false);
+    const [runtimeDeleteVisible, setRuntimeDeleteVisible] = useState(false);
+    const [runtimeDeleteArmed, setRuntimeDeleteArmed] = useState(false);
+    const [runtimeDeleting, setRuntimeDeleting] = useState(false);
     const manageProgress = useSharedValue(0);
 
     const reload = useCallback(async () => {
         try {
-            const nextItems = await listOfflineCacheItems();
-            const nextSummary = await getCacheSummary();
+            const [nextItems, nextSummary] = await Promise.all([
+                listOfflineCacheItems(),
+                getCacheSummary(),
+            ]);
             setItems(nextItems);
             setSummary(nextSummary);
+            setRuntimeAssets(getProductV1RuntimeStorageStatus());
             setSelected((current) => {
                 const available = new Set(nextItems.map((item) => `${item.contentType}:${item.contentId}`));
                 return new Set([...current].filter((key) => available.has(key)));
@@ -76,6 +91,15 @@ export default function StorageManagementScreen() {
     useEffect(() => {
         manageProgress.value = withSpring(managing ? 1 : 0, storageManage);
     }, [manageProgress, managing]);
+
+    useEffect(() => {
+        if (!runtimeDeleteVisible) {
+            setRuntimeDeleteArmed(false);
+            return;
+        }
+        const timer = setTimeout(() => setRuntimeDeleteArmed(true), 350);
+        return () => clearTimeout(timer);
+    }, [runtimeDeleteVisible]);
 
     const selectionHeaderStyle = useAnimatedStyle(() => ({
         opacity: manageProgress.value,
@@ -152,16 +176,40 @@ export default function StorageManagementScreen() {
         }
     };
 
+    const removeRuntimeAssets = async () => {
+        if (runtimeDeleting || runtimeAssets.bytes <= 0) return;
+        setRuntimeDeleting(true);
+        try {
+            resetProductV1Runtime();
+            const deletedBytes = removeProductV1RuntimeAssets();
+            setRuntimeDeleteVisible(false);
+            await reload();
+            notify(`已释放 ${formatBytes(deletedBytes)}，推荐资源可随时重新下载`);
+        } catch (error) {
+            notify(error instanceof Error ? error.message : '推荐资源删除失败');
+        } finally {
+            setRuntimeDeleting(false);
+        }
+    };
+
     const segments = useMemo(() => [
         { value: summary.transientBytes, color: '#FFB340' },
         { value: summary.pinnedBytes, color: theme.colors.primary },
-        { value: summary.modelBytes, color: '#9A6CFF' },
+        { value: summary.modelBytes + runtimeAssets.bytes, color: '#9A6CFF' },
         { value: summary.readingBytes, color: '#35B67A' },
-    ], [summary.modelBytes, summary.pinnedBytes, summary.readingBytes, summary.transientBytes, theme.colors.primary]);
+    ], [runtimeAssets.bytes, summary.modelBytes, summary.pinnedBytes, summary.readingBytes, summary.transientBytes, theme.colors.primary]);
 
     const listHeader = useMemo(() => (
         <>
-            <StorageOverview summary={summary} segments={segments} cleaning={cleaning} onClean={clean} />
+            <StorageOverview
+                summary={summary}
+                runtimeAssets={runtimeAssets}
+                segments={segments}
+                cleaning={cleaning}
+                runtimeDeleting={runtimeDeleting}
+                onClean={clean}
+                onRemoveRuntimeAssets={() => setRuntimeDeleteVisible(true)}
+            />
 
             <View style={{ marginTop: theme.spacing.xl, marginBottom: theme.spacing.sm, flexDirection: 'row', alignItems: 'center' }}>
                 <View style={{ flex: 1 }}>
@@ -177,7 +225,7 @@ export default function StorageManagementScreen() {
                 </Animated.View>
             </View>
         </>
-    ), [allSelected, clean, cleaning, items.length, loading, managing, segments, selectionHeaderStyle, summary, theme, toggleAll]);
+    ), [allSelected, clean, cleaning, items.length, loading, managing, runtimeAssets, runtimeDeleting, segments, selectionHeaderStyle, summary, theme, toggleAll]);
 
     const renderItem = useCallback(({ item, index }: { item: OfflineCacheListItem; index: number }) => {
         const key = `${item.contentType}:${item.contentId}`;
@@ -251,21 +299,43 @@ export default function StorageManagementScreen() {
                     </Button>
                 </View>
             </Dialog>
+
+            <Dialog
+                visible={runtimeDeleteVisible}
+                title="删除在线推荐资源？"
+                summary={`将释放 ${formatBytes(runtimeAssets.bytes)}。用户画像、reward、浏览记录和离线内容都会保留；再次使用本地推荐时可重新下载。`}
+                closeOnClickModal={!runtimeDeleting}
+                onClose={() => { if (!runtimeDeleting) setRuntimeDeleteVisible(false); }}
+            >
+                <View style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
+                    <Button type="default" disabled={runtimeDeleting} onPress={() => setRuntimeDeleteVisible(false)} style={{ flex: 1 }}>取消</Button>
+                    <Button type="primary" disabled={runtimeDeleting || !runtimeDeleteArmed} onPress={() => void removeRuntimeAssets()} style={{ flex: 1 }}>
+                        {runtimeDeleting ? '删除中…' : '删除资源'}
+                    </Button>
+                </View>
+            </Dialog>
         </View>
     );
 }
 
-const StorageOverview = memo(function StorageOverview({ summary, segments, cleaning, onClean }: {
+const StorageOverview = memo(function StorageOverview({ summary, runtimeAssets, segments, cleaning, runtimeDeleting, onClean, onRemoveRuntimeAssets }: {
     summary: CacheSummary;
+    runtimeAssets: RuntimeAssetStatus;
     segments: StorageSegment[];
     cleaning: boolean;
+    runtimeDeleting: boolean;
     onClean: () => void;
+    onRemoveRuntimeAssets: () => void;
 }) {
     const theme = useTheme();
+    const modelBytes = summary.modelBytes + runtimeAssets.bytes;
+    const modelSummary = runtimeAssets.bytes > 0
+        ? `${runtimeAssets.installed ? '在线资源完整' : '在线资源不完整'} · ${runtimeAssets.fileCount} 个文件 · ${summary.modelCount} 条内容向量`
+        : summary.modelCount > 0 ? `${summary.modelCount} 条内容向量` : '暂无本地推荐数据';
     return (
         <Card feedback="none" contentStyle={{ padding: theme.spacing.lg }}>
             <View style={{ alignItems: 'center' }}>
-                <StorageDonut segments={segments} totalText={formatBytes(summary.managedBytes)} />
+                <StorageDonut segments={segments} totalText={formatBytes(summary.managedBytes + runtimeAssets.bytes)} />
                 <Text type="body2" color={theme.colors.onSurfaceVariantSummary} style={{ marginTop: theme.spacing.sm }}>
                     NewHU 在本机管理的数据
                 </Text>
@@ -283,7 +353,15 @@ const StorageOverview = memo(function StorageOverview({ summary, segments, clean
                 <Divider style={{ marginLeft: 48 }} />
                 <StorageTypeRow icon="download-circle-outline" color={theme.colors.primary} title="离线缓存" summary={`${summary.pinnedCount} 篇内容`} value={formatBytes(summary.pinnedBytes)} />
                 <Divider style={{ marginLeft: 48 }} />
-                <StorageTypeRow icon="cube-outline" color="#9A6CFF" title="模型文件" summary={summary.modelCount > 0 ? `${summary.modelCount} 份本地模型数据` : '暂无本地模型'} value={formatBytes(summary.modelBytes)} />
+                <StorageTypeRow
+                    icon="cube-outline"
+                    color="#9A6CFF"
+                    title="推荐数据"
+                    summary={modelSummary}
+                    value={formatBytes(modelBytes)}
+                    action={runtimeAssets.bytes > 0 ? (runtimeDeleting ? '删除中' : '删除资源') : undefined}
+                    onAction={onRemoveRuntimeAssets}
+                />
                 <Divider style={{ marginLeft: 48 }} />
                 <StorageTypeRow icon="chart-box-outline" color="#35B67A" title="阅读统计" summary={`${summary.readingCount} 条阅读记录`} value={formatBytes(summary.readingBytes)} />
             </View>
