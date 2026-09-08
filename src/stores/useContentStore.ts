@@ -12,6 +12,7 @@ interface ContentState {
     requestFeedRefresh: () => void;
     scrollTopRequest: number;
     requestHomeScrollTop: () => void;
+    clearRecommendationReasons: () => void;
 
     unlikeList: string[]; // 不喜欢列表，存储用户不喜欢的帖子的 ID
     setUnlikeList: (list: string[]) => void; // 设置不喜欢列表的函数
@@ -33,6 +34,11 @@ export const useContentStore = create<ContentState>()(
             requestFeedRefresh: () => set((state) => ({ refreshRequest: state.refreshRequest + 1 })),
             scrollTopRequest: 0,
             requestHomeScrollTop: () => set((state) => ({ scrollTopRequest: state.scrollTopRequest + 1 })),
+            clearRecommendationReasons: () => set((state) => ({
+                feedList: state.feedList.map((feed) => feed.item.recommendationReason
+                    ? { ...feed, item: { ...feed.item, recommendationReason: undefined } }
+                    : feed),
+            })),
             removeFeedItem: (id) => set((state) => ({
                 feedList: state.feedList.filter(
                     (feed) => feed.item.id.toString() !== id.toString()

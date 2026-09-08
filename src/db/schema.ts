@@ -1,4 +1,4 @@
-export const DATABASE_VERSION = 2;
+export const DATABASE_VERSION = 3;
 
 export const MIGRATION_1 = `
 CREATE TABLE IF NOT EXISTS contents (
@@ -241,4 +241,8 @@ CREATE INDEX IF NOT EXISTS idx_product_feedback_article
   ON product_v1_feedback(article_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_product_cycles_started
   ON product_v1_cycles(started_at DESC);
+`;
+
+export const MIGRATION_3 = `
+ALTER TABLE feed_entries ADD COLUMN recommendation_reason_json TEXT;
 `;

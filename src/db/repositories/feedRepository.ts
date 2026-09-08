@@ -1,6 +1,7 @@
 import type { FeedItemInfo } from '@/src/types/zhihu';
 import { getDatabase, withSerializedTransaction } from '../database';
 import { contentToFeedItem } from './contentRepository';
+import { parseProductV1RecommendationReason } from '@/src/types/recommendation';
 
 const now = () => Date.now();
 
@@ -97,9 +98,10 @@ export async function saveFeedEntries(items: FeedItemInfo[], source = 'recommend
                 );
             }
             await transaction.runAsync(
-                `INSERT INTO feed_entries (content_id, content_type, source, position, session_id, batch_id, fetched_at, last_accessed_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                `INSERT INTO feed_entries (content_id, content_type, source, position, session_id, batch_id, fetched_at, last_accessed_at, recommendation_reason_json)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 content.id, item.feedType, source, index, sessionId || null, batchId, timestamp, timestamp,
+                content.recommendationReason ? JSON.stringify(content.recommendationReason) : null,
             );
         }
     });
@@ -111,7 +113,12 @@ export async function getRecentFeed(limit = 80, pinnedOnly = false): Promise<Fee
     const rows = await db.getAllAsync<any>(
         pinnedOnly
             ? `SELECT c.*, b.html AS body_html, b.cache_state AS body_cache_state,
-                      p.updated_at AS fetched_at, 0 AS position
+                      p.updated_at AS fetched_at, 0 AS position,
+                      (SELECT f.recommendation_reason_json
+                       FROM feed_entries f
+                       WHERE f.content_id = c.id AND f.content_type = c.type
+                         AND f.recommendation_reason_json IS NOT NULL
+                       ORDER BY f.fetched_at DESC, f.id DESC LIMIT 1) AS recommendation_reason_json
                FROM offline_pins p
                JOIN contents c ON c.id = p.content_id AND c.type = p.content_type
                LEFT JOIN content_bodies b ON b.content_id = c.id AND b.content_type = c.type
@@ -119,11 +126,11 @@ export async function getRecentFeed(limit = 80, pinnedOnly = false): Promise<Fee
                ORDER BY p.updated_at DESC
                LIMIT ?`
             : `SELECT c.*, b.html AS body_html, b.cache_state AS body_cache_state,
-                      f.source, f.position, f.fetched_at
+                      f.source, f.position, f.fetched_at, f.recommendation_reason_json
                FROM feed_entries f
                JOIN contents c ON c.id = f.content_id AND c.type = f.content_type
                LEFT JOIN content_bodies b ON b.content_id = c.id AND b.content_type = c.type
-               ORDER BY f.fetched_at DESC, f.position ASC
+               ORDER BY f.fetched_at DESC, f.id DESC, f.position ASC
                LIMIT ?`,
         limit,
     );
@@ -132,34 +139,37 @@ export async function getRecentFeed(limit = 80, pinnedOnly = false): Promise<Fee
         const key = `${row.type}:${row.id}`;
         if (seen.has(key)) return [];
         seen.add(key);
+        const item = contentToFeedItem({
+            id: row.id,
+            type: row.type,
+            title: row.title,
+            excerpt: row.excerpt,
+            authorName: row.author_name,
+            authorUrlToken: row.author_url_token,
+            authorAvatar: row.author_avatar,
+            questionId: row.question_id,
+            questionTitle: row.question_title,
+            questionAuthorName: row.question_author_name,
+            questionAuthorAvatar: row.question_author_avatar,
+            questionAuthorUrlToken: row.question_author_url_token,
+            questionAnswerCount: row.question_answer_count,
+            questionCreatedTime: row.question_created_time,
+            voteCount: row.vote_count,
+            commentCount: row.comment_count,
+            favoriteCount: row.favorite_count,
+            voted: Boolean(row.is_voted),
+            updatedTime: row.updated_at,
+            content: row.body_html || '',
+            hasBody: Boolean(row.has_body),
+            bodyCacheState: row.body_cache_state,
+        });
+        const recommendationReason = parseProductV1RecommendationReason(row.recommendation_reason_json);
+        if (recommendationReason) item.recommendationReason = recommendationReason;
         return [{
             feedType: row.type,
             isAds: false,
             isPaid: false,
-            item: contentToFeedItem({
-                id: row.id,
-                type: row.type,
-                title: row.title,
-                excerpt: row.excerpt,
-                authorName: row.author_name,
-                authorUrlToken: row.author_url_token,
-                authorAvatar: row.author_avatar,
-                questionId: row.question_id,
-                questionTitle: row.question_title,
-                questionAuthorName: row.question_author_name,
-                questionAuthorAvatar: row.question_author_avatar,
-                questionAuthorUrlToken: row.question_author_url_token,
-                questionAnswerCount: row.question_answer_count,
-                questionCreatedTime: row.question_created_time,
-                voteCount: row.vote_count,
-                commentCount: row.comment_count,
-                favoriteCount: row.favorite_count,
-                voted: Boolean(row.is_voted),
-                updatedTime: row.updated_at,
-                content: row.body_html || '',
-                hasBody: Boolean(row.has_body),
-                bodyCacheState: row.body_cache_state,
-            }),
+            item,
         } as FeedItemInfo];
     });
 }

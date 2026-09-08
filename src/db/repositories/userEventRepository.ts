@@ -18,5 +18,6 @@ export async function clearInterestProfile() {
         await db.runAsync('DELETE FROM product_v1_candidates');
         await db.runAsync('DELETE FROM product_v1_feedback');
         await db.runAsync('DELETE FROM product_v1_cycles');
+        await db.runAsync('UPDATE feed_entries SET recommendation_reason_json = NULL');
     });
 }

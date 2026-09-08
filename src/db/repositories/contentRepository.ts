@@ -2,6 +2,7 @@ import type { FeedDetail, FeedItem, FeedType } from '@/src/types/zhihu';
 import { getDatabase, withSerializedTransaction } from '../database';
 import { contentToItem } from '../mappers';
 import type { CacheState, DbContent } from '../types';
+import { parseProductV1RecommendationReason } from '@/src/types/recommendation';
 
 const now = () => Date.now();
 
@@ -14,9 +15,11 @@ type ContentRow = {
     vote_count: number; comment_count: number; favorite_count: number;
     is_voted: number; created_at: number; updated_at: number;
     has_body: number; body_html?: string; body_cache_state?: CacheState;
+    recommendation_reason_json?: string | null;
 };
 
 function rowToContent(row: ContentRow): DbContent {
+    const recommendationReason = parseProductV1RecommendationReason(row.recommendation_reason_json);
     return {
         id: row.id,
         title: row.title,
@@ -40,6 +43,7 @@ function rowToContent(row: ContentRow): DbContent {
         type: row.type,
         hasBody: Boolean(row.has_body),
         bodyCacheState: row.body_cache_state,
+        recommendationReason,
     };
 }
 
@@ -116,7 +120,12 @@ export async function upsertContent(content: FeedItem | FeedDetail, type: FeedTy
 export async function getContent(id: string, type: FeedType): Promise<DbContent | null> {
     const db = await getDatabase();
     const row = await db.getFirstAsync<ContentRow>(
-        `SELECT c.*, b.html AS body_html, b.cache_state AS body_cache_state
+        `SELECT c.*, b.html AS body_html, b.cache_state AS body_cache_state,
+                (SELECT f.recommendation_reason_json
+                 FROM feed_entries f
+                 WHERE f.content_id = c.id AND f.content_type = c.type
+                   AND f.recommendation_reason_json IS NOT NULL
+                 ORDER BY f.fetched_at DESC, f.id DESC LIMIT 1) AS recommendation_reason_json
          FROM contents c LEFT JOIN content_bodies b
          ON b.content_id = c.id AND b.content_type = c.type
          WHERE c.id = ? AND c.type = ?`, id, type,

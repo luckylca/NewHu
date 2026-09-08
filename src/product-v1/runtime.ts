@@ -26,6 +26,7 @@ import { PRODUCT_V1_SCHEMA, PRODUCT_V1_VERSION } from './constants';
 import { updateProductV1Health } from './store';
 import type { ProductV1CandidateRecord, ProductV1RuntimeState, ProductV1Trace } from './types';
 import { ensureProductV1RuntimeAssets, type ProductV1AssetDownloadProgress } from './runtimeAssets';
+import { buildProductV1RecommendationReason } from './recommendationReason';
 import {
   capAutoDesiredSupply,
   composeBubbleDisplayRecords,
@@ -514,7 +515,16 @@ async function runCycle(items: FeedItemInfo[]) {
       phase: 'ready', activeCount: trace.activeCount, reserveCount: trace.reserveCount,
       lastCycleId: cycleId, lastCycleAt: trace.completedAt, lastError: null,
     });
-    return settings.mode === 'shadow' ? items : liveOrder.map((record) => record.feed);
+    if (settings.mode === 'shadow') return items;
+    return liveOrder.map((record) => {
+      const interest = supplyInterestV3(record.candidate);
+      const recommendationReason = buildProductV1RecommendationReason(record.candidate, {
+        profileAffinity: interest ? memory.profile.namedScores[interest] ?? 0 : 0,
+      });
+      return recommendationReason
+        ? { ...record.feed, item: { ...record.feed.item, recommendationReason } }
+        : record.feed;
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     trace.status = 'aborted';

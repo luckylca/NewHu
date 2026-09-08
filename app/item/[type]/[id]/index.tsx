@@ -6,6 +6,7 @@ import LoadingView from "@/src/components/LoadingView";
 import OfflineImage from "@/src/components/OfflineImage";
 import { AiSuspicionBadge } from "@/src/components/AiSuspicionBadge";
 import { ProductDomainBadges } from "@/src/components/ProductDomainBadges";
+import { ProductRecommendationReason } from "@/src/components/ProductRecommendationReason";
 import { useContentStore } from "@/src/stores/useContentStore";
 import { useExportContentStore } from "@/src/stores/useExportContentStore";
 import { useLaterReadStore } from "@/src/stores/useLaterReadStore";
@@ -337,7 +338,14 @@ export default function Item() {
                 setDetailLoading(true);
                 const local = await getContent(String(id), contentType);
                 if (!active) return;
-                setReadData((local as FeedDetail | null) ?? fallbackContent ?? null);
+                const localContent = local as FeedDetail | null;
+                const inheritedRecommendationReason = fallbackContent?.recommendationReason;
+                setReadData(localContent
+                    ? {
+                        ...localContent,
+                        recommendationReason: inheritedRecommendationReason ?? localContent.recommendationReason,
+                    }
+                    : fallbackContent ?? null);
                 setHydrated(true);
 
                 // Network status can be unknown for a short time on a cold
@@ -353,7 +361,12 @@ export default function Item() {
                     if (remoteFavorited == null && initialFavorited === 'true') {
                         fresh.favorited = true;
                     }
-                    if (active) setReadData(fresh);
+                    if (active) {
+                        setReadData((current) => ({
+                            ...fresh,
+                            recommendationReason: current?.recommendationReason ?? fallbackContent?.recommendationReason,
+                        }));
+                    }
                     void upsertContent(fresh, contentType, { cacheState: 'transient', voted: fresh.voted }).catch((error) => {
                         console.warn('详情写入本地缓存失败', error);
                     });
@@ -791,6 +804,10 @@ export default function Item() {
                             </View>
                             <PressIndication pressed={titlePressed} color={primaryText} radius={theme.radius.component} />
                         </Pressable>
+                        <ProductRecommendationReason
+                            reason={readData.recommendationReason}
+                            style={{ marginTop: 2, marginBottom: 4 }}
+                        />
                         <ListRow
                             icon={readData.authorAvatar ? (
                                 <OfflineImage source={{ uri: readData.authorAvatar }} style={{ width: 40, height: 40, borderRadius: theme.radius.full, backgroundColor: theme.colors.secondaryContainer }} />

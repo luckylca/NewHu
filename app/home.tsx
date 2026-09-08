@@ -22,6 +22,7 @@ import { useConsentStore } from '@/src/stores/useConsentStore';
 import { getProductV1RuntimeAssetStatus, processProductV1Feed, recordProductV1Exposure, recordProductV1Feedback } from '@/src/product-v1';
 import { AiSuspicionBadge } from '@/src/components/AiSuspicionBadge';
 import { ProductDomainBadges } from '@/src/components/ProductDomainBadges';
+import { ProductRecommendationReason } from '@/src/components/ProductRecommendationReason';
 import type { ProductV1DomainClassificationPriority } from '@/src/product-v1/domainTaskQueue';
 
 const { width: WindowWidth } = Dimensions.get('window');
@@ -120,6 +121,10 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetect
             <Text type="body2" color={metaColor} style={{ marginBottom: 10, lineHeight: 20 }} numberOfLines={3}>
                 {item.excerpt}
             </Text>
+            <ProductRecommendationReason
+                reason={item.recommendationReason}
+                style={{ marginTop: -2, marginBottom: 10 }}
+            />
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
                     <Icon name="thumb-up-outline" size={16} color={metaColor} />
@@ -140,6 +145,7 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetect
     );
 }, (prevProps, nextProps) => {
     return prevProps.item.id === nextProps.item.id &&
+        prevProps.item.recommendationReason?.summary === nextProps.item.recommendationReason?.summary &&
         prevProps.type === nextProps.type &&
         prevProps.needToGet === nextProps.needToGet &&
         prevProps.onOpenMenu === nextProps.onOpenMenu &&
@@ -150,7 +156,7 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetect
 });
 RenderItem.displayName = 'RenderItem';
 
-function estimateWaterfallHeight(feed: FeedItemInfo) {
+function estimateWaterfallHeight(feed: FeedItemInfo, showRecommendationReason = true) {
     const title = feed.feedType === 'answer' && feed.item.questionTitle ? feed.item.questionTitle : feed.item.title;
     // A narrow waterfall column wraps Chinese titles earlier than a full-width card.
     // Keep the placement estimate at least as tall as the rendered 3-line title,
@@ -160,7 +166,8 @@ function estimateWaterfallHeight(feed: FeedItemInfo) {
     // Match WaterfallItem's actual padding, line heights and metadata row.
     // The old estimate was 40–50dp taller than the rendered card, which made
     // a tight waterfall look like cards were overlapping or leaving large gaps.
-    return 28 + titleLines * 23 + 8 + excerptLines * 20 + 12 + 15;
+    const recommendationReasonHeight = showRecommendationReason && feed.item.recommendationReason ? 23 : 0;
+    return 28 + titleLines * 23 + 8 + excerptLines * 20 + recommendationReasonHeight + 12 + 15;
 }
 
 type WaterfallPlacement = {
@@ -238,6 +245,10 @@ const WaterfallItem = memo(({ item, type, needToGet, measurementKey, showDomainL
                 <Text type="body2" color={metaColor} numberOfLines={excerptLines} style={{ marginTop: 8, lineHeight: 20 }}>
                     {item.excerpt || '暂无简介'}
                 </Text>
+                <ProductRecommendationReason
+                    reason={item.recommendationReason}
+                    style={{ marginTop: 6 }}
+                />
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
                     <Icon name="thumb-up-outline" size={15} color={metaColor} />
                     <Text type="footnote1" style={{ marginLeft: 4, color: metaColor }}>{item.voteCount}</Text>
@@ -249,6 +260,7 @@ const WaterfallItem = memo(({ item, type, needToGet, measurementKey, showDomainL
     );
 }, (prevProps, nextProps) => (
     prevProps.item.id === nextProps.item.id &&
+    prevProps.item.recommendationReason?.summary === nextProps.item.recommendationReason?.summary &&
     prevProps.type === nextProps.type &&
     prevProps.needToGet === nextProps.needToGet &&
     prevProps.measurementKey === nextProps.measurementKey &&
@@ -345,6 +357,10 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                             {preview}
                         </Text>
                     </View>
+                    <ProductRecommendationReason
+                        reason={item.recommendationReason}
+                        style={{ marginTop: 10 }}
+                    />
 
                     <View style={{
                         flexDirection: 'row',
@@ -375,6 +391,7 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
     );
 }, (prevProps, nextProps) => {
     return prevProps.item.id === nextProps.item.id &&
+        prevProps.item.recommendationReason?.summary === nextProps.item.recommendationReason?.summary &&
         prevProps.disableAnimations === nextProps.disableAnimations &&
         prevProps.type === nextProps.type &&
         prevProps.needToGet === nextProps.needToGet &&
@@ -410,6 +427,7 @@ const HomeScreen = () => {
     const settingHydrated = useStoreHydrated(useSettingStore);
     const contentHydrated = useStoreHydrated(useContentStore);
     const networkStatus = useNetworkStore((state) => state.status);
+    const personalizationEnabled = useConsentStore((state) => state.aiInterestAnalysisEnabled);
 
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [cardListHeight, setCardListHeight] = useState(0);
@@ -813,7 +831,8 @@ const HomeScreen = () => {
         visibleFeedList.forEach((feed) => {
             const columnIndex = heights[0] <= heights[1] ? 0 : 1;
             const measurementKey = getFeedKey(feed);
-            const height = waterfallMeasuredHeights[measurementKey] ?? estimateWaterfallHeight(feed);
+            const height = waterfallMeasuredHeights[measurementKey]
+                ?? estimateWaterfallHeight(feed, personalizationEnabled);
             // Each column owns its vertical cursor. This keeps every gap
             // identical and lets the natural card-height difference create
             // the masonry stagger without inserting artificial blank space.
@@ -831,7 +850,7 @@ const HomeScreen = () => {
             placements,
             contentHeight: Math.max(heights[0], heights[1]) + theme.spacing.xl,
         };
-    }, [theme.spacing.xl, visibleFeedList, waterfallMeasuredHeights]);
+    }, [personalizationEnabled, theme.spacing.xl, visibleFeedList, waterfallMeasuredHeights]);
 
     useEffect(() => {
         if (displayMode !== 'waterfall') return;

@@ -7,6 +7,8 @@
  * 而不是知乎 API 的原始响应结构。
  */
 
+import type { ProductV1RecommendationReason } from './recommendation';
+
 export type FeedType = 'answer' | 'article';
 
 /** 归一化后的单条 feed 内容（回答与文章统一形状） */
@@ -34,6 +36,8 @@ export interface FeedItem {
     questionAuthorUrlToken: string;
     questionAnswerCount: number;
     questionCreatedTime: number;
+    /** Product V1 生成的本地个性化推荐解释；仅在开启兴趣分析时展示。 */
+    recommendationReason?: ProductV1RecommendationReason;
 }
 
 /** 推荐流中的一条记录：内容 + 类型标记 + 广告/付费标记 */
