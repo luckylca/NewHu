@@ -1,6 +1,7 @@
 // app/_layout.tsx
 import { AppBackground } from '@/src/components/background/AppBackground';
 import { GlobalNotificationHost } from '@/src/components/GlobalNotificationHost';
+import { LaterReadFloatingBubble } from '@/src/components/LaterReadFloatingBubble';
 import { useHyperosTheme } from '@/src/hooks/useHyperosTheme';
 import { ThemeProvider as UiThemeProvider } from '@/src/ui/theme';
 import { MotionProvider } from '@/src/ui/motion';
@@ -138,6 +139,7 @@ export default function RootLayout() {
 							</Stack>
 						</NavigationThemeProvider>
 						<GlobalNotificationHost />
+						<LaterReadFloatingBubble />
 					</AppBackground>
 					</MotionProvider>
 				</UiThemeProvider>

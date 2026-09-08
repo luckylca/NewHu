@@ -6,6 +6,7 @@ import LoadingView from "@/src/components/LoadingView";
 import OfflineImage from "@/src/components/OfflineImage";
 import { useContentStore } from "@/src/stores/useContentStore";
 import { useExportContentStore } from "@/src/stores/useExportContentStore";
+import { getLaterReadKey, useLaterReadStore } from "@/src/stores/useLaterReadStore";
 import { useNetworkStore } from "@/src/stores/useNetworkStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -307,6 +308,9 @@ export default function Item() {
     const titlePressed = useSharedValue(0);
     const setPendingExport = useExportContentStore((state) => state.setPending);
     const contentType = type === 'answer' ? 'answer' : 'article';
+    const addLaterReadItem = useLaterReadStore((state) => state.addItem);
+    const requestLaterReadPanelOpen = useLaterReadStore((state) => state.requestPanelOpen);
+    const laterReadSaved = useLaterReadStore((state) => state.items.some((item) => item.key === getLaterReadKey(contentType, String(id))));
 
     useEffect(() => {
         if (networkStatus === 'online') {
@@ -566,6 +570,29 @@ export default function Item() {
         router.push({ pathname: '/select-text/[type]/[id]', params: { type, id: String(readData.id) } });
     };
 
+    const addToLaterRead = () => {
+        if (!readData) return;
+        addLaterReadItem({
+            id: String(readData.id),
+            type: contentType,
+            title: type === 'answer' ? readData.questionTitle : readData.title,
+            summary: readData.excerpt || String(readData.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120),
+            authorName: readData.authorName,
+            authorAvatar: readData.authorAvatar,
+            questionId: readData.questionId,
+            updatedTime: readData.updatedTime,
+        });
+        notify({
+            message: laterReadSaved ? '已更新稍后阅读' : '已加入稍后阅读',
+            actionLabel: '查看',
+            onAction: requestLaterReadPanelOpen,
+            duration: 3200,
+        });
+        if (useConsentStore.getState().aiInterestAnalysisEnabled) {
+            void recordProductV1Feedback({ contentId: String(readData.id), contentType, eventType: 'later_read', opened: true });
+        }
+    };
+
     const runDocumentExport = async () => {
         if (!readData || documentExporting) return;
         setDocumentExporting(true);
@@ -680,6 +707,11 @@ export default function Item() {
                 onClose={() => setMenuVisible(false)}
                 anchor={menuAnchor}
                 items={[
+                    {
+                        label: laterReadSaved ? '更新稍后阅读' : '稍后阅读',
+                        summary: '加入浮窗多页面',
+                        onPress: addToLaterRead,
+                    },
                     { label: '复制内容', onPress: openCopyPage },
                     { label: '导出文档', onPress: () => void runDocumentExport(), disabled: documentExporting },
                     {
