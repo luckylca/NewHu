@@ -1,24 +1,67 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadProductV1SeedBank, loadProductV1SeedEmbeddings } from './assets';
+import { PRODUCT_V1_VERSION } from './constants';
+import {
+  createProductV1DomainFingerprint,
+  parseProductV1DomainCache,
+  serializeProductV1DomainCache,
+  type ProductV1DomainCacheValue,
+} from './domainCache';
 import { encodeArticle } from './encoder';
 import { productV1DomainLabel } from './domainLabels';
 import { selectProductV1DomainMatches, type ProductV1DomainMatch } from './domainSelection';
 import { routeSearchSeedsV2 } from './core/searchSeedRouterV2';
-import { getProductV1RuntimeAssetStatus } from './runtimeAssets';
+import {
+  getProductV1RuntimeAssetStatus,
+  PRODUCT_V1_ASSET_VERSION,
+  PRODUCT_V1_MODEL_SPEC,
+  PRODUCT_V1_SEED_BANK_SPEC,
+  PRODUCT_V1_SEED_EMBEDDINGS_SPEC,
+} from './runtimeAssets';
 
 const MAX_CACHE_ENTRIES = 500;
 const MAX_CLASSIFICATION_CODE_POINTS = 1200;
+const PERSIST_DELAY_MS = 250;
+const DOMAIN_CACHE_STORAGE_KEY = [
+  'product-v1-domain-cache-v1',
+  PRODUCT_V1_VERSION,
+  PRODUCT_V1_ASSET_VERSION,
+  PRODUCT_V1_MODEL_SPEC.sha256.slice(0, 12),
+  PRODUCT_V1_SEED_BANK_SPEC.sha256.slice(0, 12),
+  PRODUCT_V1_SEED_EMBEDDINGS_SPEC.sha256.slice(0, 12),
+  'min018-gap008-max3',
+].join(':');
 
-type CachedDomains = {
-  fingerprint: string;
-  matches: ProductV1DomainMatch[];
-};
-
-const cache = new Map<string, CachedDomains>();
+const cache = new Map<string, ProductV1DomainCacheValue>();
 const inFlight = new Map<string, Promise<ProductV1DomainMatch[]>>();
 let classificationQueue: Promise<void> = Promise.resolve();
+let persistentCacheLoadPromise: Promise<void> | null = null;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
 function boundedText(value: string) {
   return Array.from(value ?? '').slice(0, MAX_CLASSIFICATION_CODE_POINTS).join('').trim();
+}
+
+function ensurePersistentCacheLoaded() {
+  if (!persistentCacheLoadPromise) {
+    persistentCacheLoadPromise = AsyncStorage.getItem(DOMAIN_CACHE_STORAGE_KEY)
+      .then((raw) => {
+        for (const [key, value] of parseProductV1DomainCache(raw, MAX_CACHE_ENTRIES)) {
+          if (!cache.has(key)) cache.set(key, value);
+        }
+      })
+      .catch(() => undefined);
+  }
+  return persistentCacheLoadPromise;
+}
+
+function schedulePersistentCacheWrite() {
+  if (persistTimer) return;
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    const payload = serializeProductV1DomainCache([...cache.entries()].slice(-MAX_CACHE_ENTRIES));
+    void AsyncStorage.setItem(DOMAIN_CACHE_STORAGE_KEY, payload).catch(() => undefined);
+  }, PERSIST_DELAY_MS);
 }
 
 function enqueue<T>(work: () => Promise<T>) {
@@ -48,10 +91,15 @@ export async function classifyProductV1Domains(
 
   const normalizedTitle = boundedText(title);
   const normalizedExcerpt = boundedText(excerpt);
-  const fingerprint = `${normalizedTitle}\u0000${normalizedExcerpt}`;
+  const fingerprint = createProductV1DomainFingerprint(normalizedTitle, normalizedExcerpt);
 
+  await ensurePersistentCacheLoaded();
   const cached = cache.get(contentKey);
-  if (cached?.fingerprint === fingerprint) return cached.matches;
+  if (cached?.fingerprint === fingerprint) {
+    cache.delete(contentKey);
+    cache.set(contentKey, cached);
+    return cached.matches;
+  }
 
   const pendingKey = `${contentKey}\u0000${fingerprint}`;
   const existing = inFlight.get(pendingKey);
@@ -88,6 +136,7 @@ export async function classifyProductV1Domains(
 
     cache.set(contentKey, { fingerprint, matches });
     trimCache();
+    schedulePersistentCacheWrite();
     return matches;
   }).finally(() => {
     inFlight.delete(pendingKey);
@@ -99,4 +148,11 @@ export async function classifyProductV1Domains(
 
 export function clearProductV1DomainClassificationCache() {
   cache.clear();
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  persistentCacheLoadPromise = AsyncStorage.removeItem(DOMAIN_CACHE_STORAGE_KEY)
+    .then(() => undefined)
+    .catch(() => undefined);
 }

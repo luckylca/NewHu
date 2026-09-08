@@ -37,7 +37,7 @@ is removed.
 ### P0 — 当前收尾
 
 - [ ] Android 真机回归：覆盖稍后阅读、AI 检测、领域胶囊、三种首页模式、暗色主题和离线切换。
-- [ ] 领域识别结果持久缓存，避免 App 重启后对同一内容重复跑 Tiny Encoder。
+- [x] 领域识别结果持久缓存，避免 App 重启后对同一内容重复跑 Tiny Encoder。
 - [ ] 领域识别调度优化：可见卡片优先、离屏任务低优先级/可取消，减少首页胶囊延迟。
 - [ ] 推荐原因解释：复用 Product V1 的兴趣命中、semantic score、质量信号和破圈信息。
 - [ ] 逐步替换已停止维护的 `@react-native-cookies/cookies` 兼容依赖。
