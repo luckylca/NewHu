@@ -126,6 +126,26 @@ export type ContentAnnotation = {
     updatedAt: number;
 };
 
+export type KnowledgeReviewState = 'new' | 'learning' | 'mastered';
+
+export type KnowledgeCard = {
+    id: string;
+    annotationId: string | null;
+    contentId: string;
+    contentType: FeedType;
+    quoteText: string;
+    understandingText: string;
+    tags: string[];
+    reviewState: KnowledgeReviewState;
+    title: string;
+    authorName: string;
+    sourceUrl: string;
+    sourceUpdatedAt: number;
+    createdAt: number;
+    updatedAt: number;
+    lastReviewedAt: number | null;
+};
+
 export type ContentRepository = {
     upsertContent: (content: FeedItem | FeedDetail, type: FeedType, options?: { cacheState?: CacheState; voted?: boolean }) => Promise<void>;
     getContent: (id: string, type: FeedType) => Promise<DbContent | null>;

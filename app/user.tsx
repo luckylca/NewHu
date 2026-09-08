@@ -105,6 +105,8 @@ const UserScreen = ({ navigation }: any) => {
                 <Divider style={{ marginLeft: theme.spacing.lg }} />
                 <ListRow title="浏览历史" summary="查看最近浏览过的内容" onPress={() => router.push('/history')} />
                 <Divider style={{ marginLeft: theme.spacing.lg }} />
+                <ListRow title="知识卡片" summary="整理摘录、理解、标签与复习状态" onPress={() => router.push('/knowledge-cards')} />
+                <Divider style={{ marginLeft: theme.spacing.lg }} />
                 <ListRow title="离线缓存" summary="批量获取内容并保存到本地" onPress={() => router.push('/offline-cache')} />
                 <Divider style={{ marginLeft: theme.spacing.lg }} />
                 <ListRow title="设置" summary="管理账号、主题与应用偏好" onPress={() => router.push('/settings')} />

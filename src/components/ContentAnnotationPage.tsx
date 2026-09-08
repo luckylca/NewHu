@@ -1,11 +1,14 @@
 import { getAnswer, getApiInstance, getArticle } from '@/src/api/ZhihuApi';
 import LoadingView from '@/src/components/LoadingView';
+import { KnowledgeCardEditorSheet } from '@/src/components/KnowledgeCardEditorSheet';
 import {
     createContentAnnotation,
     deleteContentAnnotation,
     listContentAnnotations,
 } from '@/src/db/repositories/contentAnnotationRepository';
-import type { ContentAnnotation, ContentAnnotationKind } from '@/src/db/types';
+import { getContent } from '@/src/db/repositories/contentRepository';
+import { getKnowledgeCardByAnnotation } from '@/src/db/repositories/knowledgeCardRepository';
+import type { ContentAnnotation, ContentAnnotationKind, KnowledgeCard } from '@/src/db/types';
 import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
 import { notify } from '@/src/stores/useNotificationStore';
 import { useContentStore } from '@/src/stores/useContentStore';
@@ -93,6 +96,9 @@ export default function ContentAnnotationPage() {
     const [noteText, setNoteText] = useState('');
     const [managerVisible, setManagerVisible] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [cardEditorVisible, setCardEditorVisible] = useState(false);
+    const [cardEditorAnnotation, setCardEditorAnnotation] = useState<ContentAnnotation | null>(null);
+    const [cardEditorCard, setCardEditorCard] = useState<KnowledgeCard | null>(null);
 
     useEffect(() => {
         if (pending && pending.type === type && pending.id === id) {
@@ -115,6 +121,30 @@ export default function ContentAnnotationPage() {
 
         let cancelled = false;
         const load = async () => {
+            let localLoaded = false;
+            try {
+                const local = await getContent(id, type);
+                if (local && !cancelled) {
+                    localLoaded = true;
+                    setDocument({
+                        id,
+                        type,
+                        title: type === 'answer' ? local.questionTitle : local.title,
+                        authorName: local.authorName,
+                        questionId: local.questionId,
+                        updatedTime: local.updatedTime,
+                        htmlContent: local.content || '<p>暂无正文内容</p>',
+                    });
+                }
+            } catch (localError) {
+                console.warn('读取本地可标注文章失败', localError);
+            }
+
+            if (!cookies) {
+                if (!localLoaded && !cancelled) setError('本地没有正文缓存，请登录或联网后重试');
+                return;
+            }
+
             try {
                 getApiInstance(cookies);
                 const data = type === 'answer' ? await getAnswer(id) : await getArticle(id);
@@ -132,7 +162,7 @@ export default function ContentAnnotationPage() {
                 if (!cancelled) setDocument(nextDocument);
             } catch (loadError) {
                 console.error('加载可标注文章失败', loadError);
-                if (!cancelled) setError('内容加载失败，请返回详情页重试');
+                if (!localLoaded && !cancelled) setError('内容加载失败，请返回详情页重试');
             }
         };
         void load();
@@ -388,6 +418,19 @@ mark[data-kind="note"] { background: ${theme.colors.tertiaryContainer}; border-b
 })(); true;`);
     }, []);
 
+    const openKnowledgeCardEditor = useCallback(async (annotation: ContentAnnotation) => {
+        try {
+            const existing = await getKnowledgeCardByAnnotation(annotation.id);
+            setManagerVisible(false);
+            setCardEditorAnnotation(annotation);
+            setCardEditorCard(existing);
+            setTimeout(() => setCardEditorVisible(true), 180);
+        } catch (error) {
+            console.error('读取关联知识卡片失败', error);
+            notify('知识卡片读取失败');
+        }
+    }, []);
+
     if (!document) {
         return error ? (
             <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
@@ -573,6 +616,12 @@ mark[data-kind="note"] { background: ${theme.colors.tertiaryContainer}; border-b
                                 <View style={[styles.annotationActions, { marginTop: theme.spacing.md }]}>
                                     <Button
                                         style={{ flex: 1 }}
+                                        onPress={() => void openKnowledgeCardEditor(annotation)}
+                                    >
+                                        知识卡片
+                                    </Button>
+                                    <Button
+                                        style={{ flex: 1 }}
                                         onPress={() => locateAnnotation(annotation.id)}
                                     >
                                         定位
@@ -595,6 +644,22 @@ mark[data-kind="note"] { background: ${theme.colors.tertiaryContainer}; border-b
                     </View>
                 )}
             </BottomSheet>
+
+            <KnowledgeCardEditorSheet
+                visible={cardEditorVisible}
+                annotation={cardEditorAnnotation}
+                card={cardEditorCard}
+                onClose={() => {
+                    setCardEditorVisible(false);
+                    setCardEditorAnnotation(null);
+                    setCardEditorCard(null);
+                }}
+                onSaved={() => {
+                    setCardEditorVisible(false);
+                    setCardEditorAnnotation(null);
+                    setCardEditorCard(null);
+                }}
+            />
         </View>
     );
 }

@@ -1,4 +1,4 @@
-export const DATABASE_VERSION = 5;
+export const DATABASE_VERSION = 6;
 
 export const MIGRATION_1 = `
 CREATE TABLE IF NOT EXISTS contents (
@@ -287,4 +287,31 @@ CREATE INDEX IF NOT EXISTS idx_content_annotations_content
   ON content_annotations(content_id, content_type, selection_start, created_at);
 CREATE INDEX IF NOT EXISTS idx_content_annotations_updated
   ON content_annotations(updated_at DESC);
+`;
+
+export const MIGRATION_6 = `
+CREATE TABLE IF NOT EXISTS knowledge_cards (
+  id TEXT PRIMARY KEY,
+  annotation_id TEXT UNIQUE,
+  content_id TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  quote_text TEXT NOT NULL,
+  understanding_text TEXT NOT NULL DEFAULT '',
+  tags_json TEXT NOT NULL DEFAULT '[]',
+  review_state TEXT NOT NULL DEFAULT 'new',
+  title TEXT NOT NULL,
+  author_name TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  source_updated_at INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  last_reviewed_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_cards_updated
+  ON knowledge_cards(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_knowledge_cards_review
+  ON knowledge_cards(review_state, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_knowledge_cards_content
+  ON knowledge_cards(content_id, content_type);
 `;
