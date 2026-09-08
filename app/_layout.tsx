@@ -24,6 +24,7 @@ import { useSettingStore } from '@/src/stores/useSettingStore';
 import { getWallpaperBase } from '@/src/ui/theme/wallpaper';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { recoverSyncingActions } from '@/src/db/repositories/outboxRepository';
+import { getApiInstance } from '@/src/api/ZhihuApi';
 
 void SplashScreen.preventAutoHideAsync();
 SplashScreen.setOptions({ duration: 180, fade: true });
@@ -78,12 +79,16 @@ export default function RootLayout() {
 	};
 
 	const handleRootLayout = React.useCallback(() => {
-		if (!consentHydrated || splashHidden.current) return;
+		if (!consentHydrated || !userHydrated || splashHidden.current) return;
 		splashHidden.current = true;
 		void SplashScreen.hideAsync();
-	}, [consentHydrated]);
+	}, [consentHydrated, userHydrated]);
 
-	if (!consentHydrated) return null;
+	// Do not mount business routes until the persisted user session is hydrated.
+	// Detail routes call the shared API client in passive effects, so initializing
+	// it synchronously here guarantees cold-start deep links cannot race ahead.
+	if (!consentHydrated || !userHydrated) return null;
+	if (cookies) getApiInstance(cookies);
 
 	return (
 		<GestureHandlerRootView style={{ flex: 1 }} onLayout={handleRootLayout}>
