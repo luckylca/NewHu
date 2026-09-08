@@ -11,10 +11,9 @@ npm run android
 ```
 
 Use `npm run lint`, `npm run typecheck`, and `npm test` before committing.
-The login flow depends on `@react-native-cookies/cookies` to read HttpOnly
-session cookies. It currently runs through React Native's native-module
-interop; replace the unmaintained dependency before that compatibility layer
-is removed.
+The login flow uses the local `expo-cookie-storage` Android module, backed by
+`android.webkit.CookieManager`, to read the WebView cookie header including
+HttpOnly session cookies and to clear WebView cookies on logout.
 
 ## Current status
 
@@ -31,6 +30,7 @@ is removed.
 - [x] 本地 AI 写作特征检测：TAIDTF1 模型、设置开关、首页/详情页“疑似 AI”胶囊。
 - [x] AI 检测三档标定灵敏度：保守 / 平衡 / 高召回，使用冻结模型报告中的正式 operating points。
 - [x] 本地内容领域识别：首页与详情页支持最多 3 个不同颜色的领域胶囊。
+- [x] 登录 Cookie 原生桥接：本地 `expo-cookie-storage` 直接使用 Android `CookieManager`，已移除停止维护的第三方 Cookie 包。
 - [x] 回答/文章基础导出能力。
 
 ## Roadmap
@@ -41,7 +41,7 @@ is removed.
 - [x] 领域识别结果持久缓存，避免 App 重启后对同一内容重复跑 Tiny Encoder。
 - [x] 领域识别调度优化：可见卡片优先、离屏任务低优先级/可取消，减少首页胶囊延迟。
 - [x] 推荐原因解释：复用 Product V1 的兴趣命中、semantic score、质量信号和破圈信息。
-- [ ] 逐步替换已停止维护的 `@react-native-cookies/cookies` 兼容依赖。
+- [x] 已移除停止维护的 `@react-native-cookies/cookies`，改用本地 Android Cookie bridge。
 
 ### P1 — 阅读体验
 

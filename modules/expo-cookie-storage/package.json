@@ -1,0 +1,11 @@
+{
+  "name": "expo-cookie-storage",
+  "version": "1.0.0",
+  "description": "Small Android WebView cookie bridge backed by android.webkit.CookieManager.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "peerDependencies": {
+    "expo": "*",
+    "react-native": "*"
+  }
+}

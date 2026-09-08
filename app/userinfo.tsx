@@ -6,7 +6,7 @@ import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
 import { Image, ScrollView, View } from 'react-native';
-import CookieManager from '@react-native-cookies/cookies';
+import { clearAllCookies } from 'expo-cookie-storage';
 
 export default function UserInfoScreen() {
     const theme = useTheme();
@@ -16,7 +16,7 @@ export default function UserInfoScreen() {
     const logout = async () => {
         user.logOut();
         try {
-            await CookieManager.clearAll(true);
+            await clearAllCookies();
         } catch {
             // The persisted credential and API singleton are already cleared.
         }

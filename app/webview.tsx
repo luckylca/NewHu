@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, View } from 'react-native';
 import { WebView } from 'react-native-webview';
-import CookieManager from '@react-native-cookies/cookies';
+import { getCookieHeader } from 'expo-cookie-storage';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
@@ -9,6 +9,7 @@ import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import { getApiInstance } from '@/src/api/ZhihuApi';
 import MiuixProgressIndicator from '@/src/components/MiuixProgressIndicator';
+import { getCookieValue } from '@/src/utils/cookieHeader';
 const ZhihuLoginWebView = () => {
 
     const userStore = useUserStore();
@@ -28,15 +29,11 @@ const ZhihuLoginWebView = () => {
         if (verifyInFlightRef.current || loginCompletedRef.current) return;
 
         try {
-            const cookies = await CookieManager.get('https://www.zhihu.com');
-            const cookieString = Object.keys(cookies).map((key) => {
-                const item = cookies[key];
-                return `${key}=${item.value}`;
-            }).join('; ');
+            const cookieString = await getCookieHeader('https://www.zhihu.com');
 
-            // 未登录时也可能存在匿名 Cookie。没有 z_c0 时保持登录页可操作，
-            // 不显示验证弹层，也不改动本地账号状态。
-            if (!cookies.z_c0?.value || !cookieString.includes('z_c0=')) return;
+            // 系统 CookieManager 可以读取 WebView 的 HttpOnly Cookie。
+            // 未登录时也可能存在匿名 Cookie；只有拿到非空 z_c0 才验证登录态。
+            if (!getCookieValue(cookieString, 'z_c0')) return;
 
             verifyInFlightRef.current = true;
             setModalVisible(true);
