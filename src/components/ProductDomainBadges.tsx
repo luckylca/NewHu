@@ -6,6 +6,15 @@ import React from 'react';
 import { View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 
+function domainColorSeed(domain: string) {
+  let hash = 2166136261;
+  for (const char of domain) {
+    hash ^= char.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
 export function ProductDomainBadges({
   enabled,
   contentKey,
@@ -44,6 +53,30 @@ export function ProductDomainBadges({
 
   if (!enabled || domains.length === 0) return null;
 
+  const palette = [
+    { background: theme.colors.primaryContainer, foreground: theme.colors.onPrimaryContainer },
+    { background: theme.colors.secondaryContainer, foreground: theme.colors.onSecondaryContainer },
+    { background: theme.colors.tertiaryContainer, foreground: theme.colors.onTertiaryContainer },
+    { background: theme.colors.errorContainer, foreground: theme.colors.onErrorContainer },
+    { background: theme.colors.primaryVariant, foreground: theme.colors.onPrimaryVariant },
+    { background: theme.colors.secondaryVariant, foreground: theme.colors.onSecondaryVariant },
+    { background: theme.colors.secondaryContainerVariant, foreground: theme.colors.onSecondaryContainerVariant },
+    { background: theme.colors.surfaceContainerHigh, foreground: theme.colors.onSurfaceContainerHigh },
+  ];
+  const usedPaletteIndexes = new Set<number>();
+  const coloredDomains = domains.map((domain) => {
+    let paletteIndex = domainColorSeed(domain.domain) % palette.length;
+    for (let offset = 0; offset < palette.length; offset += 1) {
+      const candidate = (paletteIndex + offset) % palette.length;
+      if (!usedPaletteIndexes.has(candidate)) {
+        paletteIndex = candidate;
+        break;
+      }
+    }
+    usedPaletteIndexes.add(paletteIndex);
+    return { domain, colors: palette[paletteIndex] };
+  });
+
   return (
     <View
       pointerEvents="none"
@@ -57,19 +90,19 @@ export function ProductDomainBadges({
         style,
       ]}
     >
-      {domains.map((domain) => (
+      {coloredDomains.map(({ domain, colors }) => (
         <View
           key={domain.domain}
           style={{
             minHeight: 22,
             paddingHorizontal: 8,
             borderRadius: theme.radius.full,
-            backgroundColor: theme.colors.secondaryContainer,
+            backgroundColor: colors.background,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Text type="footnote2" weight="bold" color={theme.colors.onSecondaryContainer}>
+          <Text type="footnote2" weight="bold" color={colors.foreground}>
             {domain.label}
           </Text>
         </View>
