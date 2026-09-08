@@ -1,6 +1,7 @@
 // src/stores/useSettingStore.ts
 // 这里面放的是设置相关的信息，比如自动播放，快进倍速，选中的频道ID等
 import { createSecureZustandStorage } from '@/src/services/secureZustandStorage';
+import type { AiTextDetectionSensitivity } from '@/src/services/aiTextDetectorCore';
 import type { WallpaperBlurLevel } from '@/src/ui/theme/wallpaper';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
@@ -40,6 +41,8 @@ interface SettingState {
     setDeduplicateFeed: (enabled: boolean) => void;
     aiTextDetectionEnabled: boolean;
     setAiTextDetectionEnabled: (enabled: boolean) => void;
+    aiTextDetectionSensitivity: AiTextDetectionSensitivity;
+    setAiTextDetectionSensitivity: (sensitivity: AiTextDetectionSensitivity) => void;
 
     mode: 'normal' | 'card' | 'waterfall';
     setMode: (mode: 'normal' | 'card' | 'waterfall') => void; // 设置模式的函数
@@ -74,6 +77,10 @@ export const useSettingStore = create<SettingState>()(
             setDeduplicateFeed: (enabled) => set({ deduplicateFeed: enabled }),
             aiTextDetectionEnabled: false,
             setAiTextDetectionEnabled: (enabled) => set({ aiTextDetectionEnabled: enabled }),
+            // 新安装默认使用模型报告建议的平衡 operating point；
+            // 从旧版本迁移时仍保留原先的保守阈值行为。
+            aiTextDetectionSensitivity: 'balanced',
+            setAiTextDetectionSensitivity: (sensitivity) => set({ aiTextDetectionSensitivity: sensitivity }),
 
             mode: 'normal', // 默认模式
             setMode: (mode) => set({ mode }),
@@ -82,7 +89,7 @@ export const useSettingStore = create<SettingState>()(
         {
             name: 'setting-store',
             storage: createJSONStorage(() => createSecureZustandStorage('setting-store', 'cookie', 'newhu.zhihu.debug-cookie')),
-            version: 2,
+            version: 3,
             migrate: (persistedState) => {
                 const stored = (persistedState ?? {}) as Record<string, unknown>;
                 const wallpaperBlurLevel = migrateWallpaperBlurLevel(stored.wallpaperBlurLevel, stored.wallpaperBlur);
@@ -93,6 +100,10 @@ export const useSettingStore = create<SettingState>()(
                 delete migrated.useMonetText;
                 delete migrated.downloadDirectoryUri;
                 migrated.aiTextDetectionEnabled = stored.aiTextDetectionEnabled === true;
+                migrated.aiTextDetectionSensitivity =
+                    stored.aiTextDetectionSensitivity === 'balanced' || stored.aiTextDetectionSensitivity === 'sensitive'
+                        ? stored.aiTextDetectionSensitivity
+                        : 'conservative';
                 return { ...migrated, wallpaperBlurLevel } as unknown as SettingState;
             },
             // 所有设置字段都是可序列化的，整体持久化即可

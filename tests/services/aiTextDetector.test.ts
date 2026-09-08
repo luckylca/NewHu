@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { TaidTfidfModel } from '../../src/services/aiTextDetectorCore';
+import { AI_TEXT_SENSITIVITY_THRESHOLDS, TaidTfidfModel } from '../../src/services/aiTextDetectorCore';
 
 type GoldenVector = {
     id: string;
@@ -39,3 +39,25 @@ for (const vector of golden.vectors) {
         );
     });
 }
+
+test('TAIDTF1 sensitivity tiers use the frozen report operating points', () => {
+    assert.equal(AI_TEXT_SENSITIVITY_THRESHOLDS.conservative, 0.6648456937028345);
+    assert.equal(AI_TEXT_SENSITIVITY_THRESHOLDS.balanced, 0.5137511455);
+    assert.equal(AI_TEXT_SENSITIVITY_THRESHOLDS.sensitive, 0.2917528562);
+});
+
+test('TAIDTF1 sensitivity tiers relax the flagging threshold monotonically', () => {
+    const { conservative, balanced, sensitive } = AI_TEXT_SENSITIVITY_THRESHOLDS;
+    assert.ok(conservative > balanced, 'balanced tier must flag more than conservative');
+    assert.ok(balanced > sensitive, 'sensitive tier must flag more than balanced');
+});
+
+test('TAIDTF1 golden AI vectors flag at the sensitive tier but not the conservative tier', () => {
+    for (const id of ['ai_structured_intro', 'ai_polished_style']) {
+        const vector = golden.vectors.find((item) => item.id === id);
+        assert.ok(vector, `missing golden vector ${id}`);
+        const score = model.predictScore(vector.text);
+        assert.ok(score >= AI_TEXT_SENSITIVITY_THRESHOLDS.sensitive, `${id} should flag at sensitive tier: ${score}`);
+        assert.ok(score < AI_TEXT_SENSITIVITY_THRESHOLDS.conservative, `${id} should stay hidden at conservative tier: ${score}`);
+    }
+});

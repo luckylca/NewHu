@@ -1,3 +1,4 @@
+import { AI_TEXT_SENSITIVITY_THRESHOLDS, type AiTextDetectionSensitivity } from '@/src/services/aiTextDetectorCore';
 import { useSettingStore } from '@/src/stores/useSettingStore';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { Card, Divider, Icon, ListRow, Switch, TopAppBar } from '@/src/ui';
@@ -20,6 +21,8 @@ export default function SettingsScreen() {
     const setDeduplicateFeed = useSettingStore((state) => state.setDeduplicateFeed);
     const aiTextDetectionEnabled = useSettingStore((state) => state.aiTextDetectionEnabled);
     const setAiTextDetectionEnabled = useSettingStore((state) => state.setAiTextDetectionEnabled);
+    const aiSensitivity = useSettingStore((state) => state.aiTextDetectionSensitivity);
+    const setAiSensitivity = useSettingStore((state) => state.setAiTextDetectionSensitivity);
     const trailingChevron = <Icon name="chevron-right" size={22} color={theme.colors.onSurfaceVariantActions} />;
 
     return (
@@ -68,6 +71,22 @@ export default function SettingsScreen() {
                         trailing={<Switch value={aiTextDetectionEnabled} interactive={false} />}
                         onPress={() => setAiTextDetectionEnabled(!aiTextDetectionEnabled)}
                     />
+                    {aiTextDetectionEnabled ? (
+                        <>
+                            <Divider style={{ marginLeft: 60 }} />
+                            <SettingRow
+                                icon="tune"
+                                title="检测灵敏度"
+                                summary={AI_SENSITIVITY_OPTIONS[aiSensitivity].summary}
+                                trailing={(
+                                    <Text type="body2" color={theme.colors.primary}>
+                                        {AI_SENSITIVITY_OPTIONS[aiSensitivity].label}
+                                    </Text>
+                                )}
+                                onPress={() => setAiSensitivity(nextAiSensitivity(aiSensitivity))}
+                            />
+                        </>
+                    ) : null}
                 </SettingsGroup>
 
                 <SettingsGroup title="外观与体验">
@@ -94,6 +113,28 @@ export default function SettingsScreen() {
             </ScrollView>
         </View>
     );
+}
+
+const AI_SENSITIVITY_OPTIONS: Record<AiTextDetectionSensitivity, { label: string; summary: string }> = {
+    conservative: {
+        label: '保守',
+        summary: `阈值 ${AI_TEXT_SENSITIVITY_THRESHOLDS.conservative.toFixed(3)} · 内部测试真人误报约 1.00%`,
+    },
+    balanced: {
+        label: '平衡',
+        summary: `阈值 ${AI_TEXT_SENSITIVITY_THRESHOLDS.balanced.toFixed(3)} · 内部测试真人误报约 1.85%`,
+    },
+    sensitive: {
+        label: '高召回',
+        summary: `阈值 ${AI_TEXT_SENSITIVITY_THRESHOLDS.sensitive.toFixed(3)} · 内部测试真人误报约 4.85%`,
+    },
+};
+
+const AI_SENSITIVITY_ORDER: AiTextDetectionSensitivity[] = ['conservative', 'balanced', 'sensitive'];
+
+function nextAiSensitivity(current: AiTextDetectionSensitivity): AiTextDetectionSensitivity {
+    const index = AI_SENSITIVITY_ORDER.indexOf(current);
+    return AI_SENSITIVITY_ORDER[(index + 1) % AI_SENSITIVITY_ORDER.length];
 }
 
 function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {

@@ -3,6 +3,17 @@ export const AI_TEXT_MODEL_ENTRY_COUNT = 80_000;
 export const AI_TEXT_MODEL_MAX_CODE_POINTS = 192;
 export const AI_TEXT_CONSERVATIVE_THRESHOLD = 0.6648456937028345;
 
+export type AiTextDetectionSensitivity = 'conservative' | 'balanced' | 'sensitive';
+
+// 三档全部来自冻结模型报告中的 validation-selected operating points：
+// <=1% / <=2% / <=5% Human-FPR budget。固定内部测试上的实际 Human FPR
+// 约为 1.00% / 1.85% / 4.85%；跨领域或外部分布下可能明显更高。
+export const AI_TEXT_SENSITIVITY_THRESHOLDS: Record<AiTextDetectionSensitivity, number> = {
+    conservative: AI_TEXT_CONSERVATIVE_THRESHOLD,
+    balanced: 0.5137511455,
+    sensitive: 0.2917528562,
+};
+
 const TAIDTF1_MAGIC = [0x54, 0x41, 0x49, 0x44, 0x54, 0x46, 0x31, 0x00] as const;
 const HEADER_SIZE = 20;
 

@@ -72,6 +72,6 @@ export function clearAiTextDetectionCache() {
     scoreCache.clear();
 }
 
-export function isSuspiciousAiScore(score: number) {
-    return score >= AI_TEXT_CONSERVATIVE_THRESHOLD;
+export function isSuspiciousAiScore(score: number, threshold = AI_TEXT_CONSERVATIVE_THRESHOLD) {
+    return score >= threshold;
 }

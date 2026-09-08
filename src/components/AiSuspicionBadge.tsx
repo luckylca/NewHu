@@ -1,4 +1,5 @@
 import { detectAiTextCached, isSuspiciousAiScore } from '@/src/services/aiTextDetector';
+import { AI_TEXT_SENSITIVITY_THRESHOLDS } from '@/src/services/aiTextDetectorCore';
 import { useSettingStore } from '@/src/stores/useSettingStore';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
@@ -13,6 +14,7 @@ export function AiSuspicionBadge({ contentKey, text, style }: {
 }) {
     const theme = useTheme();
     const enabled = useSettingStore((state) => state.aiTextDetectionEnabled);
+    const sensitivity = useSettingStore((state) => state.aiTextDetectionSensitivity);
     const [score, setScore] = useState<number | null>(null);
 
     useEffect(() => {
@@ -34,7 +36,7 @@ export function AiSuspicionBadge({ contentKey, text, style }: {
         };
     }, [contentKey, enabled, text]);
 
-    if (!enabled || score == null || !isSuspiciousAiScore(score)) return null;
+    if (!enabled || score == null || !isSuspiciousAiScore(score, AI_TEXT_SENSITIVITY_THRESHOLDS[sensitivity])) return null;
 
     return (
         <View
