@@ -130,7 +130,7 @@ export default function RootLayout() {
 								<Stack.Screen name="userinfo" options={{ title: '用户信息' }} />
 								<Stack.Screen name="item/[type]/[id]" options={{ title: '详情' }} />
 				<Stack.Screen name="copy/[type]/[id]" options={{ title: '复制内容' }} />
-				<Stack.Screen name="select-text/[type]/[id]" options={{ title: '选择全文' }} />
+				<Stack.Screen name="select-text/[type]/[id]" options={{ title: '划线与笔记' }} />
 								<Stack.Screen name="people" options={{ title: '人物信息' }} />
 								<Stack.Screen name="question" options={{ title: '问题详情' }} />
 								<Stack.Screen name="dev/design-system" options={{ title: 'UI Showcase' }} />

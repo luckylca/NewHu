@@ -107,6 +107,25 @@ export type ReadingProgress = {
     updatedAt: number;
 };
 
+export type ContentAnnotationKind = 'highlight' | 'excerpt' | 'note';
+
+export type ContentAnnotation = {
+    id: string;
+    contentId: string;
+    contentType: FeedType;
+    kind: ContentAnnotationKind;
+    selectionStart: number;
+    selectionEnd: number;
+    quoteText: string;
+    noteText: string;
+    title: string;
+    authorName: string;
+    sourceUrl: string;
+    sourceUpdatedAt: number;
+    createdAt: number;
+    updatedAt: number;
+};
+
 export type ContentRepository = {
     upsertContent: (content: FeedItem | FeedDetail, type: FeedType, options?: { cacheState?: CacheState; voted?: boolean }) => Promise<void>;
     getContent: (id: string, type: FeedType) => Promise<DbContent | null>;

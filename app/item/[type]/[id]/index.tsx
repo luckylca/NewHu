@@ -584,17 +584,28 @@ export default function Item() {
         });
     };
 
-    const openCopyPage = () => {
-        if (!readData) return;
+    const prepareSelectionDocument = () => {
+        if (!readData) return false;
         setPendingExport({
             id: String(readData.id),
             type,
             title: type === 'answer' ? readData.questionTitle : readData.title,
             authorName: readData.authorName,
+            questionId: readData.questionId,
             updatedTime: readData.updatedTime,
             htmlContent: readData.content || '<p>暂无正文内容</p>',
         });
+        return true;
+    };
+
+    const openAnnotationPage = () => {
+        if (!prepareSelectionDocument() || !readData) return;
         router.push({ pathname: '/select-text/[type]/[id]', params: { type, id: String(readData.id) } });
+    };
+
+    const openCopyPage = () => {
+        if (!prepareSelectionDocument() || !readData) return;
+        router.push({ pathname: '/copy/[type]/[id]', params: { type, id: String(readData.id) } });
     };
 
     const addToLaterRead = () => {
@@ -742,6 +753,7 @@ export default function Item() {
                         label: '稍后阅读',
                         onPress: addToLaterRead,
                     },
+                    { label: '划线与笔记', onPress: openAnnotationPage },
                     { label: '复制内容', onPress: openCopyPage },
                     { label: '导出文档', onPress: () => void runDocumentExport(), disabled: documentExporting },
                     {

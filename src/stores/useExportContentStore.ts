@@ -6,6 +6,7 @@ export interface ExportContent {
     type: FeedType;
     title: string;
     authorName: string;
+    questionId?: string;
     updatedTime: number;
     htmlContent: string;
 }

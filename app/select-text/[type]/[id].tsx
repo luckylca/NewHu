@@ -1,5 +1,5 @@
-import ContentSelectionPage from '@/src/components/ContentSelectionPage';
+import ContentAnnotationPage from '@/src/components/ContentAnnotationPage';
 
 export default function SelectTextRoute() {
-    return <ContentSelectionPage pageTitle="选择全文" />;
+    return <ContentAnnotationPage />;
 }

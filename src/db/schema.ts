@@ -1,4 +1,4 @@
-export const DATABASE_VERSION = 4;
+export const DATABASE_VERSION = 5;
 
 export const MIGRATION_1 = `
 CREATE TABLE IF NOT EXISTS contents (
@@ -263,4 +263,28 @@ CREATE TABLE IF NOT EXISTS reading_progress (
 
 CREATE INDEX IF NOT EXISTS idx_reading_progress_updated
   ON reading_progress(updated_at DESC);
+`;
+
+export const MIGRATION_5 = `
+CREATE TABLE IF NOT EXISTS content_annotations (
+  id TEXT PRIMARY KEY,
+  content_id TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  selection_start INTEGER NOT NULL,
+  selection_end INTEGER NOT NULL,
+  quote_text TEXT NOT NULL,
+  note_text TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL,
+  author_name TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  source_updated_at INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_content_annotations_content
+  ON content_annotations(content_id, content_type, selection_start, created_at);
+CREATE INDEX IF NOT EXISTS idx_content_annotations_updated
+  ON content_annotations(updated_at DESC);
 `;
