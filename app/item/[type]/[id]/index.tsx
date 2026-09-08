@@ -5,6 +5,7 @@ import ImageReanimatedModal from "@/src/components/ImageReanimatedModal";
 import LoadingView from "@/src/components/LoadingView";
 import OfflineImage from "@/src/components/OfflineImage";
 import { AiSuspicionBadge } from "@/src/components/AiSuspicionBadge";
+import { ProductDomainBadges } from "@/src/components/ProductDomainBadges";
 import { useContentStore } from "@/src/stores/useContentStore";
 import { useExportContentStore } from "@/src/stores/useExportContentStore";
 import { useLaterReadStore } from "@/src/stores/useLaterReadStore";
@@ -13,6 +14,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, FlatList, Image, Pressable, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { useFocusEffect } from "@react-navigation/native";
 import { Divider, Icon, ListRow, Menu, TopAppBar } from "@/src/ui";
 import { notify } from '@/src/stores/useNotificationStore';
 import { PressIndication, Text } from "@/src/ui/primitives";
@@ -27,7 +29,7 @@ import { normalizeContent } from "@/src/db/mappers";
 import { setContentVote } from "@/src/services/offlineActions";
 import { normalizeRemoteUrl, resolveImageUri } from "@/src/services/resourceService";
 import { useConsentStore } from '@/src/stores/useConsentStore';
-import { recordProductV1Feedback } from '@/src/product-v1';
+import { getProductV1RuntimeAssetStatus, recordProductV1Feedback } from '@/src/product-v1';
 
 export type ItemParams = {
     id: string;
@@ -289,6 +291,7 @@ export default function Item() {
     const [imageUrl, setImageUrl] = useState("");
     const [imageExporting, setImageExporting] = useState(false);
     const [documentExporting, setDocumentExporting] = useState(false);
+    const [domainLabelsEnabled, setDomainLabelsEnabled] = useState(() => getProductV1RuntimeAssetStatus().installed);
     const { width } = useWindowDimensions();
 
     const [readData, setReadData] = useState<FeedDetail | null>(null);
@@ -311,6 +314,10 @@ export default function Item() {
     const contentType = type === 'answer' ? 'answer' : 'article';
     const addLaterReadItem = useLaterReadStore((state) => state.addItem);
     const requestLaterReadPanelOpen = useLaterReadStore((state) => state.requestPanelOpen);
+
+    useFocusEffect(React.useCallback(() => {
+        setDomainLabelsEnabled(getProductV1RuntimeAssetStatus().installed);
+    }, []));
 
     useEffect(() => {
         if (networkStatus === 'online') {
@@ -771,6 +778,13 @@ export default function Item() {
                                 <AiSuspicionBadge
                                     contentKey={`${contentType}:${readData.id}`}
                                     text={aiDetectionText}
+                                    style={{ marginLeft: 8, marginTop: 4 }}
+                                />
+                                <ProductDomainBadges
+                                    enabled={domainLabelsEnabled}
+                                    contentKey={`${contentType}:${readData.id}`}
+                                    title={title}
+                                    excerpt={aiDetectionText}
                                     style={{ marginLeft: 8, marginTop: 4 }}
                                 />
                             </View>

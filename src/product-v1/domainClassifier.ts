@@ -1,0 +1,102 @@
+import { loadProductV1SeedBank, loadProductV1SeedEmbeddings } from './assets';
+import { encodeArticle } from './encoder';
+import { productV1DomainLabel } from './domainLabels';
+import { selectProductV1DomainMatches, type ProductV1DomainMatch } from './domainSelection';
+import { routeSearchSeedsV2 } from './core/searchSeedRouterV2';
+import { getProductV1RuntimeAssetStatus } from './runtimeAssets';
+
+const MAX_CACHE_ENTRIES = 500;
+const MAX_CLASSIFICATION_CODE_POINTS = 1200;
+
+type CachedDomains = {
+  fingerprint: string;
+  matches: ProductV1DomainMatch[];
+};
+
+const cache = new Map<string, CachedDomains>();
+const inFlight = new Map<string, Promise<ProductV1DomainMatch[]>>();
+let classificationQueue: Promise<void> = Promise.resolve();
+
+function boundedText(value: string) {
+  return Array.from(value ?? '').slice(0, MAX_CLASSIFICATION_CODE_POINTS).join('').trim();
+}
+
+function enqueue<T>(work: () => Promise<T>) {
+  const result = classificationQueue.then(work, work);
+  classificationQueue = result.then(() => undefined, () => undefined);
+  return result;
+}
+
+function trimCache() {
+  while (cache.size > MAX_CACHE_ENTRIES) {
+    const oldest = cache.keys().next().value;
+    if (oldest == null) return;
+    cache.delete(oldest);
+  }
+}
+
+export function isProductV1DomainClassificationAvailable() {
+  return getProductV1RuntimeAssetStatus().installed;
+}
+
+export async function classifyProductV1Domains(
+  contentKey: string,
+  title: string,
+  excerpt: string,
+): Promise<ProductV1DomainMatch[]> {
+  if (!isProductV1DomainClassificationAvailable()) return [];
+
+  const normalizedTitle = boundedText(title);
+  const normalizedExcerpt = boundedText(excerpt);
+  const fingerprint = `${normalizedTitle}\u0000${normalizedExcerpt}`;
+
+  const cached = cache.get(contentKey);
+  if (cached?.fingerprint === fingerprint) return cached.matches;
+
+  const pendingKey = `${contentKey}\u0000${fingerprint}`;
+  const existing = inFlight.get(pendingKey);
+  if (existing) return existing;
+
+  const promise = enqueue(async () => {
+    // Do not let the classifier itself trigger a Product V1 resource download.
+    if (!isProductV1DomainClassificationAvailable()) return [];
+
+    const embedding = await encodeArticle({
+      title: normalizedTitle,
+      excerpt: normalizedExcerpt,
+    });
+    const bank = loadProductV1SeedBank();
+    const seedEmbeddings = await loadProductV1SeedEmbeddings();
+    const routed = routeSearchSeedsV2(embedding, bank, seedEmbeddings, {
+      primaryDomains: [],
+      variant: 'GLOBAL_COSINE',
+      topK: 24,
+    });
+
+    const matches = selectProductV1DomainMatches(
+      routed.map((row) => ({
+        domain: row.score.broadDomain,
+        score: row.score.semanticScore,
+      })),
+      {
+        minScore: 0.18,
+        maxGapFromBest: 0.08,
+        maxDomains: 3,
+        labelForDomain: productV1DomainLabel,
+      },
+    );
+
+    cache.set(contentKey, { fingerprint, matches });
+    trimCache();
+    return matches;
+  }).finally(() => {
+    inFlight.delete(pendingKey);
+  });
+
+  inFlight.set(pendingKey, promise);
+  return promise;
+}
+
+export function clearProductV1DomainClassificationCache() {
+  cache.clear();
+}

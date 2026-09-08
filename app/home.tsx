@@ -3,6 +3,7 @@ import { getRecommendNextCursor, getRecommendSessionToken, normalizeRecommendIte
 import { useContentStore } from '@/src/stores/useContentStore';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent, RefreshControl, ScrollView, View, StyleSheet, Share } from 'react-native';
 import type { GestureResponderEvent, LayoutChangeEvent } from 'react-native';
@@ -18,8 +19,9 @@ import { notify } from '@/src/stores/useNotificationStore';
 import { getRecentFeed, saveFeedEntries, trimTransientFeedEntries } from '@/src/db/repositories/feedRepository';
 import { recordUserEvent } from '@/src/db/repositories/userEventRepository';
 import { useConsentStore } from '@/src/stores/useConsentStore';
-import { processProductV1Feed, recordProductV1Exposure, recordProductV1Feedback } from '@/src/product-v1';
+import { getProductV1RuntimeAssetStatus, processProductV1Feed, recordProductV1Exposure, recordProductV1Feedback } from '@/src/product-v1';
 import { AiSuspicionBadge } from '@/src/components/AiSuspicionBadge';
+import { ProductDomainBadges } from '@/src/components/ProductDomainBadges';
 
 const { width: WindowWidth } = Dimensions.get('window');
 const WindowHeight = Dimensions.get('window').height;
@@ -49,12 +51,13 @@ function getAiDetectionText(item: FeedItem) {
 }
 
 // ==================== 普通模式 Item ====================
-export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetection, onOpenMenu }: {
+export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetection, showDomainLabels, onOpenMenu }: {
     item: FeedItem;
     type: FeedType;
     needToGet: boolean;
     hideTitle?: boolean;
     showAiDetection?: boolean;
+    showDomainLabels?: boolean;
     onOpenMenu?: (item: FeedItem, feedType: FeedType, event: GestureResponderEvent) => void;
 }) => {
     const title = (type === 'answer' && item.questionTitle) ? item.questionTitle : item.title;
@@ -96,6 +99,13 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetect
                             style={{ marginLeft: 6, marginTop: 2 }}
                         />
                     ) : null}
+                    <ProductDomainBadges
+                        enabled={Boolean(showDomainLabels)}
+                        contentKey={`${type}:${item.id}`}
+                        title={title || '无标题'}
+                        excerpt={getContentPreview(item)}
+                        style={{ marginLeft: 6, marginTop: 2 }}
+                    />
                 </View>
             )}
             <Text type="body2" color={metaColor} style={{ marginBottom: 10, lineHeight: 20 }} numberOfLines={3}>
@@ -124,7 +134,9 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetect
         prevProps.type === nextProps.type &&
         prevProps.needToGet === nextProps.needToGet &&
         prevProps.onOpenMenu === nextProps.onOpenMenu &&
-        prevProps.hideTitle === nextProps.hideTitle;
+        prevProps.hideTitle === nextProps.hideTitle &&
+        prevProps.showAiDetection === nextProps.showAiDetection &&
+        prevProps.showDomainLabels === nextProps.showDomainLabels;
 });
 RenderItem.displayName = 'RenderItem';
 
@@ -148,11 +160,12 @@ type WaterfallPlacement = {
     height: number;
 };
 
-const WaterfallItem = memo(({ item, type, needToGet, measurementKey, onMeasured, onOpenMenu }: {
+const WaterfallItem = memo(({ item, type, needToGet, measurementKey, showDomainLabels, onMeasured, onOpenMenu }: {
     item: FeedItem;
     type: FeedType;
     needToGet: boolean;
     measurementKey: string;
+    showDomainLabels?: boolean;
     onMeasured?: (key: string, height: number) => void;
     onOpenMenu?: (item: FeedItem, feedType: FeedType, event: GestureResponderEvent) => void;
 }) => {
@@ -202,6 +215,13 @@ const WaterfallItem = memo(({ item, type, needToGet, measurementKey, onMeasured,
                         text={getAiDetectionText(item)}
                         style={{ marginLeft: 6, marginTop: 2 }}
                     />
+                    <ProductDomainBadges
+                        enabled={Boolean(showDomainLabels)}
+                        contentKey={`${type}:${item.id}`}
+                        title={title || '无标题'}
+                        excerpt={getContentPreview(item)}
+                        style={{ marginLeft: 6, marginTop: 2 }}
+                    />
                 </View>
                 <Text type="body2" color={metaColor} numberOfLines={excerptLines} style={{ marginTop: 8, lineHeight: 20 }}>
                     {item.excerpt || '暂无简介'}
@@ -220,18 +240,20 @@ const WaterfallItem = memo(({ item, type, needToGet, measurementKey, onMeasured,
     prevProps.type === nextProps.type &&
     prevProps.needToGet === nextProps.needToGet &&
     prevProps.measurementKey === nextProps.measurementKey &&
+    prevProps.showDomainLabels === nextProps.showDomainLabels &&
     prevProps.onMeasured === nextProps.onMeasured &&
     prevProps.onOpenMenu === nextProps.onOpenMenu
 ));
 WaterfallItem.displayName = 'WaterfallItem';
 
 // ==================== 卡片模式 Item ====================
-export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimations, hideTitle, onOpenMenu }: {
+export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimations, hideTitle, showDomainLabels, onOpenMenu }: {
     item: FeedItem;
     type: FeedType;
     needToGet: boolean;
     disableAnimations?: boolean;
     hideTitle?: boolean;
+    showDomainLabels?: boolean;
     onOpenMenu?: (item: FeedItem, feedType: FeedType, event: GestureResponderEvent) => void;
 }) => {
     const title = (type === 'answer' && item.questionTitle) ? item.questionTitle : item.title;
@@ -288,6 +310,13 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                                 text={getAiDetectionText(item)}
                                 style={{ marginLeft: 8, marginTop: 3 }}
                             />
+                            <ProductDomainBadges
+                                enabled={Boolean(showDomainLabels)}
+                                contentKey={`${type}:${item.id}`}
+                                title={title || '无标题'}
+                                excerpt={preview}
+                                style={{ marginLeft: 8, marginTop: 3 }}
+                            />
                         </View>
                     )}
                     
@@ -335,7 +364,8 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
         prevProps.type === nextProps.type &&
         prevProps.needToGet === nextProps.needToGet &&
         prevProps.onOpenMenu === nextProps.onOpenMenu &&
-        prevProps.hideTitle === nextProps.hideTitle;
+        prevProps.hideTitle === nextProps.hideTitle &&
+        prevProps.showDomainLabels === nextProps.showDomainLabels;
 });
 RenderCardModeItem.displayName = 'RenderCardModeItem';
 
@@ -369,7 +399,12 @@ const HomeScreen = () => {
     const [cardListHeight, setCardListHeight] = useState(0);
     const [actionMenuTarget, setActionMenuTarget] = useState<{ item: FeedItem; type: FeedType } | null>(null);
     const [actionMenuAnchor, setActionMenuAnchor] = useState({ x: 0, y: 0, width: 1, height: 1 });
+    const [domainLabelsEnabled, setDomainLabelsEnabled] = useState(() => getProductV1RuntimeAssetStatus().installed);
     const requestInFlightRef = useRef(false);
+
+    useFocusEffect(useCallback(() => {
+        setDomainLabelsEnabled(getProductV1RuntimeAssetStatus().installed);
+    }, []));
     const visibleFeedList = useMemo(() => feedList.filter((feed) => (
         !(filterAds && feed.isAds) && !(filterPaid && feed.isPaid)
     )), [feedList, filterAds, filterPaid]);
@@ -720,10 +755,11 @@ const HomeScreen = () => {
                 type={item.feedType}
                 needToGet={true}
                 showAiDetection
+                showDomainLabels={domainLabelsEnabled}
                 onOpenMenu={openActionMenu}
             />
         );
-    }, [openActionMenu]);
+    }, [domainLabelsEnabled, openActionMenu]);
 
     // 关键改动：在这里把 item.feedType 作为形参绑定闭包传给 RenderCardModeItem
     const renderCardListItem = useCallback(({ item }: { item: FeedItemInfo }) => {
@@ -733,10 +769,11 @@ const HomeScreen = () => {
                 type={item.feedType}
                 needToGet={true}
                 disableAnimations={disableAnimations}
+                showDomainLabels={domainLabelsEnabled}
                 onOpenMenu={openActionMenu}
             />
         );
-    }, [disableAnimations, openActionMenu]);
+    }, [disableAnimations, domainLabelsEnabled, openActionMenu]);
 
     const waterfallColumnWidth = Math.max(0, (WindowWidth - 24 - WATERFALL_GAP) / 2);
     const waterfallLayout = useMemo(() => {
@@ -903,6 +940,7 @@ const HomeScreen = () => {
                                         type={feed.feedType}
                                         needToGet={true}
                                         measurementKey={`${feed.feedType}:${feed.item.id}`}
+                                        showDomainLabels={domainLabelsEnabled}
                                         onMeasured={handleWaterfallMeasured}
                                         onOpenMenu={openActionMenu}
                                     />
