@@ -38,6 +38,8 @@ interface SettingState {
     setPaid: (enabled: boolean) => void;
     deduplicateFeed: boolean; // 是否剔除已经推送过的文章和回答
     setDeduplicateFeed: (enabled: boolean) => void;
+    aiTextDetectionEnabled: boolean;
+    setAiTextDetectionEnabled: (enabled: boolean) => void;
 
     mode: 'normal' | 'card' | 'waterfall';
     setMode: (mode: 'normal' | 'card' | 'waterfall') => void; // 设置模式的函数
@@ -70,6 +72,8 @@ export const useSettingStore = create<SettingState>()(
             setPaid: (enabled) => set({ isPaid: enabled }),
             deduplicateFeed: true,
             setDeduplicateFeed: (enabled) => set({ deduplicateFeed: enabled }),
+            aiTextDetectionEnabled: false,
+            setAiTextDetectionEnabled: (enabled) => set({ aiTextDetectionEnabled: enabled }),
 
             mode: 'normal', // 默认模式
             setMode: (mode) => set({ mode }),
@@ -78,7 +82,7 @@ export const useSettingStore = create<SettingState>()(
         {
             name: 'setting-store',
             storage: createJSONStorage(() => createSecureZustandStorage('setting-store', 'cookie', 'newhu.zhihu.debug-cookie')),
-            version: 1,
+            version: 2,
             migrate: (persistedState) => {
                 const stored = (persistedState ?? {}) as Record<string, unknown>;
                 const wallpaperBlurLevel = migrateWallpaperBlurLevel(stored.wallpaperBlurLevel, stored.wallpaperBlur);
@@ -88,6 +92,7 @@ export const useSettingStore = create<SettingState>()(
                 delete migrated.wallpaperOpacity;
                 delete migrated.useMonetText;
                 delete migrated.downloadDirectoryUri;
+                migrated.aiTextDetectionEnabled = stored.aiTextDetectionEnabled === true;
                 return { ...migrated, wallpaperBlurLevel } as unknown as SettingState;
             },
             // 所有设置字段都是可序列化的，整体持久化即可

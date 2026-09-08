@@ -18,6 +18,8 @@ export default function SettingsScreen() {
     const setFilterPaid = useSettingStore((state) => state.setPaid);
     const deduplicateFeed = useSettingStore((state) => state.deduplicateFeed);
     const setDeduplicateFeed = useSettingStore((state) => state.setDeduplicateFeed);
+    const aiTextDetectionEnabled = useSettingStore((state) => state.aiTextDetectionEnabled);
+    const setAiTextDetectionEnabled = useSettingStore((state) => state.setAiTextDetectionEnabled);
     const trailingChevron = <Icon name="chevron-right" size={22} color={theme.colors.onSurfaceVariantActions} />;
 
     return (
@@ -57,6 +59,14 @@ export default function SettingsScreen() {
                         summary="不再展示已经推送过的文章和回答"
                         trailing={<Switch value={deduplicateFeed} interactive={false} />}
                         onPress={() => setDeduplicateFeed(!deduplicateFeed)}
+                    />
+                    <Divider style={{ marginLeft: 60 }} />
+                    <SettingRow
+                        icon="robot-outline"
+                        title="AI 内容检测"
+                        summary="在本机检测回答和文章中的 AI 写作特征"
+                        trailing={<Switch value={aiTextDetectionEnabled} interactive={false} />}
+                        onPress={() => setAiTextDetectionEnabled(!aiTextDetectionEnabled)}
                     />
                 </SettingsGroup>
 

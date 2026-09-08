@@ -4,6 +4,7 @@ import type { FeedDetail } from "@/src/types/zhihu";
 import ImageReanimatedModal from "@/src/components/ImageReanimatedModal";
 import LoadingView from "@/src/components/LoadingView";
 import OfflineImage from "@/src/components/OfflineImage";
+import { AiSuspicionBadge } from "@/src/components/AiSuspicionBadge";
 import { useContentStore } from "@/src/stores/useContentStore";
 import { useExportContentStore } from "@/src/stores/useExportContentStore";
 import { useLaterReadStore } from "@/src/stores/useLaterReadStore";
@@ -17,7 +18,7 @@ import { notify } from '@/src/stores/useNotificationStore';
 import { PressIndication, Text } from "@/src/ui/primitives";
 import type { IconName } from "@/src/ui/primitives";
 import { useTheme } from "@/src/ui/theme";
-import { exportImage, exportPdf } from '@/src/utils/contentExport';
+import { exportImage, exportPdf, htmlToPlainText } from '@/src/utils/contentExport';
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import RenderHtml from 'react-native-render-html';
 import { DomUtils, parseDocument } from 'htmlparser2';
@@ -650,6 +651,10 @@ export default function Item() {
 
     const htmlContent = readData?.content || "<p>暂无正文内容</p>";
     const articleChunks = useMemo(() => splitArticleHtml(htmlContent), [htmlContent]);
+    const aiDetectionText = useMemo(
+        () => htmlToPlainText(readData?.content || readData?.excerpt || ''),
+        [readData?.content, readData?.excerpt],
+    );
 
 
     if (!hydrated) {
@@ -761,7 +766,14 @@ export default function Item() {
                             onPressOut={() => (titlePressed.value = 0)}
                             style={{ width: '100%', borderRadius: theme.radius.component, overflow: 'hidden', paddingTop: 8, paddingBottom: 8 }}
                         >
-                            <Text type="title2" weight="bold" color={primaryText}>{title}</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <Text type="title2" weight="bold" color={primaryText} style={{ flexShrink: 1 }}>{title}</Text>
+                                <AiSuspicionBadge
+                                    contentKey={`${contentType}:${readData.id}`}
+                                    text={aiDetectionText}
+                                    style={{ marginLeft: 8, marginTop: 4 }}
+                                />
+                            </View>
                             <PressIndication pressed={titlePressed} color={primaryText} radius={theme.radius.component} />
                         </Pressable>
                         <ListRow

@@ -1,0 +1,86 @@
+{
+  "schema": "taidtf1_golden_vectors_v1",
+  "model_file": "tfidf_opening_192_plus_nlpcc.taid",
+  "model_sha256": "9a504fb699d335836737a54fbdd839f3c9d2e3d48c0c2fc3dec2ff300ccc4300",
+  "format": "TAIDTF1",
+  "entry_count": 80000,
+  "max_code_points": 192,
+  "tolerance_abs_probability": 1e-05,
+  "notes": [
+    "Inputs are body/opening text only; title is intentionally ignored by this model.",
+    "Expo/React Native ports must truncate and generate n-grams by Unicode code point, not UTF-16 code unit.",
+    "Probabilities are raw logistic AI-like scores, not calibrated authorship proof."
+  ],
+  "vectors": [
+    {
+      "id": "empty",
+      "text": "",
+      "expected_logit": -2.856093406677246,
+      "expected_probability": 0.05436719462755677,
+      "label_at_0_5": 0
+    },
+    {
+      "id": "single_code_point",
+      "text": "中",
+      "expected_logit": -2.856093406677246,
+      "expected_probability": 0.05436719462755677,
+      "label_at_0_5": 0
+    },
+    {
+      "id": "human_daily_note",
+      "text": "今天下午我去图书馆借了一本书，路上风有点大，但阳光很好。回来以后我把实验记录整理了一遍，发现昨天漏写了一个小步骤。",
+      "expected_logit": -5.22120520192474,
+      "expected_probability": 0.005371804002799799,
+      "label_at_0_5": 0
+    },
+    {
+      "id": "ai_structured_intro",
+      "text": "首先，本文将从背景、问题、方法和结论四个方面进行系统分析，并在此基础上提出具有可操作性的优化建议。",
+      "expected_logit": 0.08752115383544368,
+      "expected_probability": 0.5218663323184832,
+      "label_at_0_5": 1
+    },
+    {
+      "id": "whitespace_case",
+      "text": "A  B\t\tC\n\n测试 Mixed CASE 123!",
+      "expected_logit": -2.239109661838183,
+      "expected_probability": 0.09629299167412352,
+      "label_at_0_5": 0
+    },
+    {
+      "id": "emoji_unicode",
+      "text": "这是一个包含 emoji 😀😃😄 和中文的测试文本，用来检查 Unicode 截断和字符 n-gram 是否按照码点处理。",
+      "expected_logit": -2.52147178595621,
+      "expected_probability": 0.07436656955120684,
+      "label_at_0_5": 0
+    },
+    {
+      "id": "punctuation_mixed",
+      "text": "他说：“这个方案不一定完美，但是至少可以先跑通。”随后，他又补充了两个边界条件：空输入、超长输入。",
+      "expected_logit": -5.265684377251665,
+      "expected_probability": 0.0051393074989939695,
+      "label_at_0_5": 0
+    },
+    {
+      "id": "long_truncation",
+      "text": "超长输入检查：这是一段用于确认一百九十二个 Unicode 码点截断行为的中文文本。这是一段用于确认一百九十二个 Unicode 码点截断行为的中文文本。这是一段用于确认一百九十二个 Unicode 码点截断行为的中文文本。这是一段用于确认一百九十二个 Unicode 码点截断行为的中文文本。这是一段用于确认一百九十二个 Unicode 码点截断行为的中文文本。这是一段用于确认一百九十二个 Unicode 码点截断行为的中文文本。这是一段用于确认一百九十二个 Unicode 码点截断行为的中文文本。这是一段用于确认一百九十二个 Unicode 码点截断行为的中文文本。这是一段用于确认一百九十二个 Unicode 码点截断行为的中文文本。这是一段用于确认一百九十二个 Unicode 码点截断行为的中文文本。这是一段用于确认一百九十二个 Unicode 码点截断行为的中文文本。这是一段用于确认一百九十二个 Unicode 码点截断行为的中文文本。END",
+      "expected_logit": -1.1566265878764042,
+      "expected_probability": 0.23928079199805208,
+      "label_at_0_5": 0
+    },
+    {
+      "id": "ai_polished_style",
+      "text": "综上所述，该方案在实际应用中具有较强的可行性和推广价值，但仍需结合具体场景进一步验证其稳定性与鲁棒性。",
+      "expected_logit": 0.6588949241690671,
+      "expected_probability": 0.6590121048234755,
+      "label_at_0_5": 1
+    },
+    {
+      "id": "null_like_string",
+      "text": "None",
+      "expected_logit": -3.343575664277219,
+      "expected_probability": 0.03410616837671332,
+      "label_at_0_5": 0
+    }
+  ]
+}

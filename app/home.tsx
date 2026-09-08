@@ -19,6 +19,7 @@ import { getRecentFeed, saveFeedEntries, trimTransientFeedEntries } from '@/src/
 import { recordUserEvent } from '@/src/db/repositories/userEventRepository';
 import { useConsentStore } from '@/src/stores/useConsentStore';
 import { processProductV1Feed, recordProductV1Exposure, recordProductV1Feedback } from '@/src/product-v1';
+import { AiSuspicionBadge } from '@/src/components/AiSuspicionBadge';
 
 const { width: WindowWidth } = Dimensions.get('window');
 const WindowHeight = Dimensions.get('window').height;
@@ -43,12 +44,17 @@ function getContentPreview(item: FeedItem) {
     return content || item.excerpt || '暂无内容';
 }
 
+function getAiDetectionText(item: FeedItem) {
+    return item.excerpt?.trim() || getContentPreview(item);
+}
+
 // ==================== 普通模式 Item ====================
-export const RenderItem = memo(({ item, type, needToGet, hideTitle, onOpenMenu }: {
+export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetection, onOpenMenu }: {
     item: FeedItem;
     type: FeedType;
     needToGet: boolean;
     hideTitle?: boolean;
+    showAiDetection?: boolean;
     onOpenMenu?: (item: FeedItem, feedType: FeedType, event: GestureResponderEvent) => void;
 }) => {
     const title = (type === 'answer' && item.questionTitle) ? item.questionTitle : item.title;
@@ -79,9 +85,18 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, onOpenMenu }
             contentStyle={{ backgroundColor: cardBgColor, paddingHorizontal: 16, paddingVertical: 14 }}
         >
             {!hideTitle && (
-                <Text type="headline1" weight="bold" color={theme.colors.onBackground} style={{ marginBottom: 8 }} numberOfLines={2}>
-                    {title}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+                    <Text type="headline1" weight="bold" color={theme.colors.onBackground} style={{ flexShrink: 1 }} numberOfLines={2}>
+                        {title}
+                    </Text>
+                    {showAiDetection ? (
+                        <AiSuspicionBadge
+                            contentKey={`${type}:${item.id}`}
+                            text={getAiDetectionText(item)}
+                            style={{ marginLeft: 6, marginTop: 2 }}
+                        />
+                    ) : null}
+                </View>
             )}
             <Text type="body2" color={metaColor} style={{ marginBottom: 10, lineHeight: 20 }} numberOfLines={3}>
                 {item.excerpt}
@@ -178,9 +193,16 @@ const WaterfallItem = memo(({ item, type, needToGet, measurementKey, onMeasured,
                 style={{ width: '100%' }}
                 contentStyle={{ paddingHorizontal: 13, paddingVertical: 14 }}
             >
-                <Text type="headline1" weight="bold" color={theme.colors.onBackground} numberOfLines={3} style={{ lineHeight: 23 }}>
-                    {title || '无标题'}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Text type="headline1" weight="bold" color={theme.colors.onBackground} numberOfLines={3} style={{ lineHeight: 23, flexShrink: 1 }}>
+                        {title || '无标题'}
+                    </Text>
+                    <AiSuspicionBadge
+                        contentKey={`${type}:${item.id}`}
+                        text={getAiDetectionText(item)}
+                        style={{ marginLeft: 6, marginTop: 2 }}
+                    />
+                </View>
                 <Text type="body2" color={metaColor} numberOfLines={excerptLines} style={{ marginTop: 8, lineHeight: 20 }}>
                     {item.excerpt || '暂无简介'}
                 </Text>
@@ -252,14 +274,21 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                     contentStyle={{ backgroundColor: cardBgColor, borderRadius: 24, padding: 20, flex: 1 }}
                 >
                     {!hideTitle && (
-                        <Text
-                            type="title3"
-                            weight="bold"
-                            style={{ marginBottom: 12, color: textColor, lineHeight: 31 }}
-                            numberOfLines={3}
-                        >
-                            {title || '无标题'}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+                            <Text
+                                type="title3"
+                                weight="bold"
+                                style={{ color: textColor, lineHeight: 31, flexShrink: 1 }}
+                                numberOfLines={3}
+                            >
+                                {title || '无标题'}
+                            </Text>
+                            <AiSuspicionBadge
+                                contentKey={`${type}:${item.id}`}
+                                text={getAiDetectionText(item)}
+                                style={{ marginLeft: 8, marginTop: 3 }}
+                            />
+                        </View>
                     )}
                     
                     <View style={{ flex: 1, overflow: 'hidden' }} pointerEvents="none">
@@ -690,6 +719,7 @@ const HomeScreen = () => {
                 item={item.item}
                 type={item.feedType}
                 needToGet={true}
+                showAiDetection
                 onOpenMenu={openActionMenu}
             />
         );
