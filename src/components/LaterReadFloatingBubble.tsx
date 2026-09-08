@@ -1,6 +1,6 @@
 import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
 import { useLaterReadStore, type LaterReadItem } from '@/src/stores/useLaterReadStore';
-import { BottomSheet, Button, Divider, Icon, ListRow } from '@/src/ui';
+import { BottomSheet, Button, Icon } from '@/src/ui';
 import { PressIndication, Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { useRouter } from 'expo-router';
@@ -157,15 +157,16 @@ export function LaterReadFloatingBubble() {
                         bubbleStyle,
                     ]}
                 >
-                    <View style={{ width: BUBBLE_SIZE, height: BUBBLE_SIZE, borderRadius: theme.radius.full, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
+                    <View pointerEvents="none" style={{ width: BUBBLE_SIZE, height: BUBBLE_SIZE, borderRadius: theme.radius.full, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
                         <Icon name="bookmark-multiple-outline" size={28} color={theme.colors.onPrimary} />
                         <PressIndication pressed={pressed} color={theme.colors.onPrimary} radius={theme.radius.full} />
                     </View>
                     <View
+                        pointerEvents="none"
                         style={{
                             position: 'absolute',
-                            right: -2,
-                            top: -4,
+                            right: 0,
+                            top: 0,
                             minWidth: 22,
                             height: 22,
                             paddingHorizontal: 6,
@@ -201,32 +202,11 @@ export function LaterReadFloatingBubble() {
                 )}
             >
                 <View style={{ paddingBottom: theme.spacing.lg }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: theme.spacing.md }}>
-                        <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>
-                                像浏览器多页面一样暂存当前想读的回答和文章。
-                            </Text>
-                        </View>
-                        <View
-                            style={{
-                                minHeight: 30,
-                                paddingHorizontal: 10,
-                                borderRadius: 15,
-                                backgroundColor: theme.colors.secondaryVariant,
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                marginLeft: theme.spacing.md,
-                            }}
-                        >
-                            <Text type="footnote1" color={theme.colors.onSecondaryVariant}>{items.length} 页</Text>
-                        </View>
-                    </View>
-                    <Divider />
                     <FlatList
                         data={items}
                         keyExtractor={(item) => item.key}
                         style={{ maxHeight: listMaxHeight }}
-                        contentContainerStyle={{ paddingTop: theme.spacing.sm, paddingBottom: theme.spacing.sm }}
+                        contentContainerStyle={{ paddingTop: theme.spacing.xs, paddingBottom: theme.spacing.sm }}
                         showsVerticalScrollIndicator={false}
                         ItemSeparatorComponent={() => <View style={{ height: theme.spacing.xs }} />}
                         renderItem={({ item, index }) => (
@@ -243,7 +223,7 @@ export function LaterReadFloatingBubble() {
                         onPress={() => setPanelVisible(false)}
                         style={{ marginTop: theme.spacing.md, alignSelf: 'stretch' }}
                     >
-                        收起小球
+                        收起
                     </Button>
                 </View>
             </BottomSheet>
@@ -258,56 +238,72 @@ function LaterReadPageRow({ item, pageNumber, onOpen, onRemove }: {
     onRemove: () => void;
 }) {
     const theme = useTheme();
+    const pressed = useSharedValue(0);
     const typeLabel = getTypeLabel(item.type);
-    const summary = `${typeLabel} · ${item.authorName} · ${formatAddedAt(item.addedAt)}`;
+    const meta = `${typeLabel} · ${item.authorName} · ${formatAddedAt(item.addedAt)}`;
 
     return (
-        <View style={{ borderRadius: theme.radius.component, backgroundColor: theme.colors.surfaceContainer, overflow: 'hidden' }}>
-            <ListRow
-                title={item.title}
-                summary={summary}
-                summaryNumberOfLines={1}
-                icon={(
-                    <View
-                        style={{
-                            width: 38,
-                            height: 38,
-                            borderRadius: theme.radius.tab,
-                            backgroundColor: theme.colors.tertiaryContainer,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                        }}
-                    >
-                        <Text type="headline2" weight="bold" color={theme.colors.onTertiaryContainer}>{pageNumber}</Text>
-                    </View>
-                )}
-                trailing={(
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel="移除"
-                            onPress={onRemove}
-                            hitSlop={8}
-                            style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginRight: theme.spacing.xs }}
-                        >
-                            <Icon name="close" size={20} color={theme.colors.onSurfaceVariantActions} />
-                        </Pressable>
-                        <Icon name="chevron-right" size={22} color={theme.colors.onSurfaceVariantActions} />
-                    </View>
-                )}
-                onPress={onOpen}
-                style={{ paddingHorizontal: theme.spacing.md }}
-            />
+        <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={item.title}
+            onPress={onOpen}
+            onPressIn={() => (pressed.value = 1)}
+            onPressOut={() => (pressed.value = 0)}
+            style={{
+                borderRadius: theme.radius.component,
+                backgroundColor: theme.colors.surfaceContainer,
+                overflow: 'hidden',
+                paddingHorizontal: theme.spacing.md,
+                paddingVertical: theme.spacing.md,
+            }}
+        >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View
+                    style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: theme.radius.tab,
+                        backgroundColor: theme.colors.tertiaryContainer,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: theme.spacing.md,
+                    }}
+                >
+                    <Text type="headline2" weight="bold" color={theme.colors.onTertiaryContainer}>{pageNumber}</Text>
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text type="headline1" weight="medium" color={theme.colors.onBackground} numberOfLines={2}>
+                        {item.title}
+                    </Text>
+                    <Text type="body2" color={theme.colors.onSurfaceVariantSummary} numberOfLines={1} style={{ marginTop: 2 }}>
+                        {meta}
+                    </Text>
+                </View>
+                <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="移除"
+                    onPress={(event) => {
+                        event.stopPropagation();
+                        onRemove();
+                    }}
+                    hitSlop={8}
+                    style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginLeft: theme.spacing.xs }}
+                >
+                    <Icon name="close" size={20} color={theme.colors.onSurfaceVariantActions} />
+                </Pressable>
+                <Icon name="chevron-right" size={22} color={theme.colors.onSurfaceVariantActions} style={{ marginLeft: 2 }} />
+            </View>
             {item.summary ? (
                 <Text
                     type="body2"
                     color={theme.colors.onSurfaceVariantSummary}
                     numberOfLines={2}
-                    style={{ paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.md, marginTop: -theme.spacing.xs }}
+                    style={{ marginTop: theme.spacing.sm, lineHeight: 20 }}
                 >
                     {item.summary}
                 </Text>
             ) : null}
-        </View>
+            <PressIndication pressed={pressed} color={theme.colors.onBackground} radius={theme.radius.component} />
+        </Pressable>
     );
 }

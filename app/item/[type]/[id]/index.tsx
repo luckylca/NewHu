@@ -6,7 +6,7 @@ import LoadingView from "@/src/components/LoadingView";
 import OfflineImage from "@/src/components/OfflineImage";
 import { useContentStore } from "@/src/stores/useContentStore";
 import { useExportContentStore } from "@/src/stores/useExportContentStore";
-import { getLaterReadKey, useLaterReadStore } from "@/src/stores/useLaterReadStore";
+import { useLaterReadStore } from "@/src/stores/useLaterReadStore";
 import { useNetworkStore } from "@/src/stores/useNetworkStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -310,7 +310,6 @@ export default function Item() {
     const contentType = type === 'answer' ? 'answer' : 'article';
     const addLaterReadItem = useLaterReadStore((state) => state.addItem);
     const requestLaterReadPanelOpen = useLaterReadStore((state) => state.requestPanelOpen);
-    const laterReadSaved = useLaterReadStore((state) => state.items.some((item) => item.key === getLaterReadKey(contentType, String(id))));
 
     useEffect(() => {
         if (networkStatus === 'online') {
@@ -583,7 +582,7 @@ export default function Item() {
             updatedTime: readData.updatedTime,
         });
         notify({
-            message: laterReadSaved ? '已更新稍后阅读' : '已加入稍后阅读',
+            message: '已加入稍后阅读',
             actionLabel: '查看',
             onAction: requestLaterReadPanelOpen,
             duration: 3200,
@@ -708,8 +707,7 @@ export default function Item() {
                 anchor={menuAnchor}
                 items={[
                     {
-                        label: laterReadSaved ? '更新稍后阅读' : '稍后阅读',
-                        summary: '加入浮窗多页面',
+                        label: '稍后阅读',
                         onPress: addToLaterRead,
                     },
                     { label: '复制内容', onPress: openCopyPage },
