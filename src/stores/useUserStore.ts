@@ -1,6 +1,7 @@
 // src/store/useUserStore.ts
 // 用户账号与登录状态；Cookie 只保存在设备存储中，不写入源码。
 import { createSecureZustandStorage } from '@/src/services/secureZustandStorage';
+import { clearApiInstance } from '@/src/api/ZhihuApi';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
@@ -20,8 +21,8 @@ export const useUserStore = create<UserState>()(
     persist(
         (set) => ({
             cookies: undefined,
-            username: 'lcaluckily',
-            avatar: 'https://picx.zhimg.com/v2-1abe7b115ea0ab9e5dfe334d5a1fef38_r.jpg',
+            username: '',
+            avatar: '',
             urlToken: '',
             isLoggedIn: false,
             setCookie: (cookie) => set({ cookies: cookie }),
@@ -33,13 +34,16 @@ export const useUserStore = create<UserState>()(
                 urlToken,
                 isLoggedIn: true,
             }),
-            logOut: () => set({
-                username: '',
-                cookies: undefined,
-                avatar: '',
-                urlToken: '',
-                isLoggedIn: false,
-            }),
+            logOut: () => {
+                clearApiInstance();
+                set({
+                    username: '',
+                    cookies: undefined,
+                    avatar: '',
+                    urlToken: '',
+                    isLoggedIn: false,
+                });
+            },
         }),
         {
             name: 'user-store',

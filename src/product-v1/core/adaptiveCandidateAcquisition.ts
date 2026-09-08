@@ -1,4 +1,4 @@
-﻿import {
+import {
   DEFAULT_CANDIDATE_DEFICIT_CONFIG,
   prioritizeDeficits,
   type CandidateDeficitConfig,

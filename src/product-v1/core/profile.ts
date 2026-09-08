@@ -1,4 +1,4 @@
-﻿import type { InterestCenterState, ProfileState, RewardSignal } from "./types";
+import type { InterestCenterState, ProfileState, RewardSignal } from "./types";
 const clamp = (x: number, lo: number, hi: number) => Math.min(Math.max(x, lo), hi);
 export type SimilarityLookup = (articleA: string, articleB: string) => number;
 
@@ -38,6 +38,6 @@ export function updateProfile(state: ProfileState, articleId: string, categories
   return { action: "NEGATIVE_NOT_ATTRIBUTED", matchedSimilarity: maxSim };
 }
 
-export function topNamedInterests(state: ProfileState, limit = 9): Array<[string, number]> {
+export function topNamedInterests(state: ProfileState, limit = 9): [string, number][] {
   return Object.entries(state.namedScores).filter(([, v]) => v > 0.04).map(([k, v]) => [k, Math.max(v, 0) * (0.55 + 0.45 * (state.namedConfidence[k] ?? 0))] as [string, number]).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, limit);
 }

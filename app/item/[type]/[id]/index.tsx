@@ -139,7 +139,7 @@ const CustomImageRenderer = React.memo(({ tnode, setOrigin, setImageUrl, setModa
         };
         void resolve();
         return () => { active = false; };
-    }, [imageCandidates, networkStatus]);
+    }, [imageCandidates, networkStatus, src]);
 
     useEffect(() => {
         if (!resolvedSrc || isEquation || (imgWidth && imgHeight)) return;

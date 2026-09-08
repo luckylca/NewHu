@@ -1,4 +1,4 @@
-﻿import type { CandidateFeatures, RankerState, RankerUpdateAudit, RewardSignal } from "./types";
+import type { CandidateFeatures, RankerState, RankerUpdateAudit, RewardSignal } from "./types";
 
 const clamp = (x: number, lo: number, hi: number) => Math.min(Math.max(x, lo), hi);
 

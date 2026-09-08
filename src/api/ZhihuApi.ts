@@ -29,6 +29,10 @@ export function setCookie(cookie: string) {
     }
 }
 
+export function clearApiInstance() {
+    apiInstance = null;
+}
+
 // 根据用户的 URL Token 获取用户信息。
 export async function getUserInfo(url_token: string) {
     const data = await requireApiInstance().getUserInfo(url_token);

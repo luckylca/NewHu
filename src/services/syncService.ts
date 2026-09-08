@@ -5,6 +5,8 @@ import { getPendingAction, listPendingActions, markActionResult, markActionRetry
 import { replaceLocalCommentId } from '@/src/db/repositories/commentRepository';
 import type { PendingAction } from '@/src/db/types';
 import { notify } from '@/src/stores/useNotificationStore';
+import { HttpError } from '@/src/api/client';
+import { isDependencySatisfied, isRetryableHttpStatus } from './syncPolicy';
 
 let syncing = false;
 
@@ -18,6 +20,18 @@ function isAuthError(error: unknown) {
 
 function isNetworkError(error: unknown) {
     return /network|network request failed|timeout|fetch|offline|internet/i.test(errorMessage(error));
+}
+
+function isRetryableServerError(error: unknown) {
+    return error instanceof HttpError && isRetryableHttpStatus(error.status);
+}
+
+async function dependencyCompleted(action: PendingAction, completed: Set<string>) {
+    if (isDependencySatisfied(action.dependsOnActionId, completed)) return true;
+    const dependencyId = action.dependsOnActionId;
+    if (!dependencyId) return true;
+    const dependency = await getPendingAction(dependencyId);
+    return isDependencySatisfied(dependencyId, completed, dependency?.status);
 }
 
 function serverCommentId(result: any) {
@@ -62,7 +76,7 @@ export async function syncOutbox(options: { silent?: boolean } = {}) {
         const completed = new Set<string>();
         for (const action of actions) {
             if (action.status === 'needs_user_action') continue;
-            if (action.dependsOnActionId && !completed.has(action.dependsOnActionId)) continue;
+            if (!await dependencyCompleted(action, completed)) continue;
             await markActionSyncing(action.id);
             try {
                 // A preceding local-comment sync may have replaced IDs in the
@@ -76,7 +90,7 @@ export async function syncOutbox(options: { silent?: boolean } = {}) {
                 if (isAuthError(error)) await markActionResult(action.id, 'needs_user_action', errorMessage(error));
                 else if (isNetworkError(error) && (action.actionType === 'CREATE_COMMENT' || action.actionType === 'CREATE_REPLY')) {
                     await markActionResult(action.id, 'needs_user_action', '提交结果未知，请确认后再重试，避免重复发表');
-                } else if (isNetworkError(error)) await markActionRetry(action.id, errorMessage(error));
+                } else if (isNetworkError(error) || isRetryableServerError(error)) await markActionRetry(action.id, errorMessage(error));
                 else if ((action.actionType === 'CREATE_COMMENT' || action.actionType === 'CREATE_REPLY') && /未返回服务器评论 ID/i.test(errorMessage(error))) {
                     await markActionResult(action.id, 'needs_user_action', errorMessage(error));
                 }

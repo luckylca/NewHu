@@ -21,6 +21,8 @@ import { syncOutbox } from '@/src/services/syncService';
 import { useNetworkStore } from '@/src/stores/useNetworkStore';
 import { useSettingStore } from '@/src/stores/useSettingStore';
 import { getWallpaperBase } from '@/src/ui/theme/wallpaper';
+import { useUserStore } from '@/src/stores/useUserStore';
+import { recoverSyncingActions } from '@/src/db/repositories/outboxRepository';
 
 void SplashScreen.preventAutoHideAsync();
 SplashScreen.setOptions({ duration: 180, fade: true });
@@ -29,6 +31,9 @@ export default function RootLayout() {
 	const uiTheme = useHyperosTheme();
 	const networkStatus = useNetworkStore((state) => state.status);
 	const consentHydrated = useStoreHydrated(useConsentStore);
+	const userHydrated = useStoreHydrated(useUserStore);
+	const cookies = useUserStore((state) => state.cookies);
+	const [databaseReady, setDatabaseReady] = React.useState(false);
 	const consent = useConsentStore();
 	const disableAnimations = useSettingStore((state) => state.disableAnimations);
 	const systemReducedMotion = useReducedMotion();
@@ -45,22 +50,25 @@ export default function RootLayout() {
 	), []);
 
 	useEffect(() => {
-		void initializeDatabase().then(recoverRunningJobs).catch((error) => {
+		void initializeDatabase().then(async () => {
+			await Promise.all([recoverRunningJobs(), recoverSyncingActions()]);
+			setDatabaseReady(true);
+		}).catch((error) => {
 			console.error('离线数据库初始化失败', error);
 		});
 		return startNetworkMonitoring();
 	}, []);
 
 	useEffect(() => {
-		if (networkStatus === 'online') void syncOutbox({ silent: true });
-	}, [networkStatus]);
+		if (databaseReady && userHydrated && cookies && networkStatus === 'online') void syncOutbox({ silent: true });
+	}, [cookies, databaseReady, networkStatus, userHydrated]);
 
 	useEffect(() => {
 		const subscription = AppState.addEventListener('change', (state) => {
-			if (state === 'active' && networkStatus === 'online') void syncOutbox({ silent: true });
+			if (state === 'active' && databaseReady && userHydrated && cookies && networkStatus === 'online') void syncOutbox({ silent: true });
 		});
 		return () => subscription.remove();
-	}, [networkStatus]);
+	}, [cookies, databaseReady, networkStatus, userHydrated]);
 	// 自定义主题里已补齐 card/text/border/notification，可直接作为导航主题
 	const navigationTheme = {
 		dark: uiTheme.dark,

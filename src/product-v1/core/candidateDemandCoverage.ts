@@ -1,4 +1,4 @@
-﻿export interface DemandCoverageMetricsV3 {
+export interface DemandCoverageMetricsV3 {
   demandSatisfactionRate: number;
   requiredSupplyCoverage: number;
   demandWeightedSupplyCoverage: number;

@@ -1,4 +1,4 @@
-﻿import type { BehaviorEvent, RewardSignal } from "./types";
+import type { BehaviorEvent, RewardSignal } from "./types";
 
 const clamp = (x: number, lo: number, hi: number) => Math.min(Math.max(x, lo), hi);
 

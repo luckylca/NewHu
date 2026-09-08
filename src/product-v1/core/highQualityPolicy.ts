@@ -1,4 +1,4 @@
-﻿export type QualityTier = "NORMAL" | "HIGH" | "ULTRA_HIGH";
+export type QualityTier = "NORMAL" | "HIGH" | "ULTRA_HIGH";
 export type HighQualityLevel = "low" | "medium" | "high";
 export interface EngagementStats { likeCount?: number; favoriteCount?: number; commentCount?: number; }
 export interface HighQualityThreshold { minLikeCount:number; minFavoriteCount:number; minCommentCount:number; }

@@ -1,4 +1,4 @@
-import { clearInterestProfile } from '@/src/db/repositories/userEventRepository';
+import { clearProductV1Personalization } from '@/src/product-v1';
 import { useConsentStore } from '@/src/stores/useConsentStore';
 import { useNotificationStore } from '@/src/stores/useNotificationStore';
 import { Button, Card, Dialog, Divider, ListRow, Switch, Text, TopAppBar } from '@/src/ui';
@@ -22,7 +22,7 @@ export default function PrivacyPersonalizationScreen() {
 
     const clearProfile = async () => {
         try {
-            await clearInterestProfile();
+            await clearProductV1Personalization();
             setConfirmClear(false);
             notify('本地兴趣画像已清除');
         } catch (error) {

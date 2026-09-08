@@ -1,4 +1,4 @@
-﻿import type { AcquisitionAction, SearchStopReason } from "./adaptiveCandidateAcquisition";
+import type { AcquisitionAction, SearchStopReason } from "./adaptiveCandidateAcquisition";
 
 export interface CandidateAcquisitionTraceEntry {
   cycleId: string;

@@ -1,5 +1,6 @@
 package expo.modules.downloadstorage
 
+import android.Manifest
 import android.content.ContentResolver
 import android.content.ContentValues
 import android.net.Uri
@@ -11,6 +12,8 @@ import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.kotlin.Promise
+import expo.modules.interfaces.permissions.Permissions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -34,7 +37,42 @@ class ExpoDownloadStorageModule : Module() {
     AsyncFunction("copyFileToDownloads") Coroutine { sourceUri: String, fileName: String, mimeType: String, subdirectory: String? ->
       copyFileToDownloads(sourceUri, fileName, mimeType, subdirectory)
     }
+
+    Function("hasNotificationPermission") {
+      Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        appContext.permissions?.hasGrantedPermissions(Manifest.permission.POST_NOTIFICATIONS) == true
+    }
+
+    AsyncFunction("requestNotificationPermission") { promise: Promise ->
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+        promise.resolve(mapOf("granted" to true, "status" to "granted", "canAskAgain" to true))
+      } else {
+        Permissions.askForPermissionsWithPermissionsManager(
+          appContext.permissions,
+          promise,
+          Manifest.permission.POST_NOTIFICATIONS
+        )
+      }
+    }
+
+    Function("startOfflineCacheForeground") { total: Int ->
+      OfflineCacheForegroundService.start(requireReactContext(), total)
+    }
+
+    Function("updateOfflineCacheForeground") { progress: Double, title: String, text: String ->
+      OfflineCacheForegroundService.update(requireReactContext(), progress, title, text)
+    }
+
+    Function("finishOfflineCacheForeground") { success: Int, failed: Int, message: String? ->
+      OfflineCacheForegroundService.finish(requireReactContext(), success, failed, message)
+    }
+
+    Function("stopOfflineCacheForeground") {
+      OfflineCacheForegroundService.stop(requireReactContext())
+    }
   }
+
+  private fun requireReactContext() = appContext.reactContext ?: throw Exceptions.AppContextLost()
 
   private suspend fun copyFileToDownloads(
     sourceUri: String,

@@ -89,6 +89,14 @@ export async function markActionRetry(id: string, error: string) {
     await db.runAsync("UPDATE pending_actions SET status = 'pending', retry_count = retry_count + 1, updated_at = ?, last_error = ? WHERE id = ?", now(), error, id);
 }
 
+export async function recoverSyncingActions() {
+    const db = await getDatabase();
+    await db.runAsync(
+        "UPDATE pending_actions SET status = 'pending', updated_at = ?, last_error = COALESCE(last_error, '上次同步被中断，已重新排队') WHERE status = 'syncing'",
+        now(),
+    );
+}
+
 export async function hasPendingActions() {
     const db = await getDatabase();
     const row = await db.getFirstAsync<{ count: number }>("SELECT COUNT(*) AS count FROM pending_actions WHERE status IN ('pending', 'syncing', 'failed', 'needs_user_action')");

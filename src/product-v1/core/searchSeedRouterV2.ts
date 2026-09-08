@@ -1,4 +1,4 @@
-﻿import type { CompactSeedBank, SearchSeedCompact } from "./candidateAcquisition";
+import type { CompactSeedBank, SearchSeedCompact } from "./candidateAcquisition";
 
 export const ROUTING_GLOBAL_COSINE = "GLOBAL_COSINE" as const;
 export const ROUTING_DOMAIN_CONSTRAINED = "DOMAIN_CONSTRAINED_COSINE" as const;

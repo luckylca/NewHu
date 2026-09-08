@@ -7,6 +7,34 @@ import { generateSignature } from './crypto';
 
 export type TransferListener = (bytes: number, durationMs: number) => void;
 
+export class HttpError extends Error {
+    constructor(
+        public readonly status: number,
+        message: string,
+        public readonly responseBody: string,
+    ) {
+        super(message);
+        this.name = 'HttpError';
+    }
+}
+
+function responseErrorMessage(code: number, content: string) {
+    try {
+        const data = JSON.parse(content);
+        const message = data?.error?.message ?? data?.message;
+        if (typeof message === 'string' && message.trim()) return message.trim();
+    } catch {
+        // Non-JSON error bodies use the status-specific fallback below.
+    }
+    if (code === 400) return '请求参数错误';
+    if (code === 401) return '登录状态已失效';
+    if (code === 403) return '请求被拒绝，可能需要人机验证';
+    if (code === 404) return '请求的内容不存在';
+    if (code === 429) return '请求过于频繁，请稍后重试';
+    if (code >= 500) return '内容服务暂时不可用，请稍后重试';
+    return `请求失败（HTTP ${code}）`;
+}
+
 interface ZhihuClient {
     cookie: string;
     canLoad: boolean;
@@ -48,7 +76,7 @@ class ZhihuClient {
     /**
      * 错误处理回调
      */
-    handleError(code: number, content: string) {
+    handleError(code: number, content: string): never {
         if (code === 403) {
             try {
                 const data = JSON.parse(content);
@@ -62,20 +90,10 @@ class ZhihuClient {
                 console.error('403 错误:', content);
             }
             this.canLoad = false;
-            throw new Error('请求被拒绝，可能需要人机验证');
         } else if (code === 401) {
             console.error('登录状态已失效，请重新登录');
-            throw new Error('登录状态已失效');
-        } else if (code === 400) {
-            try {
-                const data = JSON.parse(content);
-                if (data.error && data.error.message) {
-                    throw new Error('知乎提示：' + data.error.message);
-                }
-            } catch (e) {
-                throw new Error('请求参数错误');
-            }
         }
+        throw new HttpError(code, responseErrorMessage(code, content), content);
     }
 
     /**

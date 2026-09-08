@@ -153,26 +153,6 @@ const PeopleScreen = () => {
     const [isLoadingActivities, setIsLoadingActivities] = React.useState(false)
     const [hasMoreActivities, setHasMoreActivities] = React.useState(true)
 
-    React.useEffect(() => {
-        if (urlToken) {
-            getUserInfo(urlToken).then((data) => {
-                setUserInfo(data)
-                setIsFollowing(Boolean(data?.is_following))
-            }).catch((error) => {
-                console.error("Failed to fetch user info:", error)
-            })
-
-            // 初始加载动态
-            setActivities([]);
-            setOffsetString("");
-            setPageNum(1);
-            setHasMoreActivities(true);
-            setTimeout(() => {
-                fetchActivities(true);
-            }, 0);
-        }
-    }, [urlToken])
-
     const handleToggleFollow = async () => {
         if (!urlToken || isFollowPending) return;
 
@@ -215,18 +195,17 @@ const PeopleScreen = () => {
     }
 
 
-    const fetchActivities = async (isRefresh = false) => {
-        // 如果不是刷新，且已经在加载或是没有更多数据了，则直接返回
-        if (!isRefresh && (isLoadingActivities || !hasMoreActivities)) return;
-
-        const currentOffset = isRefresh ? "" : offsetString;
-        const currentPage = isRefresh ? 1 : pageNum;
-
+    const fetchActivities = React.useCallback(async (
+        token: string,
+        currentOffset: string,
+        currentPage: number,
+        isRefresh = false,
+    ) => {
         setIsLoadingActivities(true);
         if (isRefresh) setActivities([]);
 
         try {
-            const data = await getUserActivities(urlToken, currentOffset, currentPage);
+            const data = await getUserActivities(token, currentOffset, currentPage);
             console.log("User activities data retrieved");
 
             if (data && data.data && data.data.length > 0) {
@@ -269,8 +248,8 @@ const PeopleScreen = () => {
                         setOffsetString(nextOffset);
                         setPageNum(currentPage + 1);
                         setHasMoreActivities(true);
-                    } catch (e) {
-                         setHasMoreActivities(false);
+                    } catch {
+                        setHasMoreActivities(false);
                     }
                 } else {
                     setHasMoreActivities(false);
@@ -283,7 +262,24 @@ const PeopleScreen = () => {
         } finally {
             setIsLoadingActivities(false);
         }
-    };
+    }, []);
+
+    React.useEffect(() => {
+        if (!urlToken) return;
+
+        getUserInfo(urlToken).then((data) => {
+            setUserInfo(data)
+            setIsFollowing(Boolean(data?.is_following))
+        }).catch((error) => {
+            console.error("Failed to fetch user info:", error)
+        })
+
+        setActivities([]);
+        setOffsetString("");
+        setPageNum(1);
+        setHasMoreActivities(true);
+        void fetchActivities(urlToken, "", 1, true);
+    }, [fetchActivities, urlToken])
 
     return (
         <View style={{ flex: 1 ,backgroundColor: theme.colors.background}}>
@@ -318,7 +314,7 @@ const PeopleScreen = () => {
                     )}
                     onEndReached={() => {
                         if (!isLoadingActivities && hasMoreActivities) {
-                            fetchActivities();
+                            void fetchActivities(urlToken, offsetString, pageNum);
                         }
                     }}
                     onEndReachedThreshold={0.5}

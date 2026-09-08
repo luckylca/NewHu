@@ -12,8 +12,8 @@ import {
 export { ImpactFeedbackStyle, NotificationFeedbackType };
 export type VibratePattern = number | number[];
 
-const { Light, Medium, Heavy, Soft, Rigid } = ImpactFeedbackStyle;
-const { Success, Warning, Error } = NotificationFeedbackType;
+const { Light, Medium, Heavy } = ImpactFeedbackStyle;
+const { Success } = NotificationFeedbackType;
 
 // ── 核心 API ──────────────────────────────────────────
 

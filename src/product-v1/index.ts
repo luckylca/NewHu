@@ -13,3 +13,4 @@ export {
   type ProductV1RuntimeStorageStatus,
 } from './runtimeAssets';
 export { PRODUCT_RUNTIME_VERSION } from './runtime';
+export { clearProductV1Personalization } from './privacy';

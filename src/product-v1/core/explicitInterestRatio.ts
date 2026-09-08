@@ -1,4 +1,4 @@
-﻿import type { ExplicitInterestRatioState, InterestRatioEntry } from "./types";
+import type { ExplicitInterestRatioState, InterestRatioEntry } from "./types";
 const clamp = (x: number, lo: number, hi: number) => Math.min(Math.max(x, lo), hi);
 
 export function normalizeRatios(state: ExplicitInterestRatioState): void {
@@ -8,7 +8,7 @@ export function normalizeRatios(state: ExplicitInterestRatioState): void {
   state.entries.forEach((e, i) => { e.targetRatio = sum <= 1e-12 ? 1 / state.entries.length : values[i] / sum; });
 }
 
-export function ratioFromProfile(named: Array<[string, number]>): ExplicitInterestRatioState {
+export function ratioFromProfile(named: [string, number][]): ExplicitInterestRatioState {
   const entries: InterestRatioEntry[] = named.slice(0, 9).map(([interestId, value]) => ({ interestId, targetRatio: Math.max(value, 0.01), locked: false }));
   const state: ExplicitInterestRatioState = { entries, explicitOverride: false, maxLength: 9 };
   normalizeRatios(state); return state;

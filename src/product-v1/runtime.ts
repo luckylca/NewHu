@@ -101,9 +101,14 @@ export function warmProductV1Runtime(onProgress?: (progress: ProductV1AssetDownl
 
 export function resetProductV1Runtime() {
   initialized = false;
+  memoryPromise = null;
   resetProductV1AssetCache();
   resetProductV1Encoder();
   updateProductV1Health({ phase: 'idle', encoderReady: false, encoderNorm: null, lastError: null });
+}
+
+export function runProductV1Maintenance<T>(task: () => Promise<T>) {
+  return enqueue(task);
 }
 
 function toCandidate(feed: FeedItemInfo, source: 'recommendation' | 'search', cycleId: string, rank: number): CandidateArticle {

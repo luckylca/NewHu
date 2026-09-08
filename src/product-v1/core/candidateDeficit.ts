@@ -1,4 +1,4 @@
-﻿export interface CandidateDeficitConfig {
+export interface CandidateDeficitConfig {
   horizon: number;
   tolerance: number;
   perCycleSearchRequests: number;
@@ -74,7 +74,7 @@ export function computeCandidateDeficits(desiredSupply: Record<string, number>, 
   });
 }
 
-export function prioritizeDeficits(deficits: InterestDeficit[], expectedSearchYield: Record<string, number> = {}): Array<{ deficit: InterestDeficit; priority: number }> {
+export function prioritizeDeficits(deficits: InterestDeficit[], expectedSearchYield: Record<string, number> = {}): { deficit: InterestDeficit; priority: number }[] {
   const rows = deficits.filter((d) => d.deficit > 0).map((d) => {
     const scarcity = 1 - Math.min(1, d.availableQualifiedSupply / Math.max(1, d.desiredSupply));
     const expected = Math.min(1, Math.max(0, expectedSearchYield[d.interestId] ?? 0.5));

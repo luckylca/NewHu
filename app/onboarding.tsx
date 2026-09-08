@@ -1,5 +1,5 @@
 import { useConsentStore } from '@/src/stores/useConsentStore';
-import { clearInterestProfile } from '@/src/db/repositories/userEventRepository';
+import { clearProductV1Personalization } from '@/src/product-v1';
 import { Button, Card, Checkbox, Icon, Switch, Text } from '@/src/ui';
 import { onboardingEnter, useReducedMotionPreference } from '@/src/ui/motion';
 import { useTheme } from '@/src/ui/theme';
@@ -55,7 +55,7 @@ export default function OnboardingScreen() {
     const finish = async () => {
         if (!aiEnabled) {
             try {
-                await clearInterestProfile();
+                await clearProductV1Personalization();
             } catch (error) {
                 console.warn('清理旧兴趣画像失败，将在存储管理中保留重试入口', error);
             }

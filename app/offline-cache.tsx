@@ -11,8 +11,14 @@ import { useUserStore } from '@/src/stores/useUserStore';
 import { Button, BottomSheet, Card, ListRow, Switch, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
+import {
+    ensureOfflineCacheNotificationPermission,
+    finishOfflineCacheForeground,
+    startOfflineCacheForeground,
+    updateOfflineCacheForeground,
+} from 'expo-download-storage';
 import { router } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 
 const MAX_CACHE_COUNT = 100;
@@ -58,6 +64,7 @@ export default function OfflineCacheScreen() {
     const [caching, setCaching] = useState(false);
     const [progress, setProgress] = useState<BatchProgress>(initialProgress);
     const [summary, setSummary] = useState({ pinnedCount: 0, pinnedBytes: 0 });
+    const cacheStartPendingRef = useRef(false);
 
     const refreshSummary = useCallback(async () => {
         const cacheSummary = await getCacheSummary();
@@ -79,12 +86,30 @@ export default function OfflineCacheScreen() {
     };
 
     const startCaching = async () => {
-        if (caching || cacheCount === 0) return;
+        if (caching || cacheStartPendingRef.current || cacheCount === 0) return;
+
+        cacheStartPendingRef.current = true;
+        try {
+            const granted = await ensureOfflineCacheNotificationPermission();
+            if (!granted) {
+                notify('需要通知权限才能在后台保持离线缓存任务');
+                return;
+            }
+            startOfflineCacheForeground(cacheCount);
+        } catch (error) {
+            console.error('启动离线缓存前台服务失败:', error);
+            notify('无法启动后台缓存服务，请检查通知权限');
+            return;
+        } finally {
+            cacheStartPendingRef.current = false;
+        }
 
         setCaching(true);
         setProgress({ ...initialProgress, phase: 'fetching', total: cacheCount });
 
         let smoothedSpeed = 0;
+        let success = 0;
+        let failed = 0;
         const reportNetworkSpeed = (speed: number) => {
             if (!Number.isFinite(speed) || speed <= 0) return;
             smoothedSpeed = smoothedSpeed > 0 ? smoothedSpeed * 0.65 + speed * 0.35 : speed;
@@ -105,18 +130,27 @@ export default function OfflineCacheScreen() {
                 filterPaid,
                 deduplicate: deduplicateFeed,
                 onProgress: ({ fetched }) => {
+                    const overall = Math.min(FETCH_PROGRESS_WEIGHT, (fetched / cacheCount) * FETCH_PROGRESS_WEIGHT);
                     setProgress((previous) => ({
                         ...previous,
                         fetched,
-                        overall: Math.min(FETCH_PROGRESS_WEIGHT, (fetched / cacheCount) * FETCH_PROGRESS_WEIGHT),
+                        overall,
                     }));
+                    updateOfflineCacheForeground({
+                        progress: overall,
+                        done: 0,
+                        title: '正在获取离线内容',
+                        text: `已找到 ${Math.min(fetched, cacheCount)}/${cacheCount} 篇`,
+                    });
                 },
             });
 
             if (candidates.length === 0) {
                 setCaching(false);
                 setProgress((previous) => ({ ...previous, phase: 'finished', overall: 1, current: 0 }));
-                notify(deduplicateFeed ? '推荐流内容均已历史去重，没有新的内容可缓存' : '推荐流没有返回可缓存内容');
+                const message = deduplicateFeed ? '推荐流内容均已历史去重，没有新的内容可缓存' : '推荐流没有返回可缓存内容';
+                finishOfflineCacheForeground(0, 0, message);
+                notify(message);
                 return;
             }
 
@@ -131,9 +165,13 @@ export default function OfflineCacheScreen() {
                 overall: FETCH_PROGRESS_WEIGHT,
                 speedBytesPerSecond: smoothedSpeed,
             });
+            updateOfflineCacheForeground({
+                progress: FETCH_PROGRESS_WEIGHT,
+                done: 0,
+                title: '正在缓存离线内容',
+                text: `0/${candidates.length} 篇`,
+            });
 
-            let success = 0;
-            let failed = 0;
             let cursor = 0;
             let done = 0;
             const itemProgress = new Map<number, number>();
@@ -146,6 +184,12 @@ export default function OfflineCacheScreen() {
                     current: normalized,
                     overall: FETCH_PROGRESS_WEIGHT + (aggregate / candidates.length) * (1 - FETCH_PROGRESS_WEIGHT),
                 }));
+                updateOfflineCacheForeground({
+                    progress: FETCH_PROGRESS_WEIGHT + (aggregate / candidates.length) * (1 - FETCH_PROGRESS_WEIGHT),
+                    done,
+                    title: '正在缓存离线内容',
+                    text: `${done}/${candidates.length} 篇 · 成功 ${success} · 失败 ${failed}`,
+                });
             };
             const worker = async () => {
                 while (cursor < candidates.length) {
@@ -180,6 +224,12 @@ export default function OfflineCacheScreen() {
                         overall: FETCH_PROGRESS_WEIGHT + (aggregate / candidates.length) * (1 - FETCH_PROGRESS_WEIGHT),
                         speedBytesPerSecond: smoothedSpeed,
                     });
+                    updateOfflineCacheForeground({
+                        progress: FETCH_PROGRESS_WEIGHT + (aggregate / candidates.length) * (1 - FETCH_PROGRESS_WEIGHT),
+                        done,
+                        title: '正在缓存离线内容',
+                        text: `${done}/${candidates.length} 篇 · 成功 ${success} · 失败 ${failed}`,
+                    });
                 }
             };
             await Promise.all(
@@ -189,11 +239,15 @@ export default function OfflineCacheScreen() {
             await refreshSummary();
             setCaching(false);
             setProgress((previous) => ({ ...previous, phase: 'finished', current: 0, overall: 1 }));
-            notify(failed ? `完成 ${success} 篇，${failed} 篇失败` : `已完成 ${success} 篇离线缓存`);
+            const message = failed ? `完成 ${success} 篇，${failed} 篇失败` : `已完成 ${success} 篇离线缓存`;
+            finishOfflineCacheForeground(success, failed, message);
+            notify(message);
         } catch (error) {
             setCaching(false);
             setProgress((previous) => ({ ...previous, phase: 'finished', current: 0 }));
-            notify(error instanceof Error ? error.message : '请求推荐流失败，请稍后重试');
+            const message = error instanceof Error ? error.message : '请求推荐流失败，请稍后重试';
+            finishOfflineCacheForeground(success, Math.max(1, failed), message);
+            notify(message);
         } finally {
             api?.setTransferListener();
         }

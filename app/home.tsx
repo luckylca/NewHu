@@ -6,7 +6,7 @@ import { router } from 'expo-router';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent, RefreshControl, ScrollView, View, StyleSheet, Share } from 'react-native';
 import type { GestureResponderEvent, LayoutChangeEvent } from 'react-native';
-import { Card, Icon, Menu, SearchBar, Text } from '@/src/ui';
+import { Button, Card, Icon, Menu, SearchBar, Text } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { useSettingStore } from '../src/stores/useSettingStore';
 import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
@@ -344,6 +344,31 @@ const HomeScreen = () => {
     const visibleFeedList = useMemo(() => feedList.filter((feed) => (
         !(filterAds && feed.isAds) && !(filterPaid && feed.isPaid)
     )), [feedList, filterAds, filterPaid]);
+    const feedEmptyState = useMemo(() => {
+        if (!userHydrated) return null;
+        if (!cookies && networkStatus !== 'offline') {
+            return (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.spacing.xl }}>
+                    <Icon name="account-circle-outline" size={44} color={theme.colors.onSurfaceVariantActions} />
+                    <Text type="headline1" weight="medium" style={{ marginTop: theme.spacing.md }}>登录后浏览推荐内容</Text>
+                    <Text type="body2" color={theme.colors.onSurfaceVariantSummary} align="center" style={{ marginTop: theme.spacing.xs }}>
+                        登录凭据只保存在本机，用于访问知乎内容服务。
+                    </Text>
+                    <Button type="primary" onPress={() => router.push('/webview')} style={{ marginTop: theme.spacing.lg }}>
+                        登录知乎
+                    </Button>
+                </View>
+            );
+        }
+        if (networkStatus === 'offline') {
+            return (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.spacing.xl }}>
+                    <Text type="body1" color={theme.colors.onSurfaceVariantSummary}>暂无可离线浏览的内容</Text>
+                </View>
+            );
+        }
+        return null;
+    }, [cookies, networkStatus, theme, userHydrated]);
 
     const sessionTokenRef = useRef("");
     const feedListRef = useRef(feedList);
@@ -425,8 +450,8 @@ const HomeScreen = () => {
             // 推荐接口的一页不一定都是回答/文章，也可能是视频、问题或推广项。
             // 首屏至少补够一批可展示内容，避免过滤/去重后只剩一条。
             const targetVisibleCount = isRefresh ? 8 : 4;
-            // 保持“去除重复推送”，但刷新时继续翻页寻找未推送过的内容。
-            // 已推送内容较多时，5 页可能仍然全部命中历史记录。
+            // 刷新直接采用推荐流返回的内容（批次内去重），加载更多才翻页
+            // 寻找未推送过的内容，因此刷新通常一页即可凑满目标数量。
             const maxPages = isRefresh ? 12 : 5;
             let nextToken = isRefresh ? '' : sessionTokenRef.current;
             const batchKeys = new Set<string>();
@@ -447,9 +472,13 @@ const HomeScreen = () => {
                     ...feedListRef.current.map(getFeedKey),
                     ...batchKeys,
                 ]);
+                // 主动刷新时不对历史推送记录去重：知乎推荐流会反复推送旧内容，
+                // 历史去重会把整批结果滤空，表现为“刷新不出任何东西”。
+                // 历史去重只作用于加载更多，刷新只保证当批次内不重复。
+                const acceptKnownItems = isRefresh;
                 const acceptedItems = processedItems.filter((item: FeedItemInfo) => {
                     const key = getFeedKey(item);
-                    if (batchKeys.has(key) || (deduplicateFeed && existingKeys.has(key))) return false;
+                    if (batchKeys.has(key) || (deduplicateFeed && !acceptKnownItems && existingKeys.has(key))) return false;
                     batchKeys.add(key);
                     return true;
                 });
@@ -467,7 +496,7 @@ const HomeScreen = () => {
                     acceptedItems,
                     'recommend',
                     getRecommendSessionToken(requestCursor),
-                    deduplicateFeed,
+                    deduplicateFeed && !isRefresh,
                 );
                 if (persistedPage.length > 0 && useConsentStore.getState().aiInterestAnalysisEnabled) {
                     const rankedPage = await processProductV1Feed(persistedPage);
@@ -541,6 +570,11 @@ const HomeScreen = () => {
                 notify({ message: '当前无网络，已进入离线模式', duration: 5000 });
                 void loadOfflineFeedRef.current?.();
             }
+        } else if (networkStatus === 'online' && !cookies) {
+            onlineFeedStartedRef.current = false;
+            feedListRef.current = [];
+            setFeedList([]);
+            sessionTokenRef.current = '';
         } else if (networkStatus === 'online' && (!onlineFeedStartedRef.current || previous === 'offline')) {
             onlineFeedStartedRef.current = true;
             // 在线模式只显示本次推荐请求结果，不能把离线数据库里的 Feed
@@ -548,7 +582,7 @@ const HomeScreen = () => {
             feedListRef.current = [];
             setFeedList([]);
             sessionTokenRef.current = '';
-            if (cookies) getApiInstance(cookies);
+            getApiInstance(cookies);
             void loadDataRef.current?.(true).then(() => loadDataRef.current?.(false));
         }
 
@@ -582,17 +616,14 @@ const HomeScreen = () => {
             currentIndexRef.current = targetIndex - 1;
         }
 
-        // 2. 异步向后端发送不喜欢的网络请求（不阻塞本地动效表现）
-        try {
-            if (feedType === 'answer') {
-                dislikeAnswer?.(String(id));
-            } else if (feedType === 'article') {
-                dislikeArticle?.(String(id));
-            }
-            console.log(`已向服务器上报不喜欢，类型: ${feedType}, ID: ${id}`);
-        } catch (error) {
+        // 2. 本地先隐藏；远端失败时保留本地偏好，但不能误报为同步成功。
+        const report = feedType === 'answer'
+            ? dislikeAnswer(String(id))
+            : dislikeArticle(String(id));
+        void report.catch((error) => {
             console.error('上报服务器不喜欢状态失败:', error);
-        }
+            notify('已在本地隐藏，但未能同步到知乎');
+        });
 
         // 3. 将帖子 ID 同步推进本地维护的 store 的 unlikeList 阵列里
         addUnlikeItem(String(id));
@@ -788,11 +819,7 @@ const HomeScreen = () => {
                         }}
                         data={visibleFeedList}
                         renderItem={renderCardListItem}
-                        ListEmptyComponent={networkStatus === 'offline' ? (
-                            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.spacing.xl }}>
-                                <Text type="body1" color={theme.colors.onSurfaceVariantSummary}>暂无可离线浏览的内容</Text>
-                            </View>
-                        ) : null}
+                        ListEmptyComponent={feedEmptyState}
                         keyExtractor={(item) => item.item.id.toString()}
                         snapToInterval={CARD_ITEM_HEIGHT}
                         snapToAlignment="start"
@@ -852,11 +879,7 @@ const HomeScreen = () => {
                                 </View>
                             ))}
                         </View>
-                    ) : networkStatus === 'offline' ? (
-                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.spacing.xl }}>
-                            <Text type="body1" color={theme.colors.onSurfaceVariantSummary}>暂无可离线浏览的内容</Text>
-                        </View>
-                    ) : null}
+                    ) : feedEmptyState}
                 </ScrollView>
             ) : (
                 <FlatList
@@ -864,11 +887,7 @@ const HomeScreen = () => {
                     contentContainerStyle={{ alignItems: 'center', paddingTop: 0, paddingBottom: theme.spacing.md }}
                     data={visibleFeedList}
                     renderItem={renderListItem}
-                    ListEmptyComponent={networkStatus === 'offline' ? (
-                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.spacing.xl }}>
-                            <Text type="body1" color={theme.colors.onSurfaceVariantSummary}>暂无可离线浏览的内容</Text>
-                        </View>
-                    ) : null}
+                    ListEmptyComponent={feedEmptyState}
                     keyExtractor={(item) => item.item.id.toString()}
                     refreshing={isRefreshing}
                     onRefresh={() => loadData(true)}

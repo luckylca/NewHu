@@ -25,40 +25,17 @@ const QuestionScreen = () => {
     const [isLoadingActivities, setIsLoadingActivities] = React.useState(false)
     const [hasMoreActivities, setHasMoreActivities] = React.useState(true)
 
-    React.useEffect(() => {
-        if (id) {
-            console.log("Fetching question info for ID:", id);
-            getQuestion(id).then((data) => {
-                setQuestionInfo(data)
-                console.log("Question info retrieved:", data);
-            }).catch((error) => {
-                console.error("Failed to fetch question info:", error)
-            })
-
-            // 初始加载动态
-            setActivities([]);
-            setOffsetString(0);
-            setPageNum(1);
-            setHasMoreActivities(true);
-            setTimeout(() => {
-                fetchActivities(true);
-            }, 0);
-        }
-    }, [id])
-
-
-    const fetchActivities = async (isRefresh = false) => {
-        // 如果不是刷新，且已经在加载或是没有更多数据了，则直接返回
-        if (!isRefresh && (isLoadingActivities || !hasMoreActivities)) return;
-
-        const currentOffset = isRefresh ? 0 : offsetString;
-        const currentPage = isRefresh ? 1 : pageNum;
-
+    const fetchActivities = React.useCallback(async (
+        questionId: string,
+        currentOffset: number,
+        currentPage: number,
+        isRefresh = false,
+    ) => {
         setIsLoadingActivities(true);
         if (isRefresh) setActivities([]);
 
         try {
-            const data = await getQuestionAnswers(id, currentOffset, "default");
+            const data = await getQuestionAnswers(questionId, currentOffset, "default");
             console.log("Question answers data retrieved");
 
             if (data && data.data && data.data.length > 0) {
@@ -94,8 +71,8 @@ const QuestionScreen = () => {
                         setOffsetString(Number(nextOffset));
                         setPageNum(currentPage + 1);
                         setHasMoreActivities(true);
-                    } catch (e) {
-                         setHasMoreActivities(false);
+                    } catch {
+                        setHasMoreActivities(false);
                     }
                 } else {
                     setHasMoreActivities(false);
@@ -108,7 +85,25 @@ const QuestionScreen = () => {
         } finally {
             setIsLoadingActivities(false);
         }
-    };
+    }, []);
+
+    React.useEffect(() => {
+        if (!id) return;
+
+        console.log("Fetching question info for ID:", id);
+        getQuestion(id).then((data) => {
+            setQuestionInfo(data)
+            console.log("Question info retrieved:", data);
+        }).catch((error) => {
+            console.error("Failed to fetch question info:", error)
+        })
+
+        setActivities([]);
+        setOffsetString(0);
+        setPageNum(1);
+        setHasMoreActivities(true);
+        void fetchActivities(id, 0, 1, true);
+    }, [fetchActivities, id])
 
     const renderStats = (label: string, value: number) => (
         <View style={{ alignItems: 'center', flex: 1 }}>
@@ -185,7 +180,7 @@ const QuestionScreen = () => {
                     )}
                     onEndReached={() => {
                         if (!isLoadingActivities && hasMoreActivities) {
-                            fetchActivities();
+                            void fetchActivities(id, offsetString, pageNum);
                         }
                     }}
                     onEndReachedThreshold={0.5}

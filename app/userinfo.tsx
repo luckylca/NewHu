@@ -6,14 +6,20 @@ import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
 import { Image, ScrollView, View } from 'react-native';
+import CookieManager from '@react-native-cookies/cookies';
 
 export default function UserInfoScreen() {
     const theme = useTheme();
     const user = useUserStore();
     const [logoutVisible, setLogoutVisible] = useState(false);
 
-    const logout = () => {
+    const logout = async () => {
         user.logOut();
+        try {
+            await CookieManager.clearAll(true);
+        } catch {
+            // The persisted credential and API singleton are already cleared.
+        }
         setLogoutVisible(false);
         router.back();
         notify('已退出登录');
@@ -56,7 +62,7 @@ export default function UserInfoScreen() {
                 <Text type="body1" color={theme.colors.onBackground}>本地主题和浏览设置会保留，账号 Cookie 将被清除。</Text>
                 <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: theme.spacing.sm, marginTop: theme.spacing.lg }}>
                     <Button onPress={() => setLogoutVisible(false)}>取消</Button>
-                    <Button type="primary" onPress={logout}>退出</Button>
+                    <Button type="primary" onPress={() => void logout()}>退出</Button>
                 </View>
             </Dialog>
         </View>

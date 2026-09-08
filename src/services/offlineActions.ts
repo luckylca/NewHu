@@ -4,6 +4,15 @@ import { updateCommentVote } from '@/src/db/repositories/commentRepository';
 import { upsertContent } from '@/src/db/repositories/contentRepository';
 import { getNetworkStatus } from '@/src/stores/useNetworkStore';
 import type { FeedDetail, FeedType } from '@/src/types/zhihu';
+import { HttpError } from '@/src/api/client';
+import { isRetryableHttpStatus } from './syncPolicy';
+
+function shouldRetry(error: unknown) {
+    if (error instanceof HttpError) {
+        return isRetryableHttpStatus(error.status);
+    }
+    return /network|timeout|fetch|offline|internet/i.test(error instanceof Error ? error.message : String(error));
+}
 
 export async function setContentVote(content: FeedDetail, type: FeedType, voted: boolean) {
     const nextCount = Math.max(0, Number(content.voteCount || 0) + (voted === Boolean(content.voted) ? 0 : voted ? 1 : -1));
@@ -20,7 +29,7 @@ export async function setContentVote(content: FeedDetail, type: FeedType, voted:
             if (voted) await voteupArticle(content.id); else await cancelVoteupArticle(content.id);
         }
     } catch (error) {
-        if (getNetworkStatus() !== 'online' || /network|timeout|fetch|offline|internet/i.test(error instanceof Error ? error.message : String(error))) {
+        if (getNetworkStatus() !== 'online' || shouldRetry(error)) {
             await enqueueAction({ actionType: 'SET_CONTENT_VOTE', targetType: type, targetId: content.id, payload: { voted } });
         }
         throw error;
@@ -37,7 +46,7 @@ export async function setCommentVote(commentId: string, liked: boolean, voteCoun
     try {
         if (liked) await likeComment(commentId); else await cancelLikeComment(commentId);
     } catch (error) {
-        if (getNetworkStatus() !== 'online' || /network|timeout|fetch|offline|internet/i.test(error instanceof Error ? error.message : String(error))) {
+        if (getNetworkStatus() !== 'online' || shouldRetry(error)) {
             await enqueueAction({ actionType: 'SET_COMMENT_VOTE', targetType: 'comment', targetId: commentId, payload: { liked } });
         }
         throw error;

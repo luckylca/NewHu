@@ -15,20 +15,6 @@ function stringToBytes(str:string) {
 }
 
 /**
- * 将字节数组转换为字符串
- */
-function bytesToString(bytes:number[]) {
-    return String.fromCharCode(...bytes);
-}
-
-/**
- * 反转数组
- */
-function reverseArray(arr:number[]) {
-    return arr.slice().reverse();
-}
-
-/**
  * 将 32 位整数转换为大端字节数组（长度为4）
  */
 function int32ToBytes(n:number) {
@@ -65,22 +51,6 @@ function pkcs7Pad(data:string, blockSize = 16) {
     const padLen = blockSize - (data.length % blockSize);
     const padding = String.fromCharCode(padLen).repeat(padLen);
     return data + padding;
-}
-
-/**
- * 去除 PKCS7 填充
- */
-function pkcs7Unpad(data:string) {
-    const padLen = data.charCodeAt(data.length - 1);
-    return data.slice(0, data.length - padLen);
-}
-
-/**
- * 在 base64 字符串中查找字符的索引
- */
-function base64Index(char:string, base64Chars:string) {
-    const pos = base64Chars.indexOf(char);
-    return pos >= 0 ? pos : null;
 }
 
 // ==================== XZSE96V3 类定义 ====================
