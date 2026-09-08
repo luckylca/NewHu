@@ -95,6 +95,18 @@ export type UserEvent = {
     valueText?: string;
 };
 
+export type ReadingProgress = {
+    contentId: string;
+    contentType: FeedType;
+    scrollOffset: number;
+    scrollRatio: number;
+    maxScrollRatio: number;
+    completed: boolean;
+    contentHeight: number;
+    viewportHeight: number;
+    updatedAt: number;
+};
+
 export type ContentRepository = {
     upsertContent: (content: FeedItem | FeedDetail, type: FeedType, options?: { cacheState?: CacheState; voted?: boolean }) => Promise<void>;
     getContent: (id: string, type: FeedType) => Promise<DbContent | null>;

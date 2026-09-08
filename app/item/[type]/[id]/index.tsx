@@ -31,6 +31,7 @@ import { setContentVote } from "@/src/services/offlineActions";
 import { normalizeRemoteUrl, resolveImageUri } from "@/src/services/resourceService";
 import { useConsentStore } from '@/src/stores/useConsentStore';
 import { getProductV1RuntimeAssetStatus, recordProductV1Feedback } from '@/src/product-v1';
+import { useReadingProgress } from '@/src/hooks/useReadingProgress';
 
 export type ItemParams = {
     id: string;
@@ -307,13 +308,19 @@ export default function Item() {
     const [favoriteCount, setFavoriteCount] = useState(0);
     const favoritePendingRef = useRef(false);
     const readingStartedAtRef = useRef(Date.now());
-    const maxScrollRatioRef = useRef(0);
     const [arrowEffects, setArrowEffects] = useState<ArrowEffect[]>([]);
     const arrowIdRef = useRef(0);
     const titlePressed = useSharedValue(0);
     const setPendingExport = useExportContentStore((state) => state.setPending);
     const contentType = type === 'answer' ? 'answer' : 'article';
     const addLaterReadItem = useLaterReadStore((state) => state.addItem);
+    const {
+        listRef: articleListRef,
+        onLayout: handleReadingLayout,
+        onContentSizeChange: handleReadingContentSizeChange,
+        onScroll: handleReadingScroll,
+        sessionMaxScrollRatioRef,
+    } = useReadingProgress({ contentId: String(id), contentType });
     const requestLaterReadPanelOpen = useLaterReadStore((state) => state.requestPanelOpen);
 
     useFocusEffect(React.useCallback(() => {
@@ -398,7 +405,7 @@ export default function Item() {
     useEffect(() => {
         if (!readData) return;
         readingStartedAtRef.current = Date.now();
-        maxScrollRatioRef.current = 0;
+        const sessionScrollRatioRef = sessionMaxScrollRatioRef;
         return () => {
             if (!useConsentStore.getState().aiInterestAnalysisEnabled) return;
             const dwellMs = Date.now() - readingStartedAtRef.current;
@@ -412,10 +419,10 @@ export default function Item() {
                 opened: true,
                 dwellMs,
                 estimatedReadingMs,
-                scrollRatio: maxScrollRatioRef.current,
+                scrollRatio: sessionScrollRatioRef.current,
             });
         };
-    }, [contentType, readData]);
+    }, [contentType, readData, sessionMaxScrollRatioRef]);
 
     const playArrowAnimation = (absoluteX: number, absoluteY: number) => {
         const arrowId = arrowIdRef.current + 1;
@@ -753,6 +760,7 @@ export default function Item() {
 
             <GestureDetector gesture={combinedGesture}>
                 <FlatList
+                    ref={articleListRef}
                     data={articleChunks}
                     keyExtractor={(_, index) => `${readData.id}:${index}`}
                     renderItem={({ item: chunk }) => (
@@ -773,11 +781,9 @@ export default function Item() {
                 windowSize={5}
                     removeClippedSubviews
                     scrollEventThrottle={120}
-                    onScroll={(event) => {
-                        const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-                        const scrollable = Math.max(1, contentSize.height - layoutMeasurement.height);
-                        maxScrollRatioRef.current = Math.max(maxScrollRatioRef.current, Math.min(1, contentOffset.y / scrollable));
-                    }}
+                    onLayout={handleReadingLayout}
+                    onContentSizeChange={handleReadingContentSizeChange}
+                    onScroll={handleReadingScroll}
                 ListHeaderComponent={(
                     <>
                         <Pressable

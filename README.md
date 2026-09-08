@@ -31,6 +31,7 @@ HttpOnly session cookies and to clear WebView cookies on logout.
 - [x] AI 检测三档标定灵敏度：保守 / 平衡 / 高召回，使用冻结模型报告中的正式 operating points。
 - [x] 本地内容领域识别：首页与详情页支持最多 3 个不同颜色的领域胶囊。
 - [x] 登录 Cookie 原生桥接：本地 `expo-cookie-storage` 直接使用 Android `CookieManager`，已移除停止维护的第三方 Cookie 包。
+- [x] 阅读进度：SQLite 本地保存当前/最大滚动进度与已读完状态，未读完内容再次打开时自动恢复阅读位置。
 - [x] 回答/文章基础导出能力。
 
 ## Roadmap
@@ -45,7 +46,7 @@ HttpOnly session cookies and to clear WebView cookies on logout.
 
 ### P1 — 阅读体验
 
-- [ ] 阅读进度：记录每篇文章/回答的滚动位置、已读完状态并支持继续阅读。
+- [x] 阅读进度：记录每篇文章/回答的滚动位置、已读完状态并支持继续阅读。
 - [ ] 本地划线、摘录和笔记：保存出处、标题、作者、链接和时间。
 - [ ] 知识卡片：原文摘录、我的理解、标签、复习状态，并与笔记联动。
 - [ ] 本地全文搜索：覆盖已读、收藏、离线缓存、稍后阅读、笔记和评论草稿。

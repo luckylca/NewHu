@@ -1,4 +1,4 @@
-export const DATABASE_VERSION = 3;
+export const DATABASE_VERSION = 4;
 
 export const MIGRATION_1 = `
 CREATE TABLE IF NOT EXISTS contents (
@@ -245,4 +245,22 @@ CREATE INDEX IF NOT EXISTS idx_product_cycles_started
 
 export const MIGRATION_3 = `
 ALTER TABLE feed_entries ADD COLUMN recommendation_reason_json TEXT;
+`;
+
+export const MIGRATION_4 = `
+CREATE TABLE IF NOT EXISTS reading_progress (
+  content_id TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  scroll_offset REAL NOT NULL DEFAULT 0,
+  scroll_ratio REAL NOT NULL DEFAULT 0,
+  max_scroll_ratio REAL NOT NULL DEFAULT 0,
+  completed INTEGER NOT NULL DEFAULT 0,
+  content_height REAL NOT NULL DEFAULT 0,
+  viewport_height REAL NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (content_id, content_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reading_progress_updated
+  ON reading_progress(updated_at DESC);
 `;
