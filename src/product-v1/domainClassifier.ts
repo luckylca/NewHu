@@ -10,6 +10,10 @@ import {
 import { encodeArticle } from './encoder';
 import { productV1DomainLabel } from './domainLabels';
 import { selectProductV1DomainMatches, type ProductV1DomainMatch } from './domainSelection';
+import {
+  ProductV1DomainTaskQueue,
+  type ProductV1DomainClassificationPriority,
+} from './domainTaskQueue';
 import { routeSearchSeedsV2 } from './core/searchSeedRouterV2';
 import {
   getProductV1RuntimeAssetStatus,
@@ -33,8 +37,7 @@ const DOMAIN_CACHE_STORAGE_KEY = [
 ].join(':');
 
 const cache = new Map<string, ProductV1DomainCacheValue>();
-const inFlight = new Map<string, Promise<ProductV1DomainMatch[]>>();
-let classificationQueue: Promise<void> = Promise.resolve();
+const classificationQueue = new ProductV1DomainTaskQueue();
 let persistentCacheLoadPromise: Promise<void> | null = null;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -64,12 +67,6 @@ function schedulePersistentCacheWrite() {
   }, PERSIST_DELAY_MS);
 }
 
-function enqueue<T>(work: () => Promise<T>) {
-  const result = classificationQueue.then(work, work);
-  classificationQueue = result.then(() => undefined, () => undefined);
-  return result;
-}
-
 function trimCache() {
   while (cache.size > MAX_CACHE_ENTRIES) {
     const oldest = cache.keys().next().value;
@@ -86,6 +83,10 @@ export async function classifyProductV1Domains(
   contentKey: string,
   title: string,
   excerpt: string,
+  options: {
+    priority?: ProductV1DomainClassificationPriority;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<ProductV1DomainMatch[]> {
   if (!isProductV1DomainClassificationAvailable()) return [];
 
@@ -102,10 +103,7 @@ export async function classifyProductV1Domains(
   }
 
   const pendingKey = `${contentKey}\u0000${fingerprint}`;
-  const existing = inFlight.get(pendingKey);
-  if (existing) return existing;
-
-  const promise = enqueue(async () => {
+  return classificationQueue.enqueue(pendingKey, options.priority ?? 'normal', async () => {
     // Do not let the classifier itself trigger a Product V1 resource download.
     if (!isProductV1DomainClassificationAvailable()) return [];
 
@@ -138,12 +136,7 @@ export async function classifyProductV1Domains(
     trimCache();
     schedulePersistentCacheWrite();
     return matches;
-  }).finally(() => {
-    inFlight.delete(pendingKey);
-  });
-
-  inFlight.set(pendingKey, promise);
-  return promise;
+  }, options.signal);
 }
 
 export function clearProductV1DomainClassificationCache() {

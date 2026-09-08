@@ -785,6 +785,7 @@ export default function Item() {
                                     contentKey={`${contentType}:${readData.id}`}
                                     title={title}
                                     excerpt={aiDetectionText}
+                                    priority="high"
                                     style={{ marginLeft: 8, marginTop: 4 }}
                                 />
                             </View>

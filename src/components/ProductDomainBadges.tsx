@@ -1,5 +1,6 @@
 import { classifyProductV1Domains } from '@/src/product-v1/domainClassifier';
 import type { ProductV1DomainMatch } from '@/src/product-v1/domainSelection';
+import type { ProductV1DomainClassificationPriority } from '@/src/product-v1/domainTaskQueue';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import React from 'react';
@@ -20,12 +21,14 @@ export function ProductDomainBadges({
   contentKey,
   title,
   excerpt,
+  priority = 'normal',
   style,
 }: {
   enabled: boolean;
   contentKey: string;
   title: string;
   excerpt: string;
+  priority?: ProductV1DomainClassificationPriority;
   style?: StyleProp<ViewStyle>;
 }) {
   const theme = useTheme();
@@ -38,7 +41,11 @@ export function ProductDomainBadges({
     }
 
     let active = true;
-    void classifyProductV1Domains(contentKey, title, excerpt)
+    const controller = new AbortController();
+    void classifyProductV1Domains(contentKey, title, excerpt, {
+      priority,
+      signal: controller.signal,
+    })
       .then((matches) => {
         if (active) setDomains(matches);
       })
@@ -48,8 +55,9 @@ export function ProductDomainBadges({
 
     return () => {
       active = false;
+      controller.abort();
     };
-  }, [contentKey, enabled, excerpt, title]);
+  }, [contentKey, enabled, excerpt, priority, title]);
 
   if (!enabled || domains.length === 0) return null;
 

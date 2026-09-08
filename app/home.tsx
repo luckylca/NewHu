@@ -22,6 +22,7 @@ import { useConsentStore } from '@/src/stores/useConsentStore';
 import { getProductV1RuntimeAssetStatus, processProductV1Feed, recordProductV1Exposure, recordProductV1Feedback } from '@/src/product-v1';
 import { AiSuspicionBadge } from '@/src/components/AiSuspicionBadge';
 import { ProductDomainBadges } from '@/src/components/ProductDomainBadges';
+import type { ProductV1DomainClassificationPriority } from '@/src/product-v1/domainTaskQueue';
 
 const { width: WindowWidth } = Dimensions.get('window');
 const WindowHeight = Dimensions.get('window').height;
@@ -50,14 +51,21 @@ function getAiDetectionText(item: FeedItem) {
     return item.excerpt?.trim() || getContentPreview(item);
 }
 
+function sameStringSet(a: Set<string>, b: Set<string>) {
+    if (a.size !== b.size) return false;
+    for (const value of a) if (!b.has(value)) return false;
+    return true;
+}
+
 // ==================== 普通模式 Item ====================
-export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetection, showDomainLabels, onOpenMenu }: {
+export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetection, showDomainLabels, domainPriority, onOpenMenu }: {
     item: FeedItem;
     type: FeedType;
     needToGet: boolean;
     hideTitle?: boolean;
     showAiDetection?: boolean;
     showDomainLabels?: boolean;
+    domainPriority?: ProductV1DomainClassificationPriority;
     onOpenMenu?: (item: FeedItem, feedType: FeedType, event: GestureResponderEvent) => void;
 }) => {
     const title = (type === 'answer' && item.questionTitle) ? item.questionTitle : item.title;
@@ -104,6 +112,7 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetect
                         contentKey={`${type}:${item.id}`}
                         title={title || '无标题'}
                         excerpt={getContentPreview(item)}
+                        priority={domainPriority}
                         style={{ marginLeft: 6, marginTop: 2 }}
                     />
                 </View>
@@ -136,7 +145,8 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetect
         prevProps.onOpenMenu === nextProps.onOpenMenu &&
         prevProps.hideTitle === nextProps.hideTitle &&
         prevProps.showAiDetection === nextProps.showAiDetection &&
-        prevProps.showDomainLabels === nextProps.showDomainLabels;
+        prevProps.showDomainLabels === nextProps.showDomainLabels &&
+        prevProps.domainPriority === nextProps.domainPriority;
 });
 RenderItem.displayName = 'RenderItem';
 
@@ -160,12 +170,13 @@ type WaterfallPlacement = {
     height: number;
 };
 
-const WaterfallItem = memo(({ item, type, needToGet, measurementKey, showDomainLabels, onMeasured, onOpenMenu }: {
+const WaterfallItem = memo(({ item, type, needToGet, measurementKey, showDomainLabels, domainPriority, onMeasured, onOpenMenu }: {
     item: FeedItem;
     type: FeedType;
     needToGet: boolean;
     measurementKey: string;
     showDomainLabels?: boolean;
+    domainPriority?: ProductV1DomainClassificationPriority;
     onMeasured?: (key: string, height: number) => void;
     onOpenMenu?: (item: FeedItem, feedType: FeedType, event: GestureResponderEvent) => void;
 }) => {
@@ -220,6 +231,7 @@ const WaterfallItem = memo(({ item, type, needToGet, measurementKey, showDomainL
                         contentKey={`${type}:${item.id}`}
                         title={title || '无标题'}
                         excerpt={getContentPreview(item)}
+                        priority={domainPriority}
                         style={{ marginLeft: 6, marginTop: 2 }}
                     />
                 </View>
@@ -241,19 +253,21 @@ const WaterfallItem = memo(({ item, type, needToGet, measurementKey, showDomainL
     prevProps.needToGet === nextProps.needToGet &&
     prevProps.measurementKey === nextProps.measurementKey &&
     prevProps.showDomainLabels === nextProps.showDomainLabels &&
+    prevProps.domainPriority === nextProps.domainPriority &&
     prevProps.onMeasured === nextProps.onMeasured &&
     prevProps.onOpenMenu === nextProps.onOpenMenu
 ));
 WaterfallItem.displayName = 'WaterfallItem';
 
 // ==================== 卡片模式 Item ====================
-export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimations, hideTitle, showDomainLabels, onOpenMenu }: {
+export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimations, hideTitle, showDomainLabels, domainPriority, onOpenMenu }: {
     item: FeedItem;
     type: FeedType;
     needToGet: boolean;
     disableAnimations?: boolean;
     hideTitle?: boolean;
     showDomainLabels?: boolean;
+    domainPriority?: ProductV1DomainClassificationPriority;
     onOpenMenu?: (item: FeedItem, feedType: FeedType, event: GestureResponderEvent) => void;
 }) => {
     const title = (type === 'answer' && item.questionTitle) ? item.questionTitle : item.title;
@@ -315,6 +329,7 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                                 contentKey={`${type}:${item.id}`}
                                 title={title || '无标题'}
                                 excerpt={preview}
+                                priority={domainPriority}
                                 style={{ marginLeft: 8, marginTop: 3 }}
                             />
                         </View>
@@ -365,7 +380,8 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
         prevProps.needToGet === nextProps.needToGet &&
         prevProps.onOpenMenu === nextProps.onOpenMenu &&
         prevProps.hideTitle === nextProps.hideTitle &&
-        prevProps.showDomainLabels === nextProps.showDomainLabels;
+        prevProps.showDomainLabels === nextProps.showDomainLabels &&
+        prevProps.domainPriority === nextProps.domainPriority;
 });
 RenderCardModeItem.displayName = 'RenderCardModeItem';
 
@@ -400,6 +416,10 @@ const HomeScreen = () => {
     const [actionMenuTarget, setActionMenuTarget] = useState<{ item: FeedItem; type: FeedType } | null>(null);
     const [actionMenuAnchor, setActionMenuAnchor] = useState({ x: 0, y: 0, width: 1, height: 1 });
     const [domainLabelsEnabled, setDomainLabelsEnabled] = useState(() => getProductV1RuntimeAssetStatus().installed);
+    const [visibleDomainKeys, setVisibleDomainKeys] = useState<Set<string>>(() => new Set());
+    const commitVisibleDomainKeys = useCallback((next: Set<string>) => {
+        setVisibleDomainKeys((current) => sameStringSet(current, next) ? current : next);
+    }, []);
     const requestInFlightRef = useRef(false);
 
     useFocusEffect(useCallback(() => {
@@ -453,6 +473,7 @@ const HomeScreen = () => {
 
     const flatListRef = useRef<FlatList>(null);
     const waterfallScrollRef = useRef<ScrollView>(null);
+    const waterfallOffsetYRef = useRef(0);
     const waterfallRenderWindowRef = useRef({ start: 0, end: WATERFALL_INITIAL_RENDER_AHEAD });
     const [waterfallRenderWindow, setWaterfallRenderWindow] = useState(waterfallRenderWindowRef.current);
     const waterfallMeasuredHeightsRef = useRef<Record<string, number>>({});
@@ -601,10 +622,12 @@ const HomeScreen = () => {
         currentIndexRef.current = 0;
         flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
         waterfallScrollRef.current?.scrollTo({ y: 0, animated: true });
+        waterfallOffsetYRef.current = 0;
         waterfallRenderWindowRef.current = { start: 0, end: WATERFALL_INITIAL_RENDER_AHEAD };
         setWaterfallRenderWindow(waterfallRenderWindowRef.current);
         waterfallLoadTriggerRef.current = 0;
-    }, []);
+        commitVisibleDomainKeys(new Set());
+    }, [commitVisibleDomainKeys]);
 
     useEffect(() => {
         if (handledScrollTopRequestRef.current === scrollTopRequest) return;
@@ -655,6 +678,8 @@ const HomeScreen = () => {
 
     useEffect(() => {
         currentIndexRef.current = 0;
+        waterfallOffsetYRef.current = 0;
+        commitVisibleDomainKeys(new Set());
         const frame = requestAnimationFrame(() => {
             flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
             waterfallScrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -663,7 +688,7 @@ const HomeScreen = () => {
             waterfallLoadTriggerRef.current = 0;
         });
         return () => cancelAnimationFrame(frame);
-    }, [displayMode, filterAds, filterPaid]);
+    }, [commitVisibleDomainKeys, displayMode, filterAds, filterPaid]);
 
     // 联动优化：不喜欢（移除+网络请求+本地状态）统一处理器
     const handleDislikeItem = useCallback((id: string, feedType: FeedType) => {
@@ -728,9 +753,13 @@ const HomeScreen = () => {
     }, []);
 
     const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: { item: FeedItemInfo; isViewable: boolean }[] }) => {
+        const nextVisibleKeys = new Set<string>();
         for (const viewable of viewableItems) {
-            if (viewable.isViewable) reportExposure(viewable.item);
+            if (!viewable.isViewable) continue;
+            reportExposure(viewable.item);
+            nextVisibleKeys.add(`${viewable.item.feedType}:${viewable.item.item.id}`);
         }
+        commitVisibleDomainKeys(nextVisibleKeys);
     }).current;
 
     const actionMenuItems = useMemo(() => [
@@ -756,10 +785,11 @@ const HomeScreen = () => {
                 needToGet={true}
                 showAiDetection
                 showDomainLabels={domainLabelsEnabled}
+                domainPriority={visibleDomainKeys.has(`${item.feedType}:${item.item.id}`) ? 'high' : 'low'}
                 onOpenMenu={openActionMenu}
             />
         );
-    }, [domainLabelsEnabled, openActionMenu]);
+    }, [domainLabelsEnabled, openActionMenu, visibleDomainKeys]);
 
     // 关键改动：在这里把 item.feedType 作为形参绑定闭包传给 RenderCardModeItem
     const renderCardListItem = useCallback(({ item }: { item: FeedItemInfo }) => {
@@ -770,10 +800,11 @@ const HomeScreen = () => {
                 needToGet={true}
                 disableAnimations={disableAnimations}
                 showDomainLabels={domainLabelsEnabled}
+                domainPriority={visibleDomainKeys.has(`${item.feedType}:${item.item.id}`) ? 'high' : 'low'}
                 onOpenMenu={openActionMenu}
             />
         );
-    }, [disableAnimations, domainLabelsEnabled, openActionMenu]);
+    }, [disableAnimations, domainLabelsEnabled, openActionMenu, visibleDomainKeys]);
 
     const waterfallColumnWidth = Math.max(0, (WindowWidth - 24 - WATERFALL_GAP) / 2);
     const waterfallLayout = useMemo(() => {
@@ -802,6 +833,19 @@ const HomeScreen = () => {
         };
     }, [theme.spacing.xl, visibleFeedList, waterfallMeasuredHeights]);
 
+    useEffect(() => {
+        if (displayMode !== 'waterfall') return;
+        const start = waterfallOffsetYRef.current;
+        const end = start + WindowHeight;
+        const nextVisibleKeys = new Set<string>();
+        for (const placement of waterfallLayout.placements) {
+            if (placement.top + placement.height >= start && placement.top <= end) {
+                nextVisibleKeys.add(`${placement.feed.feedType}:${placement.feed.item.id}`);
+            }
+        }
+        commitVisibleDomainKeys(nextVisibleKeys);
+    }, [commitVisibleDomainKeys, displayMode, waterfallLayout.placements]);
+
     const updateWaterfallRenderWindow = useCallback((offsetY: number) => {
         const start = Math.max(0, offsetY - WindowHeight * 1.5);
         const end = offsetY + WindowHeight * 3;
@@ -823,12 +867,16 @@ const HomeScreen = () => {
 
     const handleWaterfallScrollSettled = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
         const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+        waterfallOffsetYRef.current = contentOffset.y;
         updateWaterfallRenderWindow(contentOffset.y);
+        const nextVisibleKeys = new Set<string>();
         for (const placement of waterfallLayout.placements) {
             if (placement.top + placement.height >= contentOffset.y && placement.top <= contentOffset.y + layoutMeasurement.height) {
                 reportExposure(placement.feed);
+                nextVisibleKeys.add(`${placement.feed.feedType}:${placement.feed.item.id}`);
             }
         }
+        commitVisibleDomainKeys(nextVisibleKeys);
         if (
             contentSize.height > waterfallLoadTriggerRef.current &&
             contentOffset.y + layoutMeasurement.height >= contentSize.height - 700
@@ -836,7 +884,7 @@ const HomeScreen = () => {
             waterfallLoadTriggerRef.current = contentSize.height;
             loadWaterfallMore();
         }
-    }, [loadWaterfallMore, reportExposure, updateWaterfallRenderWindow, waterfallLayout.placements]);
+    }, [commitVisibleDomainKeys, loadWaterfallMore, reportExposure, updateWaterfallRenderWindow, waterfallLayout.placements]);
 
     const renderedWaterfallItems = useMemo(() => waterfallLayout.placements.filter(({ top, height }) => (
         top + height >= waterfallRenderWindow.start && top <= waterfallRenderWindow.end
@@ -941,6 +989,7 @@ const HomeScreen = () => {
                                         needToGet={true}
                                         measurementKey={`${feed.feedType}:${feed.item.id}`}
                                         showDomainLabels={domainLabelsEnabled}
+                                        domainPriority={visibleDomainKeys.has(`${feed.feedType}:${feed.item.id}`) ? 'high' : 'low'}
                                         onMeasured={handleWaterfallMeasured}
                                         onOpenMenu={openActionMenu}
                                     />
