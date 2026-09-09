@@ -189,7 +189,7 @@ export default function AiAnalysisSettingsScreen() {
                                 color={theme.colors.onSurfaceVariantSummary}
                                 style={{ marginTop: theme.spacing.xs, lineHeight: 20 }}
                             >
-                                一句话总结、正文总结、关键词、3 条核心观点、反方/反例视角、适合谁看、信息密度、收藏价值、AI 写作特征风险、综合评价和需要核实的点。AI 写作风险只分析文本特征，不代表作者一定使用了 AI。
+                                一句话总结、正文总结、关键词、3 条核心观点、反方/反例视角、适合谁看、信息密度、收藏价值、AI 写作特征风险，以及结构清晰度、标题党风险、广告/软文风险、模板化程度和基于真实评论样本的评论区质量。AI 写作风险只分析文本特征，不代表作者一定使用了 AI；评论正文不会发送给外部模型。
                             </Text>
                         </Card>
                     </>

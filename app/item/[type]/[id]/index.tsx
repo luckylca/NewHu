@@ -894,9 +894,12 @@ export default function Item() {
 
             <ContentAiAnalysisLauncher
                 contentKey={`${contentType}:${readData.id}`}
+                contentId={String(readData.id)}
                 contentType={contentType}
                 title={title}
                 authorName={readData.authorName}
+                authorUrlToken={readData.authorUrlToken}
+                commentCount={readData.commentCount}
                 text={aiDetectionText}
             />
 

@@ -3,6 +3,13 @@ export type AiAnalysisMetric = {
     reason: string;
 };
 
+export type AiContentQuality = {
+    structureClarity: AiAnalysisMetric;
+    clickbaitRisk: AiAnalysisMetric;
+    adRisk: AiAnalysisMetric;
+    templatedRisk: AiAnalysisMetric;
+};
+
 export type AiAnalysisResult = {
     oneLineSummary: string;
     summary: string;
@@ -13,6 +20,7 @@ export type AiAnalysisResult = {
     informationDensity: AiAnalysisMetric;
     collectionValue: AiAnalysisMetric;
     aiWritingRisk: AiAnalysisMetric;
+    contentQuality: AiContentQuality | null;
     evaluation: string;
     cautions: string[];
 };
@@ -141,6 +149,10 @@ export function parseAiAnalysisResult(raw: string): AiAnalysisResult {
     const oneLineSummary = parsed.oneLineSummary ?? parsed.one_line_summary;
     const counterPoints = parsed.counterPoints ?? parsed.counter_points ?? parsed.counterarguments;
     const suitableFor = parsed.suitableFor ?? parsed.suitable_for ?? parsed.audience;
+    const contentQualityRaw = parsed.contentQuality ?? parsed.content_quality;
+    const contentQualityData = contentQualityRaw && typeof contentQualityRaw === 'object'
+        ? contentQualityRaw as Record<string, unknown>
+        : null;
 
     return {
         oneLineSummary: asString(oneLineSummary),
@@ -152,6 +164,12 @@ export function parseAiAnalysisResult(raw: string): AiAnalysisResult {
         informationDensity: metric(informationDensity),
         collectionValue: metric(collectionValue),
         aiWritingRisk: metric(aiWritingRisk),
+        contentQuality: contentQualityData ? {
+            structureClarity: metric(contentQualityData.structureClarity ?? contentQualityData.structure_clarity),
+            clickbaitRisk: metric(contentQualityData.clickbaitRisk ?? contentQualityData.clickbait_risk),
+            adRisk: metric(contentQualityData.adRisk ?? contentQualityData.ad_risk),
+            templatedRisk: metric(contentQualityData.templatedRisk ?? contentQualityData.templated_risk),
+        } : null,
         evaluation: asString(parsed.evaluation),
         cautions: asStringArray(parsed.cautions, 6),
     };
@@ -190,6 +208,12 @@ ${body}
   "informationDensity": {"score": 0-100, "reason": "解释"},
   "collectionValue": {"score": 0-100, "reason": "解释"},
   "aiWritingRisk": {"score": 0-100, "reason": "仅根据文本写作特征解释，不推断作者身份"},
+  "contentQuality": {
+    "structureClarity": {"score": 0-100, "reason": "结构清晰度，越高越好"},
+    "clickbaitRisk": {"score": 0-100, "reason": "标题党/夸张承诺风险，越高风险越大"},
+    "adRisk": {"score": 0-100, "reason": "广告、带货或软文倾向，越高风险越大"},
+    "templatedRisk": {"score": 0-100, "reason": "模板化/套话程度，越高风险越大"}
+  },
   "evaluation": "对逻辑、证据、表达和适用范围的综合评价",
   "cautions": ["信息缺口、证据不足或需要核实的点"]
 }`,

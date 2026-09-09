@@ -1,6 +1,9 @@
 import { analyzeContentWithAi } from '@/src/services/aiAnalysisService';
+import { loadCommentQuality } from '@/src/services/commentQualityService';
+import type { CommentQualityResult } from '@/src/utils/commentQuality';
 import type { AiAnalysisMetric, AiAnalysisResult } from '@/src/services/aiAnalysisCore';
 import { useAiAnalysisStore } from '@/src/stores/useAiAnalysisStore';
+import { useNetworkStore } from '@/src/stores/useNetworkStore';
 import { Button, BottomSheet, Card, Icon } from '@/src/ui';
 import { getBadgeColorsByIndex } from '@/src/ui/badgePalette';
 import { Text } from '@/src/ui/primitives';
@@ -11,15 +14,21 @@ import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 
 export function ContentAiAnalysisLauncher({
     contentKey,
+    contentId,
     contentType,
     title,
     authorName,
+    authorUrlToken,
+    commentCount,
     text,
 }: {
     contentKey: string;
+    contentId: string;
     contentType: 'answer' | 'article';
     title: string;
     authorName?: string;
+    authorUrlToken?: string;
+    commentCount?: number;
     text: string;
 }) {
     const theme = useTheme();
@@ -27,10 +36,12 @@ export function ContentAiAnalysisLauncher({
     const baseUrl = useAiAnalysisStore((state) => state.baseUrl);
     const apiKey = useAiAnalysisStore((state) => state.apiKey);
     const model = useAiAnalysisStore((state) => state.model);
+    const networkStatus = useNetworkStore((state) => state.status);
 
     const [visible, setVisible] = useState(false);
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<AiAnalysisResult | null>(null);
+    const [commentQuality, setCommentQuality] = useState<CommentQualityResult | null>(null);
     const [error, setError] = useState('');
     const requestRef = useRef<AbortController | null>(null);
 
@@ -42,6 +53,7 @@ export function ContentAiAnalysisLauncher({
         setVisible(false);
         setLoading(false);
         setResult(null);
+        setCommentQuality(null);
         setError('');
     }, [contentKey]);
 
@@ -56,13 +68,32 @@ export function ContentAiAnalysisLauncher({
         requestRef.current = controller;
         setLoading(true);
         setError('');
+        setCommentQuality(null);
         try {
-            const next = await analyzeContentWithAi(
-                { baseUrl, apiKey, model },
-                { contentType, title, authorName, text },
-                controller.signal,
-            );
-            if (!controller.signal.aborted) setResult(next);
+            const [next, localCommentQuality] = await Promise.all([
+                analyzeContentWithAi(
+                    { baseUrl, apiKey, model },
+                    { contentType, title, authorName, text },
+                    controller.signal,
+                ),
+                loadCommentQuality({
+                    contentId,
+                    contentType,
+                    allowNetwork: networkStatus === 'online',
+                    totalCountHint: commentCount,
+                    contentAuthor: {
+                        name: authorName,
+                        urlToken: authorUrlToken,
+                    },
+                }).catch((qualityError) => {
+                    console.warn('评论区质量评分失败', qualityError);
+                    return null;
+                }),
+            ]);
+            if (!controller.signal.aborted) {
+                setResult(next);
+                setCommentQuality(localCommentQuality);
+            }
         } catch (analysisError) {
             if (!controller.signal.aborted) {
                 setError(analysisError instanceof Error ? analysisError.message : 'AI 分析失败');
@@ -70,7 +101,7 @@ export function ContentAiAnalysisLauncher({
         } finally {
             if (!controller.signal.aborted) setLoading(false);
         }
-    }, [apiKey, authorName, baseUrl, configured, contentType, loading, model, text, title]);
+    }, [apiKey, authorName, authorUrlToken, baseUrl, commentCount, configured, contentId, contentType, loading, model, networkStatus, text, title]);
 
     const open = useCallback(() => {
         setVisible(true);
@@ -228,6 +259,36 @@ export function ContentAiAnalysisLauncher({
                             </View>
                             <MetricCard title="AI 写作特征风险" metric={result.aiWritingRisk} paletteIndex={2} fullWidth />
 
+                            {(result.contentQuality || commentQuality) ? (
+                                <>
+                                    <View>
+                                        <Text type="headline1" weight="medium" color={theme.colors.onBackground}>
+                                            内容质量
+                                        </Text>
+                                        <Text
+                                            type="footnote1"
+                                            color={theme.colors.onSurfaceVariantSummary}
+                                            style={{ marginTop: theme.spacing.xs, lineHeight: 18 }}
+                                        >
+                                            结构清晰度越高越好；标题党、广告软文和模板化风险越低越好。评论区质量来自本地真实评论样本，不发送给外部模型。
+                                        </Text>
+                                    </View>
+                                    {result.contentQuality ? (
+                                        <>
+                                            <View style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
+                                                <MetricCard title="结构清晰度" metric={result.contentQuality.structureClarity} paletteIndex={6} />
+                                                <MetricCard title="标题党风险" metric={result.contentQuality.clickbaitRisk} paletteIndex={1} />
+                                            </View>
+                                            <View style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
+                                                <MetricCard title="广告 / 软文风险" metric={result.contentQuality.adRisk} paletteIndex={2} />
+                                                <MetricCard title="模板化程度" metric={result.contentQuality.templatedRisk} paletteIndex={4} />
+                                            </View>
+                                        </>
+                                    ) : null}
+                                    {commentQuality ? <CommentQualityCard quality={commentQuality} /> : null}
+                                </>
+                            ) : null}
+
                             <AnalysisTextCard title="综合评价" text={result.evaluation || '模型没有返回综合评价'} />
                             {result.cautions.length ? (
                                 <ListCard title="需要核实" items={result.cautions} />
@@ -245,6 +306,39 @@ export function ContentAiAnalysisLauncher({
                 </ScrollView>
             </BottomSheet>
         </>
+    );
+}
+
+function CommentQualityCard({ quality }: { quality: CommentQualityResult }) {
+    const theme = useTheme();
+    if (quality.score == null) {
+        return (
+            <Card feedback="none" contentStyle={{ padding: theme.spacing.md }}>
+                <Text type="footnote1" weight="bold" color={theme.colors.onBackground}>
+                    评论区质量（本地）
+                </Text>
+                <Text
+                    type="body2"
+                    color={theme.colors.onSurfaceVariantSummary}
+                    style={{ marginTop: theme.spacing.xs, lineHeight: 20 }}
+                >
+                    暂不可评分 · {quality.reason}
+                </Text>
+            </Card>
+        );
+    }
+
+    const sourceLabel = quality.source === 'network' ? 'score 排序首屏样本' : '本地缓存样本';
+    return (
+        <MetricCard
+            title="评论区质量（本地）"
+            metric={{
+                score: quality.score,
+                reason: `${quality.reason} · ${sourceLabel}`,
+            }}
+            paletteIndex={7}
+            fullWidth
+        />
     );
 }
 
