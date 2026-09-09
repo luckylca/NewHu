@@ -6,11 +6,17 @@ import { enqueueAction, getPendingActionByTarget, markActionResult } from '@/src
 import { insertLocalComment } from '@/src/db/repositories/commentRepository';
 import { getNetworkStatus } from '@/src/stores/useNetworkStore';
 import { useUserStore } from '@/src/stores/useUserStore';
+import {
+    COMMENT_REPLY_ASSIST_PRESETS,
+    insertTextAtSelection,
+    type TextSelection,
+} from '@/src/utils/commentReplyAssist';
 import type { CommentViewModel } from './CommentItem';
 import { Button, Icon, Input, TopAppBar } from '@/src/ui';
+import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
+import { FlatList, Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
 
 type CommentEditProps = {
     visible: boolean;
@@ -28,6 +34,8 @@ export default function CommentEdit({ visible, name, contentType, contentId, rep
     const [content, setContent] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [emojiVisible, setEmojiVisible] = useState(false);
+    const [assistVisible, setAssistVisible] = useState(false);
+    const [selection, setSelection] = useState<TextSelection>({ start: 0, end: 0 });
     const [saving, setSaving] = useState(false);
     const contentRef = useRef('');
     const saveCommentDraft = useDraftStore((state) => state.saveCommentDraft);
@@ -43,7 +51,9 @@ export default function CommentEdit({ visible, name, contentType, contentId, rep
         const savedContent = saved?.content ?? '';
         contentRef.current = savedContent;
         setContent(savedContent);
+        setSelection({ start: savedContent.length, end: savedContent.length });
         setEmojiVisible(false);
+        setAssistVisible(false);
         setSaving(false);
     }, [draftId, visible]);
 
@@ -86,9 +96,20 @@ export default function CommentEdit({ visible, name, contentType, contentId, rep
         setSaving(true);
     }, []);
 
-    const addEmoji = useCallback((name: string) => {
-        changeContent(`${contentRef.current}[${name}]`);
-    }, [changeContent]);
+    const insertAtCursor = useCallback((text: string) => {
+        const next = insertTextAtSelection(contentRef.current, text, selection);
+        changeContent(next.content);
+        setSelection(next.selection);
+    }, [changeContent, selection]);
+
+    const addEmoji = useCallback((emojiName: string) => {
+        insertAtCursor(`[${emojiName}]`);
+    }, [insertAtCursor]);
+
+    const addAssistText = useCallback((text: string) => {
+        insertAtCursor(text);
+        setAssistVisible(false);
+    }, [insertAtCursor]);
 
     const persistLocalComment = async (text: string, status: 'pending' | 'needs_user_action' = 'pending') => {
         const localId = `local:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`;
@@ -212,23 +233,89 @@ export default function CommentEdit({ visible, name, contentType, contentId, rep
                             textAlignVertical: 'top',
                             style: { flex: 1, minHeight: 180 },
                             maxLength: 5000,
+                            selection,
+                            onSelectionChange: (event) => setSelection(event.nativeEvent.selection),
                         }}
                         style={{ flex: 1, alignItems: 'stretch' }}
-                        onFocus={() => setEmojiVisible(false)}
+                        onFocus={() => {
+                            setEmojiVisible(false);
+                            setAssistVisible(false);
+                        }}
                     />
                 </View>
                 <View style={{ borderTopWidth: 1, borderTopColor: theme.colors.dividerLine, backgroundColor: pageBackground }}>
-                    <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="表情"
-                        onPress={() => {
-                            Keyboard.dismiss();
-                            setEmojiVisible((current) => !current);
-                        }}
-                        style={{ height: 48, paddingHorizontal: theme.spacing.lg, flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start' }}
+                    <Text
+                        type="footnote2"
+                        color={theme.colors.onSurfaceVariantSummary}
+                        align="right"
+                        style={{ marginTop: theme.spacing.xs }}
                     >
-                        <Icon name="emoticon-happy-outline" size={23} color={emojiVisible ? theme.colors.primary : theme.colors.onSurfaceVariantActions} />
-                    </Pressable>
+                        {content.length}/5000 · 草稿自动保存
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="表情"
+                            onPress={() => {
+                                Keyboard.dismiss();
+                                setAssistVisible(false);
+                                setEmojiVisible((current) => !current);
+                            }}
+                            style={{ height: 48, paddingHorizontal: theme.spacing.lg, flexDirection: 'row', alignItems: 'center' }}
+                        >
+                            <Icon name="emoticon-happy-outline" size={23} color={emojiVisible ? theme.colors.primary : theme.colors.onSurfaceVariantActions} />
+                        </Pressable>
+                        <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="回复辅助"
+                            onPress={() => {
+                                Keyboard.dismiss();
+                                setEmojiVisible(false);
+                                setAssistVisible((current) => !current);
+                            }}
+                            style={{ height: 48, paddingHorizontal: theme.spacing.sm, paddingRight: theme.spacing.lg, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                        >
+                            <Icon name="message-text-outline" size={22} color={assistVisible ? theme.colors.primary : theme.colors.onSurfaceVariantActions} />
+                            <Text type="footnote1" weight="medium" color={assistVisible ? theme.colors.primary : theme.colors.onSurfaceVariantActions}>
+                                辅助
+                            </Text>
+                        </Pressable>
+                    </View>
+                    {assistVisible ? (
+                        <View style={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.lg }}>
+                            <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
+                                {name ? `回复 ${name} · 选择一个开头后继续编辑` : '选择一个表达后继续编辑'}
+                            </Text>
+                            <ScrollView
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                keyboardShouldPersistTaps="always"
+                                contentContainerStyle={{ gap: theme.spacing.sm, paddingTop: theme.spacing.sm }}
+                            >
+                                {COMMENT_REPLY_ASSIST_PRESETS.map((preset) => (
+                                    <Pressable
+                                        key={preset.id}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={preset.label}
+                                        onPress={() => addAssistText(preset.text)}
+                                        style={{
+                                            minHeight: 36,
+                                            paddingHorizontal: theme.spacing.md,
+                                            borderRadius: theme.radius.full,
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            backgroundColor: theme.colors.secondaryContainer,
+                                        }}
+                                    >
+                                        <Text type="footnote1" weight="medium" color={theme.colors.onSecondaryContainer}>
+                                            {preset.label}
+                                        </Text>
+                                    </Pressable>
+                                ))}
+                            </ScrollView>
+                        </View>
+                    ) : null}
+
                     {emojiVisible ? (
                         <FlatList
                             data={emojiEntries}
