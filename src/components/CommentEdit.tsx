@@ -208,7 +208,11 @@ export default function CommentEdit({ visible, name, contentType, contentId, rep
     if (!visible) return null;
 
     return (
-        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: pageBackground }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView
+            style={{ flex: 1, backgroundColor: pageBackground }}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={0}
+        >
                 <TopAppBar
                     title={saving ? '正在实时保存到草稿箱' : name ? `回复 ${name}` : '发表评论'}
                     navigation={
@@ -231,7 +235,7 @@ export default function CommentEdit({ visible, name, contentType, contentId, rep
                         inputProps={{
                             autoFocus: true,
                             textAlignVertical: 'top',
-                            style: { flex: 1, minHeight: 180 },
+                            style: { flex: 1, minHeight: 120 },
                             maxLength: 5000,
                             selection,
                             onSelectionChange: (event) => setSelection(event.nativeEvent.selection),
@@ -243,7 +247,6 @@ export default function CommentEdit({ visible, name, contentType, contentId, rep
                         }}
                     />
                 </View>
-                <View style={{ borderTopWidth: 1, borderTopColor: theme.colors.dividerLine, backgroundColor: pageBackground }}>
                     <Text
                         type="footnote2"
                         color={theme.colors.onSurfaceVariantSummary}
@@ -252,6 +255,7 @@ export default function CommentEdit({ visible, name, contentType, contentId, rep
                     >
                         {content.length}/5000 · 草稿自动保存
                     </Text>
+                <View style={{ borderTopWidth: 1, borderTopColor: theme.colors.dividerLine, backgroundColor: pageBackground }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <Pressable
                             accessibilityRole="button"

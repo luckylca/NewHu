@@ -17,6 +17,7 @@ import {
     TopAppBar,
 } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
+import { getBadgeColorsByIndex } from '@/src/ui/badgePalette';
 import { useTheme } from '@/src/ui/theme';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
@@ -94,6 +95,21 @@ export default function KnowledgeCardsScreen() {
                 />
             </View>
 
+            <View style={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md }}>
+                <Card feedback="none" contentStyle={{ padding: theme.spacing.md }}>
+                    <Text type="body2" weight="medium" color={theme.colors.onBackground}>
+                        知识卡片是用来复习的，不是另一份收藏夹
+                    </Text>
+                    <Text
+                        type="body2"
+                        color={theme.colors.onSurfaceVariantSummary}
+                        style={{ marginTop: theme.spacing.xs, lineHeight: 20 }}
+                    >
+                        把文章或回答里的一段划线/摘录变成卡片，保留原文、你的理解、标签和复习状态。之后可以按“待复习 → 复习中 → 已掌握”整理真正需要记住的内容。
+                    </Text>
+                </Card>
+            </View>
+
             <ScrollView
                 contentContainerStyle={{
                     padding: theme.spacing.lg,
@@ -130,18 +146,26 @@ export default function KnowledgeCardsScreen() {
                             contentStyle={{ padding: theme.spacing.lg }}
                         >
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                                <View
-                                    style={{
-                                        paddingHorizontal: 10,
-                                        paddingVertical: 5,
-                                        borderRadius: theme.radius.full,
-                                        backgroundColor: theme.colors.secondaryContainer,
-                                    }}
-                                >
-                                    <Text type="footnote1" weight="medium" color={theme.colors.onSecondaryContainer}>
-                                        {KNOWLEDGE_REVIEW_LABELS[card.reviewState]}
-                                    </Text>
-                                </View>
+                                {(() => {
+                                    const stateIndex = card.reviewState === 'new' ? 2 : card.reviewState === 'learning' ? 5 : 3;
+                                    const colors = getBadgeColorsByIndex(stateIndex, theme.dark);
+                                    return (
+                                        <View
+                                            style={{
+                                                paddingHorizontal: 10,
+                                                paddingVertical: 5,
+                                                borderRadius: theme.radius.full,
+                                                backgroundColor: colors.background,
+                                                borderWidth: 1,
+                                                borderColor: colors.border,
+                                            }}
+                                        >
+                                            <Text type="footnote1" weight="bold" color={colors.foreground}>
+                                                {KNOWLEDGE_REVIEW_LABELS[card.reviewState]}
+                                            </Text>
+                                        </View>
+                                    );
+                                })()}
                                 <Text
                                     type="footnote1"
                                     color={theme.colors.onSurfaceVariantSummary}
@@ -195,21 +219,26 @@ export default function KnowledgeCardsScreen() {
 
                             {card.tags.length ? (
                                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: theme.spacing.md }}>
-                                    {card.tags.map((tag) => (
-                                        <View
-                                            key={tag}
-                                            style={{
-                                                paddingHorizontal: 9,
-                                                paddingVertical: 4,
-                                                borderRadius: theme.radius.full,
-                                                backgroundColor: theme.colors.tertiaryContainer,
-                                            }}
-                                        >
-                                            <Text type="footnote1" color={theme.colors.onTertiaryContainer}>
-                                                {tag}
-                                            </Text>
-                                        </View>
-                                    ))}
+                                    {card.tags.map((tag, index) => {
+                                        const colors = getBadgeColorsByIndex(index + 4, theme.dark);
+                                        return (
+                                            <View
+                                                key={tag}
+                                                style={{
+                                                    paddingHorizontal: 9,
+                                                    paddingVertical: 4,
+                                                    borderRadius: theme.radius.full,
+                                                    backgroundColor: colors.background,
+                                                    borderWidth: 1,
+                                                    borderColor: colors.border,
+                                                }}
+                                            >
+                                                <Text type="footnote1" weight="medium" color={colors.foreground}>
+                                                    {tag}
+                                                </Text>
+                                            </View>
+                                        );
+                                    })}
                                 </View>
                             ) : null}
 

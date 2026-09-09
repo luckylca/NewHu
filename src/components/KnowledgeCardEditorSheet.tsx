@@ -7,6 +7,7 @@ import {
 } from '@/src/utils/knowledgeCard';
 import { BottomSheet, Button, Card, Input, SegmentedControl } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
+import { getBadgeColorsByIndex } from '@/src/ui/badgePalette';
 import { useTheme } from '@/src/ui/theme';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, View } from 'react-native';
@@ -92,6 +93,19 @@ export function KnowledgeCardEditorSheet({
                 showsVerticalScrollIndicator={false}
             >
                 <Card feedback="none" contentStyle={{ padding: theme.spacing.md }}>
+                    <Text type="body2" weight="medium" color={theme.colors.onBackground}>
+                        这张卡片用于后续复习
+                    </Text>
+                    <Text
+                        type="footnote1"
+                        color={theme.colors.onSurfaceVariantSummary}
+                        style={{ marginTop: theme.spacing.xs, lineHeight: 18 }}
+                    >
+                        原文负责“记住证据”，我的理解负责“记住你真正学到了什么”，标签和复习状态用于以后筛选回看。
+                    </Text>
+                </Card>
+
+                <Card feedback="none" contentStyle={{ padding: theme.spacing.md }}>
                     <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
                         原文摘录
                     </Text>
@@ -139,21 +153,26 @@ export function KnowledgeCardEditorSheet({
 
                 {previewTags.length ? (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                        {previewTags.map((tag) => (
-                            <View
-                                key={tag}
-                                style={{
-                                    paddingHorizontal: 10,
-                                    paddingVertical: 5,
-                                    borderRadius: theme.radius.full,
-                                    backgroundColor: theme.colors.secondaryContainer,
-                                }}
-                            >
-                                <Text type="footnote1" color={theme.colors.onSecondaryContainer}>
-                                    {tag}
-                                </Text>
-                            </View>
-                        ))}
+                        {previewTags.map((tag, index) => {
+                            const colors = getBadgeColorsByIndex(index + 4, theme.dark);
+                            return (
+                                <View
+                                    key={tag}
+                                    style={{
+                                        paddingHorizontal: 10,
+                                        paddingVertical: 5,
+                                        borderRadius: theme.radius.full,
+                                        backgroundColor: colors.background,
+                                        borderWidth: 1,
+                                        borderColor: colors.border,
+                                    }}
+                                >
+                                    <Text type="footnote1" weight="medium" color={colors.foreground}>
+                                        {tag}
+                                    </Text>
+                                </View>
+                            );
+                        })}
                     </View>
                 ) : null}
 

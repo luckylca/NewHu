@@ -57,6 +57,19 @@ const ANNOTATION_LABELS: Record<ContentAnnotationKind, string> = {
     note: '笔记',
 };
 
+function annotationVisual(kind: ContentAnnotationKind, dark: boolean) {
+    const palette = dark ? {
+        highlight: { background: '#4A3A12', accent: '#F6C453', foreground: '#FFE7A3' },
+        excerpt: { background: '#123B38', accent: '#63D8CD', foreground: '#A8F0E8' },
+        note: { background: '#2F214A', accent: '#C4A7FF', foreground: '#E1D4FF' },
+    } : {
+        highlight: { background: '#FFF2A8', accent: '#D97706', foreground: '#7A4500' },
+        excerpt: { background: '#DDF7F5', accent: '#0F9488', foreground: '#0B655F' },
+        note: { background: '#EEE7FF', accent: '#7C3AED', foreground: '#5B21B6' },
+    };
+    return palette[kind];
+}
+
 function escapeHtml(value: string) {
     return value
         .replace(/&/g, '&amp;')
@@ -216,10 +229,10 @@ export default function ContentAnnotationPage() {
 html, body { margin: 0; padding: 0; background: ${theme.colors.background}; color: ${theme.colors.onBackground}; }
 body { padding: 18px 20px 40px; font-family: sans-serif; font-size: 17px; line-height: 1.75; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 #content { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
-mark.newhu-annotation { color: inherit; border-radius: 3px; padding: 0 1px; }
-mark[data-kind="highlight"] { background: ${theme.colors.secondaryContainer}; }
-mark[data-kind="excerpt"] { background: ${theme.colors.tertiaryContainer}; }
-mark[data-kind="note"] { background: ${theme.colors.tertiaryContainer}; border-bottom: 2px solid ${theme.colors.primary}; }
+mark.newhu-annotation { color: inherit; border-radius: 4px; padding: 1px 2px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+mark[data-kind="highlight"] { background: ${annotationVisual('highlight', theme.dark).background}; border-bottom: 2px solid ${annotationVisual('highlight', theme.dark).accent}; }
+mark[data-kind="excerpt"] { background: ${annotationVisual('excerpt', theme.dark).background}; border-bottom: 2px solid ${annotationVisual('excerpt', theme.dark).accent}; box-shadow: inset 3px 0 0 ${annotationVisual('excerpt', theme.dark).accent}; }
+mark[data-kind="note"] { background: ${annotationVisual('note', theme.dark).background}; border-bottom: 2px solid ${annotationVisual('note', theme.dark).accent}; box-shadow: inset 3px 0 0 ${annotationVisual('note', theme.dark).accent}; }
 </style></head><body><div id="content">${escapeHtml(selectableText)}</div>
 <script>
 (function () {
@@ -317,9 +330,7 @@ mark[data-kind="note"] { background: ${theme.colors.tertiaryContainer}; border-b
         selectableText,
         theme.colors.background,
         theme.colors.onBackground,
-        theme.colors.primary,
-        theme.colors.secondaryContainer,
-        theme.colors.tertiaryContainer,
+        theme.dark,
     ]);
 
     const handleWebMessage = useCallback((event: WebViewMessageEvent) => {
@@ -582,14 +593,21 @@ mark[data-kind="note"] { background: ${theme.colors.tertiaryContainer}; border-b
                         contentContainerStyle={{ paddingBottom: theme.spacing.lg, gap: theme.spacing.sm }}
                         showsVerticalScrollIndicator={false}
                     >
-                        {annotations.map((annotation) => (
+                        {annotations.map((annotation) => {
+                            const visual = annotationVisual(annotation.kind, theme.dark);
+                            return (
                             <Card
                                 key={annotation.id}
                                 feedback="none"
-                                contentStyle={{ padding: theme.spacing.md }}
+                                contentStyle={{
+                                    padding: theme.spacing.md,
+                                    backgroundColor: visual.background,
+                                    borderLeftWidth: 4,
+                                    borderLeftColor: visual.accent,
+                                }}
                             >
                                 <View style={styles.annotationHeader}>
-                                    <Text type="body2" weight="medium" color={theme.colors.primary}>
+                                    <Text type="body2" weight="bold" color={visual.foreground}>
                                         {ANNOTATION_LABELS[annotation.kind]}
                                     </Text>
                                     <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
@@ -634,7 +652,8 @@ mark[data-kind="note"] { background: ${theme.colors.tertiaryContainer}; border-b
                                     </Button>
                                 </View>
                             </Card>
-                        ))}
+                            );
+                        })}
                     </ScrollView>
                 ) : (
                     <View style={{ paddingVertical: theme.spacing.xl, alignItems: 'center' }}>
