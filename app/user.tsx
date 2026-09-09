@@ -10,6 +10,7 @@ import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDraftStore } from '@/src/stores/useDraftStore';
+import { useLaterReadStore } from '@/src/stores/useLaterReadStore';
 
 const UserScreen = ({ navigation }: any) => {
     const theme = useTheme();
@@ -18,6 +19,7 @@ const UserScreen = ({ navigation }: any) => {
     const mode = useSettingStore((state) => state.mode);
     const setMode = useSettingStore((state) => state.setMode);
     const draftCount = useDraftStore((state) => state.drafts.length);
+    const laterReadCount = useLaterReadStore((state) => state.items.length);
 
     const metaColor = theme.colors.onSurfaceSecondary;
 
@@ -104,6 +106,8 @@ const UserScreen = ({ navigation }: any) => {
                 <ListRow title="收藏列表" summary="查看保存的回答和文章" onPress={() => router.push('/like')} />
                 <Divider style={{ marginLeft: theme.spacing.lg }} />
                 <ListRow title="浏览历史" summary="查看最近浏览过的内容" onPress={() => router.push('/history')} />
+                <Divider style={{ marginLeft: theme.spacing.lg }} />
+                <ListRow title="稍后阅读" summary={laterReadCount > 0 ? `${laterReadCount} 篇已保存` : '保存稍后再看的回答和文章'} onPress={() => router.push('/later-read')} />
                 <Divider style={{ marginLeft: theme.spacing.lg }} />
                 <ListRow title="知识卡片" summary="整理摘录、理解、标签与复习状态" onPress={() => router.push('/knowledge-cards')} />
                 <Divider style={{ marginLeft: theme.spacing.lg }} />

@@ -3,7 +3,7 @@ import { useLaterReadStore, type LaterReadItem } from '@/src/stores/useLaterRead
 import { BottomSheet, Button, Icon } from '@/src/ui';
 import { PressIndication, Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -35,6 +35,7 @@ function formatAddedAt(timestamp: number) {
 export function LaterReadFloatingBubble() {
     const theme = useTheme();
     const router = useRouter();
+    const pathname = usePathname();
     const insets = useSafeAreaInsets();
     const { width: windowW, height: windowH } = useWindowDimensions();
     const hydrated = useStoreHydrated(useLaterReadStore);
@@ -43,7 +44,6 @@ export function LaterReadFloatingBubble() {
     const panelOpenRequest = useLaterReadStore((state) => state.panelOpenRequest);
     const setBubblePosition = useLaterReadStore((state) => state.setBubblePosition);
     const removeItem = useLaterReadStore((state) => state.removeItem);
-    const clearItems = useLaterReadStore((state) => state.clearItems);
 
     const [panelVisible, setPanelVisible] = useState(false);
     const handledOpenRequestRef = React.useRef(panelOpenRequest);
@@ -91,6 +91,11 @@ export function LaterReadFloatingBubble() {
         }, 120);
     }, [router]);
 
+    const openManager = useCallback(() => {
+        setPanelVisible(false);
+        setTimeout(() => router.push('/later-read'), 120);
+    }, [router]);
+
     const panGesture = useMemo(() => Gesture.Pan()
         .minDistance(8)
         .onBegin(() => {
@@ -129,7 +134,7 @@ export function LaterReadFloatingBubble() {
 
     const listMaxHeight = Math.min(520, windowH * 0.62);
 
-    if (!hydrated || items.length === 0) return null;
+    if (!hydrated || items.length === 0 || pathname === '/later-read') return null;
 
     return (
         <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
@@ -192,12 +197,12 @@ export function LaterReadFloatingBubble() {
                 endAction={(
                     <Pressable
                         accessibilityRole="button"
-                        accessibilityLabel="清空稍后阅读"
-                        onPress={clearItems}
+                        accessibilityLabel="管理稍后阅读"
+                        onPress={openManager}
                         hitSlop={8}
                         style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' }}
                     >
-                        <Icon name="trash-can-outline" size={21} color={theme.colors.onSurfaceVariantActions} />
+                        <Icon name="playlist-edit" size={21} color={theme.colors.onSurfaceVariantActions} />
                     </Pressable>
                 )}
             >

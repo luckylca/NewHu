@@ -16,6 +16,8 @@ export type LaterReadItem = {
     addedAt: number;
 };
 
+export type LaterReadSortMode = 'added_desc' | 'added_asc' | 'unread_first' | 'title';
+
 type BubblePosition = {
     x: number;
     y: number;
@@ -29,10 +31,13 @@ type LaterReadState = {
     items: LaterReadItem[];
     bubblePosition: BubblePosition | null;
     panelOpenRequest: number;
+    sortMode: LaterReadSortMode;
     addItem: (item: SaveLaterReadInput) => void;
     removeItem: (key: string) => void;
+    removeItems: (keys: string[]) => void;
     clearItems: () => void;
     setBubblePosition: (position: BubblePosition) => void;
+    setSortMode: (sortMode: LaterReadSortMode) => void;
     requestPanelOpen: () => void;
     isSaved: (type: FeedType, id: string | number) => boolean;
 };
@@ -65,6 +70,7 @@ export const useLaterReadStore = create<LaterReadState>()(
             items: [],
             bubblePosition: null,
             panelOpenRequest: 0,
+            sortMode: 'added_desc',
             addItem: (item) => set((state) => {
                 const nextItem = normalizeLaterReadItem(item);
                 const rest = state.items.filter((current) => current.key !== nextItem.key);
@@ -75,15 +81,24 @@ export const useLaterReadStore = create<LaterReadState>()(
             removeItem: (key) => set((state) => ({
                 items: state.items.filter((item) => item.key !== key),
             })),
+            removeItems: (keys) => set((state) => {
+                const targetKeys = new Set(keys);
+                return { items: state.items.filter((item) => !targetKeys.has(item.key)) };
+            }),
             clearItems: () => set({ items: [] }),
             setBubblePosition: (position) => set({ bubblePosition: position }),
+            setSortMode: (sortMode) => set({ sortMode }),
             requestPanelOpen: () => set((state) => ({ panelOpenRequest: state.panelOpenRequest + 1 })),
             isSaved: (type, id) => get().items.some((item) => item.key === getLaterReadKey(type, id)),
         }),
         {
             name: 'later-read-store',
             storage: createJSONStorage(() => AsyncStorage),
-            partialize: (state) => ({ items: state.items, bubblePosition: state.bubblePosition }),
+            partialize: (state) => ({
+                items: state.items,
+                bubblePosition: state.bubblePosition,
+                sortMode: state.sortMode,
+            }),
         },
     ),
 );

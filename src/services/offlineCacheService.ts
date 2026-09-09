@@ -150,6 +150,41 @@ export async function cacheContent(options: {
     }
 }
 
+export async function cacheBodyOnlyFromId(
+    contentId: string,
+    contentType: FeedType,
+) {
+    const local = await getContent(contentId, contentType);
+    if (local?.hasBody && local.content) {
+        await upsertContent(local, contentType, {
+            cacheState: 'pinned',
+            voted: local.voted,
+        });
+        await markBodyCacheState(contentId, contentType, 'pinned');
+        await upsertOfflinePin({
+            contentId,
+            contentType,
+            rootCommentMode: 'none',
+            rootCommentLimit: 0,
+            childCommentLimit: 0,
+            withImages: false,
+        });
+        return { status: 'completed' as const, reusedLocal: true };
+    }
+
+    if (getNetworkStatus() !== 'online') {
+        throw new Error('本地没有正文缓存，请联网后再保存离线正文');
+    }
+
+    const result = await cacheContentFromId(contentId, contentType, {
+        rootCommentMode: 'none',
+        rootCommentLimit: 0,
+        childCommentLimit: 0,
+        withImages: false,
+    });
+    return { ...result, reusedLocal: false };
+}
+
 export async function removeCachedContent(contentId: string, contentType: FeedType) {
     await removeOfflinePin(contentId, contentType);
     await markBodyCacheState(contentId, contentType, 'transient');
