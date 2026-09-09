@@ -5,6 +5,7 @@ import ImageReanimatedModal from "@/src/components/ImageReanimatedModal";
 import LoadingView from "@/src/components/LoadingView";
 import OfflineImage from "@/src/components/OfflineImage";
 import { AiSuspicionBadge } from "@/src/components/AiSuspicionBadge";
+import { ContentAiAnalysisLauncher } from '@/src/components/ContentAiAnalysisLauncher';
 import { ProductDomainBadges } from "@/src/components/ProductDomainBadges";
 import { ProductRecommendationReason } from "@/src/components/ProductRecommendationReason";
 import { useContentStore } from "@/src/stores/useContentStore";
@@ -877,6 +878,14 @@ export default function Item() {
                 )}
                 />
             </GestureDetector>
+
+            <ContentAiAnalysisLauncher
+                contentKey={`${contentType}:${readData.id}`}
+                contentType={contentType}
+                title={title}
+                authorName={readData.authorName}
+                text={aiDetectionText}
+            />
 
             {arrowEffects.map((arrow) => (
                 <Animated.View

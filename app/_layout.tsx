@@ -119,6 +119,7 @@ export default function RootLayout() {
 								<Stack.Protected guard={consentReady}>
 								<Stack.Screen name="(tabs)" />
 								<Stack.Screen name="settings" options={{ title: '设置' }} />
+								<Stack.Screen name="ai-analysis-settings" options={{ title: 'AI 分析' }} />
 								<Stack.Screen name="privacy-personalization" options={{ title: '隐私与个性化' }} />
 								<Stack.Screen name="product-v1" options={{ title: 'Product V1 推荐' }} />
 								<Stack.Screen name="offline-cache" options={{ title: '离线缓存' }} />

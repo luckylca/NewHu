@@ -1,5 +1,6 @@
 import { AI_TEXT_SENSITIVITY_THRESHOLDS, type AiTextDetectionSensitivity } from '@/src/services/aiTextDetectorCore';
 import { useSettingStore } from '@/src/stores/useSettingStore';
+import { useAiAnalysisStore } from '@/src/stores/useAiAnalysisStore';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { Card, Divider, Icon, ListRow, Switch, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
@@ -22,6 +23,8 @@ export default function SettingsScreen() {
     const aiTextDetectionEnabled = useSettingStore((state) => state.aiTextDetectionEnabled);
     const setAiTextDetectionEnabled = useSettingStore((state) => state.setAiTextDetectionEnabled);
     const aiSensitivity = useSettingStore((state) => state.aiTextDetectionSensitivity);
+    const aiAnalysisEnabled = useAiAnalysisStore((state) => state.enabled);
+    const aiAnalysisModel = useAiAnalysisStore((state) => state.model);
     const setAiSensitivity = useSettingStore((state) => state.setAiTextDetectionSensitivity);
     const trailingChevron = <Icon name="chevron-right" size={22} color={theme.colors.onSurfaceVariantActions} />;
 
@@ -87,6 +90,16 @@ export default function SettingsScreen() {
                             />
                         </>
                     ) : null}
+                    <Divider style={{ marginLeft: 60 }} />
+                    <SettingRow
+                        icon="robot-outline"
+                        title="AI 分析面板"
+                        summary={aiAnalysisEnabled
+                            ? `已开启 · ${aiAnalysisModel || '待选择模型'}`
+                            : '配置外部 OpenAI 兼容 API，对文章和回答做总结与评价'}
+                        trailing={trailingChevron}
+                        onPress={() => router.push('/ai-analysis-settings' as any)}
+                    />
                 </SettingsGroup>
 
                 <SettingsGroup title="外观与体验">
