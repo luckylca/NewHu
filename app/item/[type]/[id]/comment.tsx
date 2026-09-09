@@ -1,19 +1,26 @@
-import { getRootComments } from '@/src/api/ZhihuApi';
+import { getChildComments, getRootComments } from '@/src/api/ZhihuApi';
 import ChildComment from '@/src/components/ChildComment';
 import CommentEdit from '@/src/components/CommentEdit';
 import { CommentItem } from '@/src/components/CommentItem';
 import type { CommentViewModel } from '@/src/components/CommentItem';
 import { useDraftStore } from '@/src/stores/useDraftStore';
 import { useNetworkStore } from '@/src/stores/useNetworkStore';
-import { getCachedComments, getPageState, saveCommentPage } from '@/src/db/repositories/commentRepository';
+import { getCachedComments, getCachedCommentsForContent, getPageState, saveCommentPage } from '@/src/db/repositories/commentRepository';
 import { getContent } from '@/src/db/repositories/contentRepository';
 import { Icon, Menu, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { readCommentAuthorFlag, type CommentAuthorIdentity } from '@/src/utils/commentAuthor';
+import {
+    buildCommentInsightStats,
+    filterCommentsByInsight,
+    isContentAuthorComment,
+    mergeUniqueComments,
+    type CommentInsightFilter,
+} from '@/src/utils/commentInsights';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Keyboard, Modal, Pressable, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FlatList, Keyboard, Modal, Pressable, ScrollView, View } from 'react-native';
 
 function normalizeComment(item: any): CommentViewModel | null {
     if (!item?.id) return null;
@@ -32,6 +39,7 @@ function normalizeComment(item: any): CommentViewModel | null {
         isHot: Boolean(item.hot),
         isTop: Boolean(item.top),
         childCommentCount: Number(item.child_comment_count || 0),
+        replyToAuthorName: item.reply_to_author?.name,
     };
 }
 
@@ -42,6 +50,37 @@ function nextOffset(next?: string) {
     } catch {
         return '';
     }
+}
+
+const INSIGHT_FILTERS: { value: CommentInsightFilter; label: string }[] = [
+    { value: 'all', label: '全部' },
+    { value: 'author', label: '作者' },
+    { value: 'high_like', label: '高赞' },
+    { value: 'controversial', label: '争议' },
+    { value: 'serious', label: '认真讨论' },
+];
+
+function InsightChip({ label, count, selected, onPress }: { label: string; count: number; selected: boolean; onPress: () => void }) {
+    const theme = useTheme();
+    return (
+        <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+            onPress={onPress}
+            style={{
+                minHeight: 34,
+                paddingHorizontal: theme.spacing.md,
+                borderRadius: 17,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: selected ? theme.colors.primary : theme.colors.secondaryVariant,
+            }}
+        >
+            <Text type="footnote1" weight={selected ? 'bold' : 'medium'} color={selected ? theme.colors.onPrimary : theme.colors.onSecondaryVariant}>
+                {label} {count}
+            </Text>
+        </Pressable>
+    );
 }
 
 export default function CommentScreen() {
@@ -65,6 +104,9 @@ export default function CommentScreen() {
     const [commentCount, setCommentCount] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
     const [sort, setSort] = useState('score');
+    const [insightFilter, setInsightFilter] = useState<CommentInsightFilter>('all');
+    const [authorReplies, setAuthorReplies] = useState<CommentViewModel[]>([]);
+    const [authorLoading, setAuthorLoading] = useState(false);
     const [menuVisible, setMenuVisible] = useState(false);
     const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0, width: 1, height: 1 });
     const [childId, setChildId] = useState('');
@@ -79,6 +121,7 @@ export default function CommentScreen() {
     const inFlightRef = useRef(false);
     const hasMoreRef = useRef(true);
     const openedDraftRef = useRef('');
+    const authorProbeRef = useRef(new Set<string>());
 
     useEffect(() => {
         let active = true;
@@ -185,6 +228,94 @@ export default function CommentScreen() {
         loadComments(true);
     }, [loadComments]);
 
+    useEffect(() => {
+        if (insightFilter !== 'author' || !id) return;
+        let active = true;
+
+        const aggregateAuthorReplies = async () => {
+            setAuthorLoading(true);
+            try {
+                const cached = await getCachedCommentsForContent(id, contentType);
+                let aggregate: CommentViewModel[] = cached.filter((comment) => (
+                    isContentAuthorComment(comment, contentAuthor)
+                ));
+                if (active) setAuthorReplies(aggregate);
+
+                if (networkStatus !== 'online') return;
+
+                const roots = comments
+                    .filter((comment) => (
+                        comment.childCommentCount > 0
+                        && !authorProbeRef.current.has(comment.id)
+                    ))
+                    .slice(0, 8);
+
+                for (const root of roots) {
+                    authorProbeRef.current.add(root.id);
+                    try {
+                        const response = await getChildComments(root.id, '', 'ts');
+                        const incoming = (response?.data ?? [])
+                            .map(normalizeComment)
+                            .filter(Boolean) as CommentViewModel[];
+                        const next = nextOffset(response?.paging?.next);
+                        void saveCommentPage({
+                            contentId: id,
+                            contentType,
+                            parentCommentId: root.id,
+                            orderBy: 'ts',
+                            comments: incoming,
+                            nextOffset: next,
+                            isEnd: !next || response?.paging?.is_end === true,
+                            totalCount: Number(response?.counts?.total_counts || incoming.length),
+                            rootComment: root,
+                        }).catch((error) => console.warn('作者回复写入缓存失败', error));
+
+                        aggregate = mergeUniqueComments(
+                            aggregate,
+                            incoming.filter((comment) => (
+                                isContentAuthorComment(comment, contentAuthor)
+                            )),
+                        ) as CommentViewModel[];
+                        if (active) setAuthorReplies(aggregate);
+                    } catch (error) {
+                        console.warn('作者回复聚合失败', root.id, error);
+                    }
+                }
+            } finally {
+                if (active) setAuthorLoading(false);
+            }
+        };
+
+        void aggregateAuthorReplies();
+        return () => {
+            active = false;
+        };
+    }, [comments, contentAuthor, contentType, id, insightFilter, networkStatus]);
+
+    const insightSource = useMemo(
+        () => mergeUniqueComments(comments, authorReplies) as CommentViewModel[],
+        [authorReplies, comments],
+    );
+    const insightStats = useMemo(() => {
+        const rootStats = buildCommentInsightStats(comments, contentAuthor);
+        return {
+            ...rootStats,
+            author: filterCommentsByInsight(
+                insightSource,
+                'author',
+                contentAuthor,
+            ).length,
+        };
+    }, [comments, contentAuthor, insightSource]);
+    const visibleComments = useMemo(
+        () => filterCommentsByInsight(
+            insightFilter === 'author' ? insightSource : comments,
+            insightFilter,
+            contentAuthor,
+        ) as CommentViewModel[],
+        [comments, contentAuthor, insightFilter, insightSource],
+    );
+
     const renderComment = useCallback(({ item }: { item: CommentViewModel }) => (
         <CommentItem
             item={item}
@@ -196,6 +327,7 @@ export default function CommentScreen() {
 
     const closeReply = useCallback(() => {
         if (reply?.fromDraft && reply.rootCommentId) {
+            setInsightFilter('all');
             setPendingFocus({ rootCommentId: reply.rootCommentId, commentId: reply.id });
         }
         setReply(null);
@@ -256,9 +388,58 @@ export default function CommentScreen() {
                 ]}
             />
 
+            <View style={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm }}>
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: theme.spacing.sm, paddingBottom: theme.spacing.sm }}
+                >
+                    {INSIGHT_FILTERS.map((option) => {
+                        const count = option.value === 'all'
+                            ? insightStats.total
+                            : option.value === 'author'
+                                ? insightStats.author
+                                : option.value === 'high_like'
+                                    ? insightStats.highLike
+                                    : option.value === 'controversial'
+                                        ? insightStats.controversial
+                                        : insightStats.serious;
+                        return (
+                            <InsightChip
+                                key={option.value}
+                                label={option.label}
+                                count={count}
+                                selected={insightFilter === option.value}
+                                onPress={() => setInsightFilter(option.value)}
+                            />
+                        );
+                    })}
+                </ScrollView>
+
+                {insightFilter === 'controversial' ? (
+                    <Text
+                        type="footnote2"
+                        color={theme.colors.onSurfaceVariantSummary}
+                        style={{ paddingBottom: theme.spacing.sm }}
+                    >
+                        “争议”按回复数与点赞数的结构比例筛选，不代表情绪或立场判断。
+                    </Text>
+                ) : null}
+
+                {insightFilter === 'author' && authorLoading ? (
+                    <Text
+                        type="footnote2"
+                        color={theme.colors.onSurfaceVariantSummary}
+                        style={{ paddingBottom: theme.spacing.sm }}
+                    >
+                        正在聚合已加载范围内的作者回复…
+                    </Text>
+                ) : null}
+            </View>
+
             <FlatList
                 ref={listRef}
-                data={comments}
+                data={visibleComments}
                 keyExtractor={(item) => item.id}
                 renderItem={renderComment}
                 contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm, paddingBottom: theme.spacing.xl, flexGrow: 1 }}
@@ -278,7 +459,13 @@ export default function CommentScreen() {
                 ListEmptyComponent={!refreshing ? (
                     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.spacing.xl }}>
                         <Text type="body1" color={theme.colors.onSurfaceVariantSummary}>
-                            {commentCount > 0 ? '评论暂时无法加载' : '还没有评论'}
+                            {insightFilter !== 'all'
+                                ? authorLoading && insightFilter === 'author'
+                                    ? '正在聚合作者回复…'
+                                    : '当前筛选下没有评论'
+                                : commentCount > 0
+                                    ? '评论暂时无法加载'
+                                    : '还没有评论'}
                         </Text>
                     </View>
                 ) : null}

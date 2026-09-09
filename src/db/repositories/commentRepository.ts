@@ -126,6 +126,21 @@ export async function getCachedComments(contentId: string, contentType: FeedType
     return rows.map(rowToComment);
 }
 
+export async function getCachedCommentsForContent(
+    contentId: string,
+    contentType: FeedType,
+): Promise<DbComment[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<any>(
+        `SELECT * FROM comments
+         WHERE content_id = ? AND content_type = ?
+         ORDER BY last_accessed_at DESC, created_at ASC`,
+        contentId,
+        contentType,
+    );
+    return rows.map(rowToComment);
+}
+
 export async function getPageState(contentId: string, contentType: FeedType, parentCommentId: string | null, orderBy: string): Promise<DbPageState | null> {
     const db = await getDatabase();
     const row = await db.getFirstAsync<any>(

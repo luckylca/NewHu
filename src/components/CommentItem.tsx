@@ -145,7 +145,11 @@ export const CommentItem = memo(function CommentItem({ item, contentAuthor, onOp
                     marginBottom: 8,
                     borderRadius: theme.radius.component,
                     overflow: 'hidden',
-                    backgroundColor: theme.colors.secondaryContainer,
+                    backgroundColor: isContentAuthor
+                        ? theme.colors.primaryContainer
+                        : theme.colors.secondaryContainer,
+                    borderWidth: isContentAuthor ? 1 : 0,
+                    borderColor: isContentAuthor ? theme.colors.primary : 'transparent',
                 }, style]}
             >
                 <PressIndication pressed={pressed} color={theme.colors.onBackground} radius={theme.radius.component} />
