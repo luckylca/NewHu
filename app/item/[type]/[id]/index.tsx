@@ -26,6 +26,7 @@ import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import RenderHtml from 'react-native-render-html';
 import { DomUtils, parseDocument } from 'htmlparser2';
 import { getContent, upsertContent } from "@/src/db/repositories/contentRepository";
+import { setContentLibrarySource } from '@/src/db/repositories/localSearchRepository';
 import { normalizeContent } from "@/src/db/mappers";
 import { setContentVote } from "@/src/services/offlineActions";
 import { normalizeRemoteUrl, resolveImageUri } from "@/src/services/resourceService";
@@ -374,9 +375,18 @@ export default function Item() {
                             recommendationReason: current?.recommendationReason ?? fallbackContent?.recommendationReason,
                         }));
                     }
-                    void upsertContent(fresh, contentType, { cacheState: 'transient', voted: fresh.voted }).catch((error) => {
-                        console.warn('详情写入本地缓存失败', error);
-                    });
+                    void (async () => {
+                        try {
+                            await upsertContent(fresh, contentType, { cacheState: 'transient', voted: fresh.voted });
+                            if (remoteFavorited === true || fresh.favorited === true) {
+                                await setContentLibrarySource(String(id), contentType, 'favorite', true);
+                            } else if (remoteFavorited === false) {
+                                await setContentLibrarySource(String(id), contentType, 'favorite', false);
+                            }
+                        } catch (error) {
+                            console.warn('详情写入本地资料库失败', error);
+                        }
+                    })();
                 } catch (error) {
                     console.warn('详情后台刷新失败，继续使用本地内容', error);
                 }
@@ -518,9 +528,14 @@ export default function Item() {
             } else {
                 await unfavoriteArticle(String(readData.id));
             }
-            void upsertContent(nextData, contentType, { cacheState: 'transient', voted: nextData.voted }).catch((error) => {
-                console.warn('收藏状态写入本地缓存失败', error);
-            });
+            try {
+                await upsertContent(nextData, contentType, { cacheState: 'transient', voted: nextData.voted });
+                await setContentLibrarySource(String(readData.id), contentType, 'favorite', nextFavorited);
+            } catch (error) {
+                // 远端收藏已经成功；本地资料库失败不能回滚远端状态，后续打开
+                // 收藏夹或详情时仍会重新同步这个来源标记。
+                console.warn('收藏状态写入本地资料库失败', error);
+            }
             notify(nextFavorited ? '已收藏' : '已取消收藏');
             if (nextFavorited && useConsentStore.getState().aiInterestAnalysisEnabled) {
                 void recordProductV1Feedback({

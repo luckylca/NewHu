@@ -6,6 +6,8 @@ import type { FeedItem, FeedType } from '@/src/types/zhihu';
 import { Icon, Text, TopAppBar } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { contentToItem, normalizeContent } from '@/src/db/mappers';
+import { upsertContent } from '@/src/db/repositories/contentRepository';
+import { setContentLibrarySource } from '@/src/db/repositories/localSearchRepository';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useRef, useState } from 'react';
 import { FlatList, View } from 'react-native';
@@ -69,9 +71,18 @@ export default function CollectionItemsScreen() {
         try {
             const response = await getApiInstance(cookies).getCollectionItems(collectionId, nextOffset, PAGE_SIZE);
             const rows = Array.isArray(response?.data) ? response.data : [];
-            const nextItems = rows
+            const nextItems: CollectionFeedItem[] = rows
                 .map(normalizeCollectionItem)
                 .filter((item: CollectionFeedItem | null): item is CollectionFeedItem => item !== null);
+
+            // 收藏列表以前只活在页面内存里，App 重启后本地搜索无法知道
+            // 某条内容属于“收藏”。这里持久化内容快照 + favorite 来源标记。
+            void Promise.all(nextItems.map(async (entry) => {
+                await upsertContent(entry.item, entry.feedType, { cacheState: 'transient' });
+                await setContentLibrarySource(entry.item.id, entry.feedType, 'favorite', true);
+            })).catch((persistError) => {
+                console.warn('收藏内容写入本地资料库失败', persistError);
+            });
 
             setItems((current) => {
                 if (isRefresh) return nextItems;

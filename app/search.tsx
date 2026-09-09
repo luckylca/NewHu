@@ -12,13 +12,17 @@ import { Card, Icon, SearchBar, Text } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import type { FeedType } from '@/src/types/zhihu';
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Keyboard, Pressable, ScrollView, View } from 'react-native';
+import { FlatList, Keyboard, Linking, Pressable, ScrollView, View } from 'react-native';
 import MiuixProgressIndicator from '@/src/components/MiuixProgressIndicator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { searchLocalLibrary } from '@/src/services/localSearchService';
+import { useLaterReadStore } from '@/src/stores/useLaterReadStore';
+import { useDraftStore } from '@/src/stores/useDraftStore';
+import type { LocalSearchResult, LocalSearchSource } from '@/src/types/localSearch';
 
-type SearchMode = 'general' | 'answer' | 'article' | 'people' | 'ai';
+type SearchMode = 'general' | 'local' | 'answer' | 'article' | 'people' | 'ai';
 
 type ContentSearchResult = {
     kind: 'content';
@@ -42,7 +46,7 @@ type PeopleSearchResult = {
     followerCount: number;
 };
 
-type SearchResult = ContentSearchResult | PeopleSearchResult;
+type SearchResult = ContentSearchResult | PeopleSearchResult | LocalSearchResult;
 
 type FilterOption = {
     label: string;
@@ -53,11 +57,22 @@ const PAGE_SIZE = 20;
 
 const MODE_OPTIONS: { label: string; value: SearchMode }[] = [
     { label: '综合', value: 'general' },
+    { label: '本地', value: 'local' },
     { label: '回答', value: 'answer' },
     { label: '文章', value: 'article' },
     { label: '用户', value: 'people' },
     { label: '知乎 AI', value: 'ai' },
 ];
+
+const LOCAL_SOURCE_LABELS: Record<LocalSearchSource, string> = {
+    read: '已读',
+    favorite: '收藏',
+    offline: '离线',
+    later: '稍后阅读',
+    annotation: '笔记',
+    knowledge: '知识卡片',
+    draft: '草稿',
+};
 
 const DEFAULT_SORT_OPTIONS: FilterOption[] = [
     { label: '综合排序', value: '' },
@@ -190,11 +205,57 @@ function FilterChip({ label, selected, onPress }: { label: string; selected: boo
     );
 }
 
+function isLocalSearchResult(item: SearchResult): item is LocalSearchResult {
+    return item.kind === 'local-content'
+        || item.kind === 'local-annotation'
+        || item.kind === 'local-knowledge'
+        || item.kind === 'local-comment'
+        || item.kind === 'local-draft';
+}
+
+function LocalSourceBadge({ source }: { source: LocalSearchSource }) {
+    const theme = useTheme();
+    const palette: Record<LocalSearchSource, { background: string; foreground: string }> = {
+        read: { background: theme.colors.tertiaryContainer, foreground: theme.colors.onTertiaryContainer },
+        favorite: { background: theme.colors.primaryContainer, foreground: theme.colors.onPrimaryContainer },
+        offline: { background: theme.colors.secondaryVariant, foreground: theme.colors.onSecondaryVariant },
+        later: { background: theme.colors.surfaceContainerHigh, foreground: theme.colors.onSurface },
+        annotation: { background: theme.colors.errorContainer, foreground: theme.colors.onErrorContainer },
+        knowledge: { background: theme.colors.primary, foreground: theme.colors.onPrimary },
+        draft: { background: theme.colors.secondaryContainer, foreground: theme.colors.onSecondaryVariant },
+    };
+    const colors = palette[source];
+    return (
+        <View
+            style={{
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: theme.radius.full,
+                backgroundColor: colors.background,
+            }}
+        >
+            <Text type="footnote2" weight="medium" color={colors.foreground}>
+                {LOCAL_SOURCE_LABELS[source]}
+            </Text>
+        </View>
+    );
+}
+
 export default function SearchScreen() {
     const theme = useTheme();
     const insets = useSafeAreaInsets();
+    const searchParams = useLocalSearchParams<{ mode?: string; q?: string }>();
+    const routeMode = Array.isArray(searchParams.mode) ? searchParams.mode[0] : searchParams.mode;
+    const routeQuery = Array.isArray(searchParams.q) ? searchParams.q[0] : searchParams.q;
     const cookies = useUserStore((state) => state.cookies);
     const hydrated = useStoreHydrated(useUserStore);
+    const laterReadHydrated = useStoreHydrated(useLaterReadStore);
+    const draftHydrated = useStoreHydrated(useDraftStore);
+    const laterReadItems = useLaterReadStore((state) => state.items);
+    const drafts = useDraftStore((state) => state.drafts);
+    const [linkRequest, setLinkRequest] = useState<{ mode?: string; q?: string }>({});
+    const requestedMode = routeMode ?? linkRequest.mode;
+    const requestedQuery = routeQuery ?? linkRequest.q;
 
     const [query, setQuery] = useState('');
     const [submittedQuery, setSubmittedQuery] = useState('');
@@ -220,10 +281,101 @@ export default function SearchScreen() {
     const suggestionRequestIdRef = useRef(0);
     const loadingMoreRef = useRef(false);
     const listRef = useRef<FlatList<SearchResult>>(null);
+    const lastDeepLinkSearchRef = useRef('');
+
+    useEffect(() => {
+        let active = true;
+
+        const captureUrl = (url: string | null) => {
+            if (!active || !url) return;
+            try {
+                const parsed = new URL(url);
+                const route = `${parsed.hostname}${parsed.pathname}`.replace(/^\/+/, '');
+                if (route !== 'search') return;
+                setLinkRequest({
+                    mode: parsed.searchParams.get('mode') || undefined,
+                    q: parsed.searchParams.get('q') || undefined,
+                });
+            } catch {
+                // Expo Router still handles navigation if an unrelated/deformed
+                // URL reaches the app; this fallback only extracts search params.
+            }
+        };
+
+        void Linking.getInitialURL().then(captureUrl);
+        const subscription = Linking.addEventListener('url', ({ url }) => captureUrl(url));
+        return () => {
+            active = false;
+            subscription.remove();
+        };
+    }, []);
 
     useEffect(() => {
         if (hydrated && cookies) getApiInstance(cookies);
     }, [cookies, hydrated]);
+
+    useEffect(() => {
+        if (hydrated && !cookies && !submittedQuery) setMode('local');
+    }, [cookies, hydrated, submittedQuery]);
+
+    const runLocalSearch = useCallback(async (keyword: string) => {
+        const trimmed = keyword.trim();
+        if (!trimmed) return;
+
+        const requestId = ++requestIdRef.current;
+        setLoading(true);
+        setLoadingMore(false);
+        setHasMore(false);
+        setResults([]);
+        setError('');
+
+        if (!laterReadHydrated || !draftHydrated) {
+            setLoading(false);
+            setError('本地资料正在加载，请稍后再试');
+            return;
+        }
+
+        try {
+            const next = await searchLocalLibrary(trimmed, {
+                laterReadItems,
+                drafts,
+            });
+            if (requestId === requestIdRef.current) setResults(next);
+        } catch (localSearchError) {
+            if (requestId === requestIdRef.current) {
+                console.error('本地全文搜索失败:', localSearchError);
+                setError('本地搜索失败，请稍后重试');
+            }
+        } finally {
+            if (requestId === requestIdRef.current) setLoading(false);
+        }
+    }, [draftHydrated, drafts, laterReadHydrated, laterReadItems]);
+
+    useEffect(() => {
+        const deepQuery = String(requestedQuery || '').trim();
+        if (requestedMode !== 'local' || !deepQuery) {
+            if (requestedMode === 'local') setMode('local');
+            return;
+        }
+        if (!laterReadHydrated || !draftHydrated) return;
+
+        const deepLinkKey = `local:${deepQuery}`;
+        if (lastDeepLinkSearchRef.current === deepLinkKey) return;
+        lastDeepLinkSearchRef.current = deepLinkKey;
+
+        setMode('local');
+        setQuery(deepQuery);
+        setSubmittedQuery(deepQuery);
+        setSuggestions([]);
+        Keyboard.dismiss();
+        void runLocalSearch(deepQuery);
+    }, [
+        draftHydrated,
+        laterReadHydrated,
+        requestedMode,
+        requestedQuery,
+        runLocalSearch,
+    ]);
 
     const runSearch = useCallback(async (
         keyword: string,
@@ -233,7 +385,7 @@ export default function SearchScreen() {
         nextTimeInterval = timeInterval,
     ) => {
         const trimmed = keyword.trim();
-        if (!trimmed || nextMode === 'ai' || (loadMore && loadingMoreRef.current)) return;
+        if (!trimmed || nextMode === 'ai' || nextMode === 'local' || (loadMore && loadingMoreRef.current)) return;
         if (!cookies) {
             setError('登录后才能使用搜索');
             notify('请先登录知乎账号');
@@ -327,12 +479,13 @@ export default function SearchScreen() {
         setSuggestions([]);
         Keyboard.dismiss();
         if (mode === 'ai') void runAiSearch(trimmed);
+        else if (mode === 'local') void runLocalSearch(trimmed);
         else void runSearch(trimmed, false, mode, sort, timeInterval);
-    }, [mode, runAiSearch, runSearch, sort, timeInterval]);
+    }, [mode, runAiSearch, runLocalSearch, runSearch, sort, timeInterval]);
 
     useEffect(() => {
         const trimmed = query.trim();
-        if (!trimmed || trimmed === submittedQuery || !cookies) {
+        if (!trimmed || trimmed === submittedQuery || !cookies || mode === 'local') {
             setSuggestions([]);
             return;
         }
@@ -350,7 +503,7 @@ export default function SearchScreen() {
         }, 220);
 
         return () => clearTimeout(timer);
-    }, [cookies, query, submittedQuery]);
+    }, [cookies, mode, query, submittedQuery]);
 
     const handleQueryChange = useCallback((value: string) => {
         setQuery(value);
@@ -383,24 +536,119 @@ export default function SearchScreen() {
         }
         if (!submittedQuery) return;
         if (nextMode === 'ai') void runAiSearch(submittedQuery);
+        else if (nextMode === 'local') void runLocalSearch(submittedQuery);
         else void runSearch(submittedQuery, false, nextMode, sort, timeInterval);
-    }, [runAiSearch, runSearch, sort, submittedQuery, timeInterval]);
+    }, [runAiSearch, runLocalSearch, runSearch, sort, submittedQuery, timeInterval]);
 
     const handleSortSelect = useCallback((value: string) => {
         setSort(value);
-        if (submittedQuery && mode !== 'people' && mode !== 'ai') {
+        if (submittedQuery && mode !== 'people' && mode !== 'ai' && mode !== 'local') {
             void runSearch(submittedQuery, false, mode, value, timeInterval);
         }
     }, [mode, runSearch, submittedQuery, timeInterval]);
 
     const handleTimeSelect = useCallback((value: string) => {
         setTimeInterval(value);
-        if (submittedQuery && mode !== 'people' && mode !== 'ai') {
+        if (submittedQuery && mode !== 'people' && mode !== 'ai' && mode !== 'local') {
             void runSearch(submittedQuery, false, mode, sort, value);
         }
     }, [mode, runSearch, sort, submittedQuery]);
 
     const renderResult = ({ item }: { item: SearchResult }) => {
+        if (isLocalSearchResult(item)) {
+            const openLocalResult = () => {
+                if (item.kind === 'local-draft') {
+                    router.push({
+                        pathname: '/item/[type]/[id]/comment',
+                        params: {
+                            type: item.contentType,
+                            id: item.contentId,
+                            draftId: item.draftId,
+                        },
+                    });
+                    return;
+                }
+                if (item.kind === 'local-comment') {
+                    router.push({
+                        pathname: '/item/[type]/[id]/comment',
+                        params: {
+                            type: item.contentType,
+                            id: item.contentId,
+                        },
+                    });
+                    return;
+                }
+                if (item.kind === 'local-annotation' || item.kind === 'local-knowledge') {
+                    router.push({
+                        pathname: '/select-text/[type]/[id]',
+                        params: {
+                            type: item.contentType,
+                            id: item.contentId,
+                        },
+                    });
+                    return;
+                }
+                router.push({
+                    pathname: '/item/[type]/[id]',
+                    params: {
+                        type: item.contentType,
+                        id: item.contentId,
+                        needToGet: 'false',
+                    },
+                });
+            };
+
+            return (
+                <Card
+                    feedback="none"
+                    showIndication
+                    onPress={openLocalResult}
+                    style={{ marginBottom: theme.spacing.md }}
+                    contentStyle={{ padding: theme.spacing.lg, backgroundColor: theme.colors.surfaceContainer }}
+                >
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                        {item.sources.map((source) => (
+                            <LocalSourceBadge key={source} source={source} />
+                        ))}
+                    </View>
+                    <Text
+                        type="headline1"
+                        weight="bold"
+                        numberOfLines={2}
+                        style={{ marginTop: theme.spacing.sm }}
+                    >
+                        {item.title}
+                    </Text>
+                    {item.snippet ? (
+                        <Text
+                            type="body2"
+                            color={theme.colors.onSurfaceVariantSummary}
+                            numberOfLines={4}
+                            style={{ marginTop: theme.spacing.sm }}
+                        >
+                            {item.snippet}
+                        </Text>
+                    ) : null}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: theme.spacing.md, gap: theme.spacing.sm }}>
+                        <Text
+                            type="footnote1"
+                            color={theme.colors.onSurfaceVariantSummary}
+                            numberOfLines={1}
+                            style={{ flex: 1 }}
+                        >
+                            {item.author}
+                        </Text>
+                        {item.updatedAt ? (
+                            <Text type="footnote2" color={theme.colors.onSurfaceVariantSummary}>
+                                {new Date(item.updatedAt).toLocaleString()}
+                            </Text>
+                        ) : null}
+                        <Icon name="chevron-right" size={20} color={theme.colors.onSurfaceVariantActions} />
+                    </View>
+                </Card>
+            );
+        }
+
         if (item.kind === 'person') {
             return (
                 <Card
@@ -504,36 +752,41 @@ export default function SearchScreen() {
 
     const hasSubmittedSearch = Boolean(submittedQuery && query.trim() === submittedQuery);
     const showSuggestions = Boolean(query.trim() && !hasSubmittedSearch && suggestions.length > 0);
-    const emptyMessage = error || (submittedQuery ? '没有找到相关内容' : '输入关键词搜索回答、文章和用户');
+    const emptyMessage = error || (
+        mode === 'local'
+            ? submittedQuery
+                ? '没有找到匹配的本地内容'
+                : '搜索已读、收藏、离线、稍后阅读、笔记和评论草稿'
+            : submittedQuery
+                ? '没有找到相关内容'
+                : '输入关键词搜索回答、文章和用户'
+    );
 
     const renderListHeader = () => (
         <View style={{ paddingBottom: theme.spacing.sm }}>
-            {hasSubmittedSearch ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: theme.spacing.sm }}>
+                {MODE_OPTIONS.map((item) => (
+                    <FilterChip key={item.value} label={item.label} selected={mode === item.value} onPress={() => handleModeSelect(item.value)} />
+                ))}
+            </ScrollView>
+
+            {hasSubmittedSearch && mode !== 'people' && mode !== 'ai' && mode !== 'local' ? (
                 <>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: theme.spacing.sm }}>
-                        {MODE_OPTIONS.map((item) => (
-                            <FilterChip key={item.value} label={item.label} selected={mode === item.value} onPress={() => handleModeSelect(item.value)} />
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: theme.spacing.sm, paddingTop: theme.spacing.sm }}>
+                        {sortOptions.map((item) => (
+                            <FilterChip key={`sort-${item.value || 'default'}`} label={item.label} selected={sort === item.value} onPress={() => handleSortSelect(item.value)} />
                         ))}
                     </ScrollView>
-                    {mode !== 'people' && mode !== 'ai' ? (
-                        <>
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: theme.spacing.sm, paddingTop: theme.spacing.sm }}>
-                                {sortOptions.map((item) => (
-                                    <FilterChip key={`sort-${item.value || 'default'}`} label={item.label} selected={sort === item.value} onPress={() => handleSortSelect(item.value)} />
-                                ))}
-                            </ScrollView>
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: theme.spacing.sm, paddingTop: theme.spacing.sm }}>
-                                {timeOptions.map((item) => (
-                                    <FilterChip key={`time-${item.value || 'default'}`} label={item.label} selected={timeInterval === item.value} onPress={() => handleTimeSelect(item.value)} />
-                                ))}
-                            </ScrollView>
-                        </>
-                    ) : null}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: theme.spacing.sm, paddingTop: theme.spacing.sm }}>
+                        {timeOptions.map((item) => (
+                            <FilterChip key={`time-${item.value || 'default'}`} label={item.label} selected={timeInterval === item.value} onPress={() => handleTimeSelect(item.value)} />
+                        ))}
+                    </ScrollView>
                 </>
             ) : null}
 
             {showSuggestions ? (
-                <View style={{ width: '100%', marginTop: hasSubmittedSearch ? theme.spacing.sm : 0, padding: theme.spacing.sm, borderRadius: theme.radius.component, backgroundColor: theme.colors.surfaceContainer }}>
+                <View style={{ width: '100%', marginTop: theme.spacing.sm, padding: theme.spacing.sm, borderRadius: theme.radius.component, backgroundColor: theme.colors.surfaceContainer }}>
                     <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary} style={{ paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs }}>
                         搜索建议
                     </Text>
@@ -580,7 +833,7 @@ export default function SearchScreen() {
                 onExpandedChange={(expanded) => {
                     if (!expanded) router.back();
                 }}
-                label="搜索知乎内容"
+                label={mode === 'local' ? '搜索本地内容' : '搜索知乎内容'}
                 inputProps={{ autoFocus: true }}
                 horizontalPadding={theme.spacing.sm}
                 actionWidth={64}
@@ -592,7 +845,7 @@ export default function SearchScreen() {
                 ref={listRef}
                 data={mode === 'ai' ? [] : results}
                 renderItem={renderResult}
-                keyExtractor={(item) => `${item.type}-${item.id}`}
+                keyExtractor={(item) => isLocalSearchResult(item) ? item.key : `${item.type}-${item.id}`}
                 ListHeaderComponent={renderListHeader}
                 contentContainerStyle={{ flexGrow: 1, paddingHorizontal: theme.spacing.sm, paddingBottom: insets.bottom + theme.spacing.lg }}
                 keyboardShouldPersistTaps="handled"
@@ -600,7 +853,7 @@ export default function SearchScreen() {
                 onScroll={(event) => setShowScrollTop(event.nativeEvent.contentOffset.y > 240)}
                 scrollEventThrottle={16}
                 onEndReached={() => {
-                    if (mode !== 'ai' && hasMore && !loadingMore) void runSearch(submittedQuery, true);
+                    if (mode !== 'ai' && mode !== 'local' && hasMore && !loadingMore) void runSearch(submittedQuery, true);
                 }}
                 onEndReachedThreshold={0.35}
                 ListEmptyComponent={emptyComponent}

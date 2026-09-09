@@ -1,4 +1,4 @@
-export const DATABASE_VERSION = 6;
+export const DATABASE_VERSION = 7;
 
 export const MIGRATION_1 = `
 CREATE TABLE IF NOT EXISTS contents (
@@ -314,4 +314,19 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_cards_review
   ON knowledge_cards(review_state, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_knowledge_cards_content
   ON knowledge_cards(content_id, content_type);
+`;
+
+export const MIGRATION_7 = `
+CREATE TABLE IF NOT EXISTS content_library_sources (
+  content_id TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  source TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (content_id, content_type, source),
+  FOREIGN KEY (content_id, content_type) REFERENCES contents(id, type) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_content_library_sources_source
+  ON content_library_sources(source, updated_at DESC);
 `;
