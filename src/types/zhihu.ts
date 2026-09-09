@@ -30,6 +30,8 @@ export interface FeedItem {
     content: string;
     // 所属问题字段（文章可能没有 question，归一化时已填充默认值）
     questionTitle: string;
+    /** 问题描述（纯文本）；仅部分接口返回 question.detail，可能为空。 */
+    questionExcerpt?: string;
     questionId: string;
     questionAuthorName: string;
     questionAuthorAvatar: string;

@@ -36,6 +36,19 @@ function getExcerpt(target: any) {
     return plainText.slice(0, 240) || '暂无简介';
 }
 
+/** 问题描述转纯文本；问题详情通常不长，保留前 300 字即可覆盖语义重点。 */
+function getQuestionExcerpt(question: any) {
+    const detail = String(question?.detail || '')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return detail.slice(0, 300);
+}
+
 /** Normalize one recommendation target before it enters either UI or SQLite. */
 export function normalizeRecommendItem(item: any): FeedItemInfo | null {
     const target = item?.target;
@@ -69,6 +82,7 @@ export function normalizeRecommendItem(item: any): FeedItemInfo | null {
             commentCount: target.comment_count || 0,
             content: target.content || '',
             questionTitle: questionTitle || (type === 'answer' ? title : ''),
+            questionExcerpt: type === 'answer' ? getQuestionExcerpt(target.question) : '',
             questionId: String(target.question?.id || ''),
             questionAuthorName: target.question?.author?.name || '匿名用户',
             questionAuthorAvatar: target.question?.author?.avatar_url || '',

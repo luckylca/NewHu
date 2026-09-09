@@ -27,6 +27,7 @@ import { updateProductV1Health } from './store';
 import type { ProductV1CandidateRecord, ProductV1RuntimeState, ProductV1Trace } from './types';
 import { ensureProductV1RuntimeAssets, type ProductV1AssetDownloadProgress } from './runtimeAssets';
 import { buildProductV1RecommendationReason } from './recommendationReason';
+import { semanticExcerpt, semanticTitle } from './semanticInput';
 import {
   capAutoDesiredSupply,
   composeBubbleDisplayRecords,
@@ -120,8 +121,10 @@ function toCandidate(feed: FeedItemInfo, source: 'recommendation' | 'search', cy
   return {
     articleId,
     url,
-    title: feed.item.title || feed.item.questionTitle,
-    excerpt: feed.item.excerpt,
+    // 回答的语义输入必须包含问题上下文：标题取问题标题，
+    // 摘要由问题描述（接口返回时）与回答正文拼接而成。
+    title: semanticTitle(feed.feedType, feed.item),
+    excerpt: semanticExcerpt(feed.feedType, feed.item),
     authorId: feed.item.authorUrlToken,
     authorName: feed.item.authorName,
     publishedAt: feed.item.updatedTime,

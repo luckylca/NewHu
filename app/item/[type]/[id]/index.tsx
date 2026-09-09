@@ -34,6 +34,7 @@ import { setContentVote } from "@/src/services/offlineActions";
 import { normalizeRemoteUrl, resolveImageUri } from "@/src/services/resourceService";
 import { useConsentStore } from '@/src/stores/useConsentStore';
 import { getProductV1RuntimeAssetStatus, recordProductV1Feedback } from '@/src/product-v1';
+import { semanticExcerpt } from '@/src/product-v1/semanticInput';
 import { useReadingProgress } from '@/src/hooks/useReadingProgress';
 
 export type ItemParams = {
@@ -834,7 +835,7 @@ export default function Item() {
                                     enabled={domainLabelsEnabled}
                                     contentKey={`${contentType}:${readData.id}`}
                                     title={title}
-                                    excerpt={aiDetectionText}
+                                    excerpt={semanticExcerpt(contentType, readData, aiDetectionText)}
                                     priority="high"
                                     style={{ marginLeft: 8, marginTop: 4 }}
                                 />

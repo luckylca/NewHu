@@ -22,6 +22,7 @@ import { useConsentStore } from '@/src/stores/useConsentStore';
 import { getProductV1RuntimeAssetStatus, processProductV1Feed, recordProductV1Exposure, recordProductV1Feedback } from '@/src/product-v1';
 import { AiSuspicionBadge } from '@/src/components/AiSuspicionBadge';
 import { ProductDomainBadges } from '@/src/components/ProductDomainBadges';
+import { semanticExcerpt } from '@/src/product-v1/semanticInput';
 import { ProductRecommendationReason } from '@/src/components/ProductRecommendationReason';
 import type { ProductV1DomainClassificationPriority } from '@/src/product-v1/domainTaskQueue';
 
@@ -112,7 +113,7 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetect
                         enabled={Boolean(showDomainLabels)}
                         contentKey={`${type}:${item.id}`}
                         title={title || '无标题'}
-                        excerpt={getContentPreview(item)}
+                        excerpt={semanticExcerpt(type, item, getContentPreview(item))}
                         priority={domainPriority}
                         style={{ marginLeft: 6, marginTop: 2 }}
                     />
@@ -237,7 +238,7 @@ const WaterfallItem = memo(({ item, type, needToGet, measurementKey, showDomainL
                         enabled={Boolean(showDomainLabels)}
                         contentKey={`${type}:${item.id}`}
                         title={title || '无标题'}
-                        excerpt={getContentPreview(item)}
+                        excerpt={semanticExcerpt(type, item, getContentPreview(item))}
                         priority={domainPriority}
                         style={{ marginLeft: 6, marginTop: 2 }}
                     />
@@ -340,7 +341,7 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                                 enabled={Boolean(showDomainLabels)}
                                 contentKey={`${type}:${item.id}`}
                                 title={title || '无标题'}
-                                excerpt={preview}
+                                excerpt={semanticExcerpt(type, item, preview)}
                                 priority={domainPriority}
                                 style={{ marginLeft: 8, marginTop: 3 }}
                             />

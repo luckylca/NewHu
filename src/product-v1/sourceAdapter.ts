@@ -36,6 +36,7 @@ export function normalizeProductSearchItem(raw: any): FeedItemInfo | null {
       commentCount: Number(object?.comment_count ?? 0),
       content: String(object?.content ?? ''),
       questionTitle,
+      questionExcerpt: type === 'answer' ? plainText(object?.question?.detail).slice(0, 300) : '',
       questionId: String(object?.question?.id ?? ''),
       questionAuthorName: plainText(object?.question?.author?.name) || '匿名用户',
       questionAuthorAvatar: String(object?.question?.author?.avatar_url ?? ''),
