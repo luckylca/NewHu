@@ -6,6 +6,7 @@ import LoadingView from "@/src/components/LoadingView";
 import OfflineImage from "@/src/components/OfflineImage";
 import { AiSuspicionBadge } from "@/src/components/AiSuspicionBadge";
 import { ContentAiAnalysisLauncher } from '@/src/components/ContentAiAnalysisLauncher';
+import { LocalContentSummarySheet } from '@/src/components/LocalContentSummarySheet';
 import { ProductDomainBadges } from "@/src/components/ProductDomainBadges";
 import { ProductRecommendationReason } from "@/src/components/ProductRecommendationReason";
 import { useContentStore } from "@/src/stores/useContentStore";
@@ -302,6 +303,7 @@ export default function Item() {
     const [hydrated, setHydrated] = useState(false);
     const [detailLoading, setDetailLoading] = useState(true);
     const [menuVisible, setMenuVisible] = useState(false);
+    const [localSummaryVisible, setLocalSummaryVisible] = useState(false);
     const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0, width: 0, height: 0 });
     const menuBtnRef = useRef<View>(null);
     const [voted, setVoted] = useState(false);
@@ -770,6 +772,7 @@ export default function Item() {
                         onPress: addToLaterRead,
                     },
                     { label: '划线与笔记', onPress: openAnnotationPage },
+                    { label: '本地摘要', onPress: () => setLocalSummaryVisible(true) },
                     { label: '复制内容', onPress: openCopyPage },
                     { label: '导出文档', onPress: () => void runDocumentExport(), disabled: documentExporting },
                     {
@@ -878,6 +881,15 @@ export default function Item() {
                 )}
                 />
             </GestureDetector>
+
+            {localSummaryVisible ? (
+                <LocalContentSummarySheet
+                    visible
+                    onClose={() => setLocalSummaryVisible(false)}
+                    html={readData.content || readData.excerpt || ''}
+                    title={title}
+                />
+            ) : null}
 
             <ContentAiAnalysisLauncher
                 contentKey={`${contentType}:${readData.id}`}
