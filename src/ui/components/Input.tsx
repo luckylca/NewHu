@@ -1,4 +1,5 @@
 import { inputMotion } from '@/src/ui/motion';
+import { resolveInputPresentation } from '@/src/ui/inputPresentation';
 import { useTheme } from '@/src/ui/theme';
 import React, { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -24,8 +25,10 @@ const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
  *   Hidden      — no label prop
  *   Placeholder — useLabelAsPlaceholder && text present → label hidden
  *   Normal      — text empty → label shown at 17px over the input
- *   Floating    — text present (!useLabelAsPlaceholder) → label floats up (-8)
- *                 and shrinks to 10px; text shifts down 8.
+ *   Floating    — focused or text present (!useLabelAsPlaceholder) → label
+ *                 floats up (-8) and shrinks to 10px; text shifts down 8.
+ *                 A helper placeholder may appear only while focused, after
+ *                 the label has floated, so the two never overlap.
  */
 
 export interface AppInputProps {
@@ -67,11 +70,24 @@ export function Input({
 }: AppInputProps) {
     const theme = useTheme();
     const [focused, setFocused] = useState(false);
-    const { style: inputStyle, ...restInputProps } = inputProps ?? {};
+    const {
+        style: inputStyle,
+        placeholder: inputPlaceholder,
+        ...restInputProps
+    } = inputProps ?? {};
 
-    const hasText = value.length > 0;
-    const labelVisible = label != null && !(useLabelAsPlaceholder && hasText);
-    const floating = label != null && !useLabelAsPlaceholder && hasText;
+    const requestedPlaceholder = inputPlaceholder ?? placeholder;
+    const {
+        labelVisible,
+        floating,
+        placeholder: resolvedPlaceholder,
+    } = resolveInputPresentation({
+        hasLabel: label != null,
+        useLabelAsPlaceholder,
+        hasText: value.length > 0,
+        focused,
+        placeholder: requestedPlaceholder,
+    });
 
     const focusProgress = useSharedValue(0);
     const floatProgress = useSharedValue(floating ? 1 : 0);
@@ -151,7 +167,7 @@ export function Input({
                     editable={!disabled}
                     // readonly ~ disabled editing but still focusable for copy
                     multiline={!singleLine}
-                    placeholder={label != null ? undefined : placeholder}
+                    placeholder={resolvedPlaceholder}
                     placeholderTextColor={theme.colors.onSecondaryContainer}
                     cursorColor={theme.colors.primary}
                     style={[
