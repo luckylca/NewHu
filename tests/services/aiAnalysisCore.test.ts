@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
     buildAiChatCompletionsUrl,
+    buildAiAnalysisMessages,
     buildAiModelsUrl,
     normalizeAiBaseUrl,
     parseAiAnalysisResult,
@@ -30,8 +31,11 @@ test('AI analysis parses common model list response shapes and deduplicates', ()
 test('AI analysis parses fenced JSON and clamps metric scores', () => {
     const fenced = '```json\n' + JSON.stringify({
         summary: '总结',
+        one_line_summary: '一句话总结',
         keywords: ['A', 'B'],
         core_points: ['观点1'],
+        counter_points: ['反例1'],
+        audience: ['适合人群1'],
         information_density: { score: 108, reason: '高' },
         collectionValue: { score: 73.4, reason: '值得' },
         ai_writing_risk: { score: -2, reason: '仅文本特征' },
@@ -40,7 +44,10 @@ test('AI analysis parses fenced JSON and clamps metric scores', () => {
     }) + '\n```';
     const result = parseAiAnalysisResult(fenced);
     assert.equal(result.summary, '总结');
+    assert.equal(result.oneLineSummary, '一句话总结');
     assert.deepEqual(result.corePoints, ['观点1']);
+    assert.deepEqual(result.counterPoints, ['反例1']);
+    assert.deepEqual(result.suitableFor, ['适合人群1']);
     assert.equal(result.informationDensity.score, 100);
     assert.equal(result.collectionValue.score, 73);
     assert.equal(result.aiWritingRisk.score, 0);
@@ -49,6 +56,21 @@ test('AI analysis parses fenced JSON and clamps metric scores', () => {
 
 test('AI analysis rejects non-JSON model output', () => {
     assert.throws(() => parseAiAnalysisResult('普通自然语言回答'), /有效 JSON/);
+});
+
+test('AI analysis prompt requests the second-version summary fields in one response', () => {
+    const messages = buildAiAnalysisMessages({
+        contentType: 'article',
+        title: '测试文章',
+        authorName: '作者',
+        text: '正文内容',
+    });
+    const prompt = messages[1].content;
+    assert.match(prompt, /oneLineSummary/);
+    assert.match(prompt, /严格3条核心观点/);
+    assert.match(prompt, /counterPoints/);
+    assert.match(prompt, /suitableFor/);
+    assert.match(prompt, /反方观点、反例或主要质疑/);
 });
 
 test('AI analysis model fetch uses the configured endpoint and bearer key', async () => {
@@ -93,8 +115,11 @@ test('AI analysis chat request sends model and messages then parses the JSON res
                 message: {
                     content: JSON.stringify({
                         summary: '测试总结',
+                        oneLineSummary: '一句话测试总结',
                         keywords: ['测试'],
                         corePoints: ['核心观点'],
+                        counterPoints: ['反方观点'],
+                        suitableFor: ['目标读者'],
                         informationDensity: { score: 80, reason: '信息集中' },
                         collectionValue: { score: 70, reason: '可回看' },
                         aiWritingRisk: { score: 20, reason: '仅有少量模板化特征' },
@@ -131,6 +156,9 @@ test('AI analysis chat request sends model and messages then parses the JSON res
         assert.match(seenBody.messages[1].content, /测试标题/);
         assert.match(seenBody.messages[1].content, /用于验证请求体/);
         assert.equal(result.summary, '测试总结');
+        assert.equal(result.oneLineSummary, '一句话测试总结');
+        assert.deepEqual(result.counterPoints, ['反方观点']);
+        assert.deepEqual(result.suitableFor, ['目标读者']);
         assert.equal(result.informationDensity.score, 80);
         assert.equal(result.aiWritingRisk.score, 20);
     } finally {

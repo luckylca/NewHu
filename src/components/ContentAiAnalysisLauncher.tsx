@@ -205,12 +205,21 @@ export function ContentAiAnalysisLauncher({
                         </Card>
                     ) : result ? (
                         <>
+                            {result.oneLineSummary ? (
+                                <AnalysisTextCard title="一句话总结" text={result.oneLineSummary} />
+                            ) : null}
                             <AnalysisTextCard title="正文总结" text={result.summary || '模型没有返回总结'} />
                             {result.keywords.length ? (
                                 <KeywordCard keywords={result.keywords} />
                             ) : null}
                             {result.corePoints.length ? (
                                 <ListCard title="核心观点" items={result.corePoints} />
+                            ) : null}
+                            {result.counterPoints.length ? (
+                                <ListCard title="反方 / 反例视角" items={result.counterPoints} />
+                            ) : null}
+                            {result.suitableFor.length ? (
+                                <KeywordCard title="适合谁看" keywords={result.suitableFor} paletteOffset={4} />
                             ) : null}
 
                             <View style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
@@ -255,11 +264,19 @@ function AnalysisTextCard({ title, text }: { title: string; text: string }) {
     );
 }
 
-function KeywordCard({ keywords }: { keywords: string[] }) {
+function KeywordCard({
+    keywords,
+    title = '关键词',
+    paletteOffset = 0,
+}: {
+    keywords: string[];
+    title?: string;
+    paletteOffset?: number;
+}) {
     const theme = useTheme();
     return (
         <Card feedback="none" contentStyle={{ padding: theme.spacing.lg }}>
-            <Text type="headline1" weight="medium" color={theme.colors.onBackground}>关键词</Text>
+            <Text type="headline1" weight="medium" color={theme.colors.onBackground}>{title}</Text>
             <View style={{
                 flexDirection: 'row',
                 flexWrap: 'wrap',
@@ -267,7 +284,7 @@ function KeywordCard({ keywords }: { keywords: string[] }) {
                 marginTop: theme.spacing.md,
             }}>
                 {keywords.map((keyword, index) => {
-                    const colors = getBadgeColorsByIndex(index, theme.dark);
+                    const colors = getBadgeColorsByIndex(index + paletteOffset, theme.dark);
                     return (
                         <View
                             key={keyword}

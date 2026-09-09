@@ -4,9 +4,12 @@ export type AiAnalysisMetric = {
 };
 
 export type AiAnalysisResult = {
+    oneLineSummary: string;
     summary: string;
     keywords: string[];
     corePoints: string[];
+    counterPoints: string[];
+    suitableFor: string[];
     informationDensity: AiAnalysisMetric;
     collectionValue: AiAnalysisMetric;
     aiWritingRisk: AiAnalysisMetric;
@@ -135,11 +138,17 @@ export function parseAiAnalysisResult(raw: string): AiAnalysisResult {
     const collectionValue = parsed.collectionValue ?? parsed.collection_value;
     const aiWritingRisk = parsed.aiWritingRisk ?? parsed.ai_writing_risk;
     const corePoints = parsed.corePoints ?? parsed.core_points;
+    const oneLineSummary = parsed.oneLineSummary ?? parsed.one_line_summary;
+    const counterPoints = parsed.counterPoints ?? parsed.counter_points ?? parsed.counterarguments;
+    const suitableFor = parsed.suitableFor ?? parsed.suitable_for ?? parsed.audience;
 
     return {
+        oneLineSummary: asString(oneLineSummary),
         summary: asString(parsed.summary),
         keywords: asStringArray(parsed.keywords, 8),
-        corePoints: asStringArray(corePoints, 6),
+        corePoints: asStringArray(corePoints, 3),
+        counterPoints: asStringArray(counterPoints, 3),
+        suitableFor: asStringArray(suitableFor, 4),
         informationDensity: metric(informationDensity),
         collectionValue: metric(collectionValue),
         aiWritingRisk: metric(aiWritingRisk),
@@ -172,9 +181,12 @@ ${body}
 
 请返回以下 JSON：
 {
+  "oneLineSummary": "一句话总结，尽量不超过45字",
   "summary": "100-220字总结",
   "keywords": ["3-8个关键词"],
-  "corePoints": ["3-6条核心观点"],
+  "corePoints": ["严格3条核心观点"],
+  "counterPoints": ["1-3条反方观点、反例或主要质疑；不要为了反对而反对"],
+  "suitableFor": ["2-4类适合阅读的人群或使用场景"],
   "informationDensity": {"score": 0-100, "reason": "解释"},
   "collectionValue": {"score": 0-100, "reason": "解释"},
   "aiWritingRisk": {"score": 0-100, "reason": "仅根据文本写作特征解释，不推断作者身份"},
