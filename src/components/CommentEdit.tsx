@@ -12,11 +12,11 @@ import {
     type TextSelection,
 } from '@/src/utils/commentReplyAssist';
 import type { CommentViewModel } from './CommentItem';
-import { Button, Icon, Input, TopAppBar } from '@/src/ui';
+import { Button, Icon, Input, Pressable, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
+import { FlatList, Image, Keyboard, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 
 type CommentEditProps = {
     visible: boolean;

@@ -1,11 +1,11 @@
 import type { CommentDraft } from '@/src/stores/useDraftStore';
 import { useDraftStore } from '@/src/stores/useDraftStore';
-import { Card, Divider, Icon, ListRow, TopAppBar } from '@/src/ui';
+import { Card, Divider, Icon, ListRow, Pressable, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import React, { useCallback } from 'react';
-import { FlatList, Pressable, View } from 'react-native';
+import { FlatList, View } from 'react-native';
 
 export default function DraftsScreen() {
     const theme = useTheme();

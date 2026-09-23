@@ -1,7 +1,7 @@
 import CommentText from '@/src/components/CommentText';
 import OfflineImage from '@/src/components/OfflineImage';
 import { EMOJI_URL_MAP } from '@/src/constants/emoji';
-import { Icon, Menu } from '@/src/ui';
+import { Icon, Menu, Pressable } from '@/src/ui';
 import { PressIndication, Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { notify } from '@/src/stores/useNotificationStore';
@@ -13,7 +13,7 @@ import { commentMatchesContentAuthor, type CommentAuthorIdentity } from '@/src/u
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, View } from 'react-native';
+import { Animated, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useSharedValue } from 'react-native-reanimated';
@@ -134,6 +134,7 @@ export const CommentItem = memo(function CommentItem({ item, contentAuthor, onOp
             overshootRight={false}
         >
             <Pressable
+                showIndication={false}
                 onPress={onOpenReplies ? () => onOpenReplies(item.id) : undefined}
                 onLongPress={(event) => {
                     setMenuAnchor({ x: event.nativeEvent.pageX, y: event.nativeEvent.pageY, width: 1, height: 1 });
@@ -190,6 +191,7 @@ export const CommentItem = memo(function CommentItem({ item, contentAuthor, onOp
                         </View>
 
                         <Pressable
+                            showIndication={false}
                             onPress={toggleLike}
                             disabled={isContentAuthor || item.id.startsWith('local:')}
                             onPressIn={isContentAuthor || item.id.startsWith('local:') ? undefined : () => (likePressed.value = 1)}

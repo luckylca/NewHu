@@ -14,7 +14,7 @@ import { notify } from '@/src/stores/useNotificationStore';
 import { useContentStore } from '@/src/stores/useContentStore';
 import { useExportContentStore } from '@/src/stores/useExportContentStore';
 import { useUserStore } from '@/src/stores/useUserStore';
-import { BottomSheet, Button, Card, Dialog, TopAppBar } from '@/src/ui';
+import { BottomSheet, Button, Card, Dialog, Input, Pressable, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import {
@@ -25,10 +25,8 @@ import { htmlToPlainText } from '@/src/utils/contentExport';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    Pressable,
     ScrollView,
     StyleSheet,
-    TextInput,
     View,
 } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
@@ -461,11 +459,10 @@ mark[data-kind="note"] { background: ${annotationVisual('note', theme.dark).back
                         accessibilityLabel="查看本页标注"
                         onPress={() => setManagerVisible(true)}
                         hitSlop={8}
-                        style={({ pressed }) => ({
+                        style={{
                             minHeight: 40,
                             justifyContent: 'center',
-                            opacity: pressed ? 0.6 : 1,
-                        })}
+                        }}
                     >
                         <Text type="body2" weight="medium" color={theme.colors.primary}>
                             标注 {annotations.length}
@@ -545,22 +542,24 @@ mark[data-kind="note"] { background: ${annotationVisual('note', theme.dark).back
                 summary={selection?.text.trim().slice(0, 96)}
                 closeOnClickModal={!saving}
             >
-                <TextInput
+                <Input
                     value={noteText}
                     onChangeText={setNoteText}
                     placeholder="写下你的理解、疑问或补充…"
-                    placeholderTextColor={theme.colors.onSurfaceVariantSummary}
-                    multiline
-                    autoFocus
-                    textAlignVertical="top"
+                    singleLine={false}
                     style={[
                         styles.noteInput,
                         {
-                            color: theme.colors.onBackground,
                             backgroundColor: theme.colors.surfaceContainer,
                             borderColor: theme.colors.secondaryContainer,
                         },
                     ]}
+                    inputProps={{
+                        autoFocus: true,
+                        placeholderTextColor: theme.colors.onSurfaceVariantSummary,
+                        textAlignVertical: 'top',
+                        style: { paddingHorizontal: 14, paddingVertical: 12, fontSize: 16, lineHeight: 23 },
+                    }}
                 />
                 <View style={[styles.dialogActions, { marginTop: theme.spacing.md }]}>
                     <Button
@@ -708,10 +707,6 @@ const styles = StyleSheet.create({
         maxHeight: 240,
         borderRadius: 16,
         borderWidth: StyleSheet.hairlineWidth,
-        paddingHorizontal: 14,
-        paddingVertical: 12,
-        fontSize: 16,
-        lineHeight: 23,
     },
     dialogActions: {
         flexDirection: 'row',

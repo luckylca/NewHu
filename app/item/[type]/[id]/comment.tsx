@@ -7,7 +7,7 @@ import { useDraftStore } from '@/src/stores/useDraftStore';
 import { useNetworkStore } from '@/src/stores/useNetworkStore';
 import { getCachedComments, getCachedCommentsForContent, getPageState, saveCommentPage } from '@/src/db/repositories/commentRepository';
 import { getContent } from '@/src/db/repositories/contentRepository';
-import { Icon, Menu, TopAppBar } from '@/src/ui';
+import { Icon, Menu, Pressable, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { readCommentAuthorFlag, type CommentAuthorIdentity } from '@/src/utils/commentAuthor';
@@ -20,7 +20,7 @@ import {
 } from '@/src/utils/commentInsights';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Keyboard, Modal, Pressable, ScrollView, View } from 'react-native';
+import { FlatList, Keyboard, Modal, ScrollView, View } from 'react-native';
 
 function normalizeComment(item: any): CommentViewModel | null {
     if (!item?.id) return null;

@@ -1,5 +1,5 @@
-import MiuixNumberWheel from '@/src/components/MiuixNumberWheel';
-import MiuixProgressIndicator from '@/src/components/MiuixProgressIndicator';
+import NumberWheel from '@/src/components/NumberWheel';
+import ProgressIndicator from '@/src/components/ProgressIndicator';
 import { getApiInstance } from '@/src/api/ZhihuApi';
 import { getCacheSummary } from '@/src/db/repositories/offlineCacheRepository';
 import { cacheContentFromId } from '@/src/services/offlineCacheService';
@@ -305,12 +305,12 @@ export default function OfflineCacheScreen() {
             >
                 <Card feedback="none" contentStyle={{ paddingBottom: theme.spacing.lg }}>
                     <Text type="headline1" weight="medium" align="center">选择缓存数量</Text>
-                    <MiuixNumberWheel value={cacheCount} max={MAX_CACHE_COUNT} step={5} onChange={setCacheCount} />
+                    <NumberWheel value={cacheCount} max={MAX_CACHE_COUNT} step={5} onChange={setCacheCount} />
                     <Text type="body2" color={theme.colors.onSurfaceVariantSummary} align="center">
                         预估磁盘占用：约 {(estimatedBytes / 1024 / 1024).toFixed(1)} MB
                     </Text>
                     <View style={{ marginTop: theme.spacing.lg }}>
-                        <MiuixProgressIndicator progress={progress.overall} />
+                        <ProgressIndicator progress={progress.overall} />
                         <Text type="body2" color={theme.colors.onSurfaceVariantSummary} align="center" style={{ marginTop: theme.spacing.sm }}>
                             {progressText}
                         </Text>

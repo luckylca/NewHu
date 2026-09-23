@@ -1,14 +1,14 @@
 import { getChildComments } from '@/src/api/ZhihuApi';
 import { getCachedComments, getCommentById, getPageState, saveCommentPage } from '@/src/db/repositories/commentRepository';
 import type { FeedType } from '@/src/types/zhihu';
-import { Divider } from '@/src/ui';
+import { Divider, Pressable } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { useSettingStore } from '@/src/stores/useSettingStore';
 import { useNetworkStore } from '@/src/stores/useNetworkStore';
 import { readCommentAuthorFlag, type CommentAuthorIdentity } from '@/src/utils/commentAuthor';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, BackHandler, FlatList, InteractionManager, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Animated, BackHandler, FlatList, InteractionManager, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { CommentItem } from './CommentItem';
 import type { CommentViewModel } from './CommentItem';
 
@@ -245,7 +245,7 @@ export default function ChildComment({ visible, id, contentId, contentType, onCl
     return (
         <View style={[StyleSheet.absoluteFill, styles.layer]}>
             <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: animation }]}>
-                <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+                <Pressable showIndication={false} style={StyleSheet.absoluteFill} onPress={onClose} />
             </Animated.View>
             <Animated.View
                 style={[

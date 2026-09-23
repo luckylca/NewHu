@@ -1,7 +1,7 @@
 import { Text } from "@/src/ui/primitives";
 import { useTheme } from "@/src/ui/theme";
 import { View } from "react-native";
-import MiuixProgressIndicator from "@/src/components/MiuixProgressIndicator";
+import ProgressIndicator from "@/src/components/ProgressIndicator";
 
 const LoadingView = ({ message = "正在加载…" }: { message?: string }) => {
     const theme = useTheme();
@@ -17,7 +17,7 @@ const LoadingView = ({ message = "正在加载…" }: { message?: string }) => {
             }}
         >
             <View style={{ width: 160 }}>
-                <MiuixProgressIndicator indeterminate />
+                <ProgressIndicator indeterminate />
             </View>
 
             <Text

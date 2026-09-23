@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo } from "react";
-import { Image, Linking, Text as RNText,Dimensions,TouchableOpacity } from "react-native";
+import { Image, Linking, Dimensions } from "react-native";
+import { PressableScale, Text } from '@/src/ui';
 import ImageReanimatedModal from "./ImageReanimatedModal";
 import { resolveImageUri } from "@/src/services/resourceService";
 import { useNetworkStore } from "@/src/stores/useNetworkStore";
@@ -127,23 +128,25 @@ export default function CommentText({
     const [imageVisible, setImageVisible] = React.useState(false);
     const children = useMemo(() => {
         return tokens.map((t, idx) => {
-            if (t.type === "newline") return <RNText key={idx}>{"\n"}</RNText>;
-            if (t.type === "text") return <RNText key={idx}>{t.text}</RNText>;
+            if (t.type === "newline") return <Text key={idx} type="body2" size={15}>{"\n"}</Text>;
+            if (t.type === "text") return <Text key={idx} type="body2" size={15}>{t.text}</Text>;
             if (t.type === "link")
                 return (
-                    <RNText
+                    <Text
                         key={idx}
+                        type="body2"
+                        size={15}
                         style={{ textDecorationLine: "underline" }}
                         onPress={() => t.href && Linking.openURL(t.href)}
                     >
                         {t.text}
-                    </RNText>
+                    </Text>
                 );
             if (t.type === "image") {
                 return null;
             }
             const src = emojiMap[t.name];
-            if (!src) return <RNText key={idx}>[{t.name}]</RNText>;
+            if (!src) return <Text key={idx} type="body2" size={15}>[{t.name}]</Text>;
             return (
                 <Image
                     key={idx}
@@ -178,11 +181,11 @@ export default function CommentText({
 
     return (
         <>
-            <RNText style={{ fontSize: 15, lineHeight: 22 }}>
+            <Text type="body2" size={15} style={{ lineHeight: 22 }}>
                 {children}
-            </RNText>
+            </Text>
             {imageUrl && imageToken && (
-                <TouchableOpacity onPress={imagePressHandler}>
+                <PressableScale onPress={imagePressHandler} scale={0.98}>
                     <Image
                         source={{ uri: imageUrl }}
                         key={imageUrl}
@@ -190,7 +193,7 @@ export default function CommentText({
                         style={{ width: WindowWidth*0.8,aspectRatio: (imageToken.width && imageToken.height) ? (imageToken.width / imageToken.height) : 1.77, alignSelf: "center", marginVertical: 10 }}
                         resizeMode="contain"
                     />
-                </TouchableOpacity>
+                </PressableScale>
             )}
             <ImageReanimatedModal url={imageUrl} origin={imageOrigin} visible={imageVisible} onClose={() => setImageVisible(false)} />
         </>

@@ -1,7 +1,7 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import {
     getLaterReadRuntimeStates,
@@ -15,7 +15,7 @@ import {
     type LaterReadSortMode,
 } from '@/src/stores/useLaterReadStore';
 import { notify } from '@/src/stores/useNotificationStore';
-import { Button, Icon, TopAppBar } from '@/src/ui';
+import { Button, Icon, Pressable, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import {

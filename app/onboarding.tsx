@@ -1,12 +1,12 @@
 import { useConsentStore } from '@/src/stores/useConsentStore';
 import { clearProductV1Personalization } from '@/src/product-v1';
-import { Button, Card, Checkbox, Icon, Switch, Text } from '@/src/ui';
+import { Button, Card, Checkbox, Icon, Pressable, Switch, Text } from '@/src/ui';
 import { onboardingEnter, useReducedMotionPreference } from '@/src/ui/motion';
 import { useTheme } from '@/src/ui/theme';
 import { notification, toggle, NotificationFeedbackType } from '@/src/utils/haptics';
 import { router, useFocusEffect } from 'expo-router';
 import React from 'react';
-import { BackHandler, Pressable, ScrollView, View } from 'react-native';
+import { BackHandler, ScrollView, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 

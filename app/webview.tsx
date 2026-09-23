@@ -8,7 +8,7 @@ import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import { getApiInstance } from '@/src/api/ZhihuApi';
-import MiuixProgressIndicator from '@/src/components/MiuixProgressIndicator';
+import ProgressIndicator from '@/src/components/ProgressIndicator';
 import { getCookieValue } from '@/src/utils/cookieHeader';
 const ZhihuLoginWebView = () => {
 
@@ -64,7 +64,7 @@ const ZhihuLoginWebView = () => {
         <View style={{ flex: 1 }}>
             <Modal visible={modalVisible} transparent>
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.windowDimming }}>
-                    <View style={{ width: 160 }}><MiuixProgressIndicator indeterminate /></View>
+                    <View style={{ width: 160 }}><ProgressIndicator indeterminate /></View>
                     <Text type="body1" style={{ marginTop: theme.spacing.sm, color: theme.colors.onPrimary }}>{statusText}</Text>
                 </View>
             </Modal>

@@ -4,13 +4,13 @@ import type { CommentQualityResult } from '@/src/utils/commentQuality';
 import type { AiAnalysisMetric, AiAnalysisResult } from '@/src/services/aiAnalysisCore';
 import { useAiAnalysisStore } from '@/src/stores/useAiAnalysisStore';
 import { useNetworkStore } from '@/src/stores/useNetworkStore';
-import { Button, BottomSheet, Card, Icon } from '@/src/ui';
+import { Button, BottomSheet, Card, Icon, Pressable, ProgressIndicator } from '@/src/ui';
 import { getBadgeColorsByIndex } from '@/src/ui/badgePalette';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 export function ContentAiAnalysisLauncher({
     contentKey,
@@ -118,7 +118,8 @@ export function ContentAiAnalysisLauncher({
                 accessibilityRole="button"
                 accessibilityLabel="打开 AI 分析"
                 onPress={open}
-                style={({ pressed }) => ({
+                indicationRadius={26}
+                style={{
                     position: 'absolute',
                     right: 18,
                     bottom: 88,
@@ -130,14 +131,13 @@ export function ContentAiAnalysisLauncher({
                     backgroundColor: theme.colors.primary,
                     borderWidth: 2,
                     borderColor: theme.colors.onPrimary,
-                    opacity: pressed ? 0.72 : 1,
                     shadowColor: '#000000',
                     shadowOpacity: theme.dark ? 0.35 : 0.18,
                     shadowRadius: 8,
                     shadowOffset: { width: 0, height: 4 },
                     elevation: 8,
                     zIndex: 30,
-                })}
+                }}
             >
                 <Icon name="robot-outline" size={23} color={theme.colors.onPrimary} />
                 <Text type="footnote2" weight="bold" color={theme.colors.onPrimary} style={{ marginTop: -1 }}>
@@ -198,7 +198,9 @@ export function ContentAiAnalysisLauncher({
                         </Card>
                     ) : loading ? (
                         <Card feedback="none" contentStyle={{ padding: theme.spacing.xl, alignItems: 'center' }}>
-                            <ActivityIndicator color={theme.colors.primary} />
+                            <View style={{ width: 88 }}>
+                                <ProgressIndicator indeterminate />
+                            </View>
                             <Text
                                 type="body2"
                                 color={theme.colors.onSurfaceVariantSummary}

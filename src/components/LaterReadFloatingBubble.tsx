@@ -1,11 +1,11 @@
 import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
 import { useLaterReadStore, type LaterReadItem } from '@/src/stores/useLaterReadStore';
-import { BottomSheet, Button, Icon } from '@/src/ui';
+import { BottomSheet, Button, Icon, Pressable } from '@/src/ui';
 import { PressIndication, Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { usePathname, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { FlatList, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -249,6 +249,7 @@ function LaterReadPageRow({ item, pageNumber, onOpen, onRemove }: {
 
     return (
         <Pressable
+            showIndication={false}
             accessibilityRole="button"
             accessibilityLabel={item.title}
             onPress={onOpen}

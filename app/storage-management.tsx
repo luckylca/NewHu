@@ -10,14 +10,14 @@ import {
     resetProductV1Runtime,
 } from '@/src/product-v1';
 import { notify } from '@/src/stores/useNotificationStore';
-import { Button, Card, Dialog, Divider, Icon, TopAppBar } from '@/src/ui';
+import { Button, Card, Dialog, Divider, Icon, Pressable, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import type { IconName } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { storageManage } from '@/src/ui/motion';
 import { router } from 'expo-router';
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, InteractionManager, Pressable, View } from 'react-native';
+import { FlatList, InteractionManager, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 type CacheSummary = Awaited<ReturnType<typeof getCacheSummary>>;

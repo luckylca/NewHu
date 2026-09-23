@@ -1,12 +1,12 @@
 import { fetchAiAnalysisModels } from '@/src/services/aiAnalysisService';
 import { useAiAnalysisStore } from '@/src/stores/useAiAnalysisStore';
 import { notify } from '@/src/stores/useNotificationStore';
-import { Button, Card, Input, Switch, TopAppBar } from '@/src/ui';
+import { Button, Card, Input, Pressable, Switch, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 export default function AiAnalysisSettingsScreen() {
     const theme = useTheme();
