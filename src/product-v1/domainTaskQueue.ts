@@ -1,3 +1,4 @@
+import { yieldToUI } from './core/cooperative';
 import type { ProductV1DomainMatch } from './domainSelection';
 
 export type ProductV1DomainClassificationPriority = 'high' | 'normal' | 'low';
@@ -134,6 +135,22 @@ export class ProductV1DomainTaskQueue {
           continue;
         }
 
+        // Promise-only jobs otherwise drain in a single microtask chain.
+        await yieldToUI();
+        this.queued.sort((a, b) => (
+          PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]
+          || a.sequence - b.sequence
+        ));
+        const newlyPrioritized = this.queued[0];
+        if (newlyPrioritized && PRIORITY_RANK[newlyPrioritized.priority] < PRIORITY_RANK[job.priority]) {
+          this.queued.push(job);
+          continue;
+        }
+        if (job.canceled || job.consumers === 0) {
+          job.resolve([]);
+          if (this.jobs.get(job.key) === job) this.jobs.delete(job.key);
+          continue;
+        }
         job.started = true;
         try {
           job.resolve(await job.work());

@@ -4,7 +4,7 @@ import {
   getProductV1ModelFile,
   installProductV1Model,
   PRODUCT_V1_MODEL_SPEC,
-  validateProductV1Asset,
+  hasProductV1AssetSize,
 } from './runtimeAssets';
 
 export const PRODUCT_V1_MODEL_FILENAME = PRODUCT_V1_MODEL_SPEC.name;
@@ -14,7 +14,7 @@ export const PRODUCT_V1_MODEL_MD5 = PRODUCT_V1_MODEL_SPEC.md5;
 export function getProductV1ModelStatus() {
   const modelFile = getProductV1ModelFile();
   return {
-    installed: validateProductV1Asset(modelFile, PRODUCT_V1_MODEL_SPEC),
+    installed: hasProductV1AssetSize(modelFile, PRODUCT_V1_MODEL_SPEC),
     size: modelFile.exists ? modelFile.size : 0,
     path: modelFile.uri,
     automaticDownloadConfigured: true,
@@ -31,8 +31,8 @@ export async function importProductV1Model() {
   const selected = Array.isArray(picked) ? picked[0] : picked;
   const source = selected ? new File(selected.uri) : null;
   if (!source) throw new Error('未选择模型文件');
-  if (!validateProductV1Asset(source, PRODUCT_V1_MODEL_SPEC)) {
+  if (!hasProductV1AssetSize(source, PRODUCT_V1_MODEL_SPEC)) {
     throw new Error('模型文件校验失败，请选择 Tiny Encoder V1 Mobile FP32 模型');
   }
-  return installProductV1Model(source).uri;
+  return (await installProductV1Model(source)).uri;
 }

@@ -1,3 +1,4 @@
+import { yieldToUI } from './core/cooperative';
 import type { FeedItemInfo } from '@/src/types/zhihu';
 import { commitProductCycle, loadProductCandidates, loadProductState } from '@/src/db/repositories/productV1Repository';
 import { CandidateInventoryV3, supplyInterestV3 } from './core/candidateInventoryV3';
@@ -14,20 +15,32 @@ import {
   targetMapV2,
   type RatioControllerStateV2,
 } from './core/explicitInterestRatioV2';
-import { routeSearchSeedsV2, ROUTING_DOMAIN_SOFT_GATE, selectDiverseSearchSeedsV2 } from './core/searchSeedRouterV2';
+import { routeSearchSeedsV2Async, ROUTING_DOMAIN_SOFT_GATE, selectDiverseSearchSeedsV2 } from './core/searchSeedRouterV2';
+import { routeTopicGraphV1Async } from './core/searchTopicGraphV1';
 import { highQualityEligibleV2 } from './core/highQualityAcquisitionV2';
 import { bubbleSlotCount, sampleDomainSeed } from './core/bubbleBreakPolicy';
 import type { ExposureHistoryState, ProfileState, RewardStatsState, ScoreBreakdown } from './core/types';
 import { cosineSimilarity, encodeArticle, resetProductV1Encoder, verifyProductV1Encoder } from './encoder';
-import { loadProductV1SeedBank, loadProductV1SeedEmbeddings, resetProductV1AssetCache } from './assets';
+import {
+  loadProductV1SeedBankAsync,
+  loadProductV1SeedEmbeddings,
+  loadProductV1TopicGraphAsync,
+  loadProductV1TopicGraphEmbeddings,
+  resetProductV1AssetCache,
+} from './assets';
 import { fetchProductSearch } from './sourceAdapter';
 import { loadProductV1Settings } from './settings';
 import { PRODUCT_V1_SCHEMA, PRODUCT_V1_VERSION } from './constants';
 import { updateProductV1Health } from './store';
 import type { ProductV1CandidateRecord, ProductV1RuntimeState, ProductV1Trace } from './types';
-import { ensureProductV1RuntimeAssets, type ProductV1AssetDownloadProgress } from './runtimeAssets';
+import {
+  ensureProductV1RuntimeAssets,
+  ensureProductV1TopicGraphAssets,
+  type ProductV1AssetDownloadProgress,
+} from './runtimeAssets';
 import { buildProductV1RecommendationReason } from './recommendationReason';
 import { semanticExcerpt, semanticTitle } from './semanticInput';
+import { PRODUCT_V1_DEMO_GEOMETRY_VERSION, sourceScopedV5Embedding } from './v5Geometry';
 import {
   capAutoDesiredSupply,
   composeBubbleDisplayRecords,
@@ -85,8 +98,20 @@ async function initializeProductV1(onProgress?: (progress: ProductV1AssetDownloa
   updateProductV1Health({ phase: 'initializing', lastError: null });
   try {
     await ensureProductV1RuntimeAssets(onProgress);
-    const seedBank = loadProductV1SeedBank();
+    const seedBank = await loadProductV1SeedBankAsync();
     await loadProductV1SeedEmbeddings();
+    // Search Topic Graph V1 is the promoted additive extension. Its cloud
+    // assets are best-effort so the frozen Seed Router V2 remains usable as
+    // the documented rollback route when the extension is unavailable.
+    try {
+      const graphStatus = await ensureProductV1TopicGraphAssets();
+      if (graphStatus.topicGraphReady) {
+        await loadProductV1TopicGraphAsync();
+        await loadProductV1TopicGraphEmbeddings();
+      }
+    } catch {
+      // Fallback is intentional; acquireSearch() will use Seed Router V2.
+    }
     const norm = await verifyProductV1Encoder();
     initialized = true;
     updateProductV1Health({ phase: 'ready', encoderReady: true, encoderNorm: norm, seedCount: seedBank.seedCount });
@@ -162,11 +187,12 @@ function interestVectors(memory: RuntimeMemory) {
     for (const exemplar of center.exemplars) {
       const record = [...memory.records.values()].find((item) => item.candidate.articleId === exemplar.articleId);
       const embedding = record?.candidate.encoderEmbedding;
-      if (!embedding) continue;
+      if (!embedding || !record) continue;
+      const scoringEmbedding = sourceScopedV5Embedding(embedding, record.candidate.source);
       for (const tag of center.tags) {
-        output[tag] ??= new Float32Array(embedding.length);
+        output[tag] ??= new Float32Array(scoringEmbedding.length);
         weights[tag] = (weights[tag] ?? 0) + exemplar.weight;
-        embedding.forEach((value, index) => { output[tag][index] += value * exemplar.weight; });
+        scoringEmbedding.forEach((value, index) => { output[tag][index] += value * exemplar.weight; });
       }
     }
   }
@@ -178,17 +204,20 @@ function interestVectors(memory: RuntimeMemory) {
 }
 
 async function enrichCandidate(candidate: CandidateArticle, memory: RuntimeMemory, targetInterest?: string) {
+  await yieldToUI();
   const embedding = await encodeArticle(candidate);
   candidate.encoderEmbedding = Array.from(embedding);
+  candidate.rawMetadata.demoGeometry = PRODUCT_V1_DEMO_GEOMETRY_VERSION;
+  const scoringEmbedding = sourceScopedV5Embedding(embedding, candidate.source);
   const centers = interestVectors(memory);
   const matches = Object.entries(centers)
-    .map(([interest, center]) => [interest, cosineSimilarity(embedding, center)] as const)
+    .map(([interest, center]) => [interest, cosineSimilarity(scoringEmbedding, center)] as const)
     .sort((a, b) => b[1] - a[1]);
 
   if (!targetInterest) {
-    const bank = loadProductV1SeedBank();
+    const bank = await loadProductV1SeedBankAsync();
     const seedEmbeddings = await loadProductV1SeedEmbeddings();
-    const routed = routeSearchSeedsV2(embedding, bank, seedEmbeddings, {
+    const routed = await routeSearchSeedsV2Async(embedding, bank, seedEmbeddings, {
       primaryDomains: [],
       variant: 'GLOBAL_COSINE',
       topK: 12,
@@ -213,7 +242,7 @@ async function enrichCandidate(candidate: CandidateArticle, memory: RuntimeMemor
   candidate.bestMatchedInterest = matches[0]?.[0] ?? null;
   candidate.bestSemanticScore = matches[0]?.[1] ?? 0;
   candidate.qualified = targetInterest
-    ? (matches.find(([interest]) => interest === targetInterest)?.[1] ?? cosineSimilarity(embedding, centers[targetInterest] ?? embedding)) >= 0.24
+    ? (matches.find(([interest]) => interest === targetInterest)?.[1] ?? cosineSimilarity(scoringEmbedding, centers[targetInterest] ?? scoringEmbedding)) >= 0.24
     : candidate.bestSemanticScore >= 0.18;
   candidate.rejectionReason = candidate.qualified ? null : 'SEMANTIC_BELOW_THRESHOLD';
   if (targetInterest) {
@@ -291,8 +320,10 @@ async function acquireSearch(
   trace: ProductV1Trace,
   highQualityEnabled: boolean,
 ) {
-  const seedBank = loadProductV1SeedBank();
+  const seedBank = await loadProductV1SeedBankAsync();
   const seedEmbeddings = await loadProductV1SeedEmbeddings();
+  const topicGraph = await loadProductV1TopicGraphAsync();
+  const topicGraphEmbeddings = topicGraph ? await loadProductV1TopicGraphEmbeddings() : null;
   const seedById = new Map(seedBank.seeds.map((seed) => [seed.seedId, seed]));
   const usedSeeds = new Set<string>();
   const usedFamilies = new Set<string>();
@@ -321,29 +352,53 @@ async function acquireSearch(
     if (moved > 0) continue;
     const center = interestVectors(memory)[target.interestId];
     if (!center) break;
-    const routedSeeds = routeSearchSeedsV2(center, seedBank, seedEmbeddings, {
-      primaryDomains: [target.interestId],
-      variant: ROUTING_DOMAIN_SOFT_GATE,
-      topK: 60,
-    });
-    const seeds = selectDiverseSearchSeedsV2(routedSeeds, 20);
-    const next = seeds.find((row) => !usedSeeds.has(row.seed.seedId) && !usedFamilies.has(seedFamily(row.seed)));
-    if (!next) break;
-    usedSeeds.add(next.seed.seedId);
-    usedFamilies.add(seedFamily(next.seed));
-    memory.recentSearchSeedIds = [...memory.recentSearchSeedIds, next.seed.seedId].slice(-60);
+    let nextSeed = null as (typeof seedBank.seeds)[number] | null;
+    let routingArchitecture = 'SEED_ROUTER_V2';
+
+    if (topicGraph && topicGraphEmbeddings) {
+      const routedQueries = await routeTopicGraphV1Async(center, topicGraph, topicGraphEmbeddings, {
+        hintDomains: [target.interestId],
+        topKQueries: 60,
+      });
+      for (const query of routedQueries) {
+        if (!query.seedId) continue;
+        const candidateSeed = seedById.get(query.seedId);
+        if (!candidateSeed) continue;
+        if (usedSeeds.has(candidateSeed.seedId) || usedFamilies.has(seedFamily(candidateSeed))) continue;
+        nextSeed = candidateSeed;
+        routingArchitecture = 'HIERARCHICAL_TOPIC_GRAPH_V1';
+        break;
+      }
+    }
+
+    if (!nextSeed) {
+      const routedSeeds = await routeSearchSeedsV2Async(center, seedBank, seedEmbeddings, {
+        primaryDomains: [target.interestId],
+        variant: ROUTING_DOMAIN_SOFT_GATE,
+        topK: 60,
+      });
+      const seeds = selectDiverseSearchSeedsV2(routedSeeds, 20);
+      nextSeed = seeds.find((row) => !usedSeeds.has(row.seed.seedId) && !usedFamilies.has(seedFamily(row.seed)))?.seed ?? null;
+    }
+
+    if (!nextSeed) break;
+    usedSeeds.add(nextSeed.seedId);
+    usedFamilies.add(seedFamily(nextSeed));
+    memory.recentSearchSeedIds = [...memory.recentSearchSeedIds, nextSeed.seedId].slice(-60);
     if (requestCount > 0) await new Promise((resolve) => setTimeout(resolve, 1200 + Math.random() * 300));
-    const feeds = await fetchProductSearch(next.seed.text, 0, highQualityEnabled);
+    const feeds = await fetchProductSearch(nextSeed.text, 0, highQualityEnabled);
     requestCount += 1;
     trace.searchRequestCount = requestCount;
-    trace.searchSeedIds.push(next.seed.seedId);
+    trace.searchSeedIds.push(nextSeed.seedId);
     const candidates: CandidateArticle[] = [];
     for (const [index, feed] of feeds.entries()) {
       const candidate = toCandidate(feed, 'search', trace.cycleId, index);
-      candidate.sourceQuery = next.seed.text;
-      candidate.searchSeedId = next.seed.seedId;
-      candidate.queries = [next.seed.text];
-      candidate.seedIds = [next.seed.seedId];
+      if (memory.inventory.used.has(candidate.duplicateKey) || memory.records.has(candidate.duplicateKey)) continue;
+      candidate.sourceQuery = nextSeed.text;
+      candidate.searchSeedId = nextSeed.seedId;
+      candidate.queries = [nextSeed.text];
+      candidate.seedIds = [nextSeed.seedId];
+      candidate.rawMetadata.searchRouting = routingArchitecture;
       await enrichCandidate(candidate, memory, target.interestId);
       memory.records.set(candidate.duplicateKey, { candidate, feed });
       candidates.push(candidate);
@@ -369,7 +424,7 @@ async function acquireBubble(
 ) {
   const required = bubbleSlotCount(20, enabled, 'low');
   if (required === 0) return [];
-  const seedBank = loadProductV1SeedBank();
+  const seedBank = await loadProductV1SeedBankAsync();
   const profileDomains = new Set(topNamedInterests(memory.profile, 9).map(([interest]) => interest));
   const blockedSeedIds = new Set(memory.recentSearchSeedIds);
   const blockedFamilies = new Set<string>();

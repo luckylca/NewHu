@@ -1,3 +1,4 @@
+import { drainCooperatively, drainSync } from './cooperative';
 import type { CompactSeedBank, SearchSeedCompact } from "./candidateAcquisition";
 
 export const ROUTING_GLOBAL_COSINE = "GLOBAL_COSINE" as const;
@@ -126,7 +127,7 @@ function centerNorm(center: ArrayLike<number>): number {
   return Math.sqrt(sum);
 }
 
-export function routeSearchSeedsV2(
+function* routeSearchSeedsSteps(
   center: ArrayLike<number>, bank: CompactSeedBank, embeddings: Int8Array,
   options: {
     primaryDomains: Iterable<string>;
@@ -137,7 +138,7 @@ export function routeSearchSeedsV2(
     topK?: number;
     weights?: RouterWeights;
   },
-): RoutedSearchSeedV2[] {
+): Generator<void, RoutedSearchSeedV2[], void> {
   if (center.length !== bank.embeddingDimension) throw new Error("center/seed embedding dimension mismatch");
   if (embeddings.length !== bank.seedCount * bank.embeddingDimension) throw new Error("invalid compact embedding payload size");
   const norm = centerNorm(center); if (!(norm > 0)) throw new Error("center must be non-zero");
@@ -147,14 +148,19 @@ export function routeSearchSeedsV2(
   const weights = options.weights ?? DEFAULT_ROUTER_WEIGHTS;
   const topK = Math.max(0, Math.trunc(options.topK ?? 10));
   const rows: RoutedSearchSeedV2[] = [];
+  const primarySet = new Set(primary);
+  const relatedSet = new Set(related);
+  const scaledCenter = Array.from(center, (value) => Number(value) / norm * bank.dequantScale);
+  let processed = 0;
   for (const seed of bank.seeds) {
+    if (++processed % 16 === 0) yield;
     if (!seed.enabled) continue;
     const broadDomain = seed.broadCategory ?? "UNKNOWN";
-    const compat = domainCompatibilityV2(broadDomain, primary, related);
+    const compat = primarySet.has(broadDomain) ? 1 : relatedSet.has(broadDomain) ? 0.4 : -1;
     if (variant === ROUTING_DOMAIN_CONSTRAINED && compat < 0) continue;
     const base = seed.rowIndex * bank.embeddingDimension;
     let semantic = 0;
-    for (let j = 0; j < bank.embeddingDimension; j += 1) semantic += (Number(center[j]) / norm) * embeddings[base + j] * bank.dequantScale;
+    for (let j = 0; j < bank.embeddingDimension; j += 1) semantic += scaledCenter[j] * embeddings[base + j];
     const domainScore = variant === ROUTING_GLOBAL_COSINE ? 0 : domainTerm(compat, weights);
     const stats = options.observedStats?.[seed.seedId];
     const observed = observationCount(stats) > 0;
@@ -184,4 +190,14 @@ export function selectDiverseSearchSeedsV2(rows: RoutedSearchSeedV2[], limit = 3
     if (out.length >= Math.max(0, Math.trunc(limit))) break;
   }
   return out;
+}
+
+/** Synchronous entry retained for offline tooling and deterministic core callers. */
+export function routeSearchSeedsV2(...args: Parameters<typeof routeSearchSeedsSteps>) {
+  return drainSync(routeSearchSeedsSteps(...args));
+}
+
+/** Use on RN's JS thread; preserves scoring and ordering while yielding to UI. */
+export function routeSearchSeedsV2Async(...args: Parameters<typeof routeSearchSeedsSteps>) {
+  return drainCooperatively(routeSearchSeedsSteps(...args));
 }

@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { loadProductV1SeedBank, loadProductV1SeedEmbeddings } from './assets';
+import { loadProductV1TopicGraphAsync } from './assets';
 import { PRODUCT_V1_VERSION } from './constants';
 import {
   createProductV1DomainFingerprint,
@@ -7,20 +7,28 @@ import {
   serializeProductV1DomainCache,
   type ProductV1DomainCacheValue,
 } from './domainCache';
-import { encodeArticle } from './encoder';
-import { productV1DomainLabel } from './domainLabels';
-import { selectProductV1DomainMatches, type ProductV1DomainMatch } from './domainSelection';
+import type { ProductV1DomainMatch } from './domainSelection';
+
 import {
   ProductV1DomainTaskQueue,
   type ProductV1DomainClassificationPriority,
 } from './domainTaskQueue';
-import { routeSearchSeedsV2 } from './core/searchSeedRouterV2';
+import {
+  fuseProductV1TopicBadges,
+  selectProductV1ContentBadges,
+  selectProductV1NativeTopicBadges,
+} from './topicBadgeSelection';
+import {
+  clearProductV1NativeTopicCache,
+  getCachedProductV1NativeTopics,
+  resolveProductV1NativeTopics,
+} from './nativeTopicResolver';
+import type { FeedType } from '@/src/types/zhihu';
 import {
   getProductV1RuntimeAssetStatus,
   PRODUCT_V1_ASSET_VERSION,
-  PRODUCT_V1_MODEL_SPEC,
-  PRODUCT_V1_SEED_BANK_SPEC,
-  PRODUCT_V1_SEED_EMBEDDINGS_SPEC,
+  PRODUCT_V1_TOPIC_GRAPH_EMBEDDINGS_SPEC,
+  PRODUCT_V1_TOPIC_GRAPH_SPEC,
 } from './runtimeAssets';
 
 const MAX_CACHE_ENTRIES = 500;
@@ -30,10 +38,9 @@ const DOMAIN_CACHE_STORAGE_KEY = [
   'product-v1-domain-cache-v1',
   PRODUCT_V1_VERSION,
   PRODUCT_V1_ASSET_VERSION,
-  PRODUCT_V1_MODEL_SPEC.sha256.slice(0, 12),
-  PRODUCT_V1_SEED_BANK_SPEC.sha256.slice(0, 12),
-  PRODUCT_V1_SEED_EMBEDDINGS_SPEC.sha256.slice(0, 12),
-  'min018-gap008-max3',
+  PRODUCT_V1_TOPIC_GRAPH_SPEC.sha256.slice(0, 12),
+  PRODUCT_V1_TOPIC_GRAPH_EMBEDDINGS_SPEC.sha256.slice(0, 12),
+  'topic-native-primary-v8',
 ].join(':');
 
 const cache = new Map<string, ProductV1DomainCacheValue>();
@@ -76,7 +83,10 @@ function trimCache() {
 }
 
 export function isProductV1DomainClassificationAvailable() {
-  return getProductV1RuntimeAssetStatus().installed;
+  // Capsule quality depends on the frozen Topic Graph. Never fall back to the
+  // old article-vs-search embedding classifier: if the graph is unavailable,
+  // hiding the capsule is safer than showing a confident but unrelated label.
+  return getProductV1RuntimeAssetStatus().topicGraphReady;
 }
 
 export async function classifyProductV1Domains(
@@ -84,6 +94,10 @@ export async function classifyProductV1Domains(
   title: string,
   excerpt: string,
   options: {
+    feedType?: FeedType;
+    contentId?: string;
+    questionId?: string;
+    questionTopicIds?: string[];
     priority?: ProductV1DomainClassificationPriority;
     signal?: AbortSignal;
   } = {},
@@ -92,55 +106,99 @@ export async function classifyProductV1Domains(
 
   const normalizedTitle = boundedText(title);
   const normalizedExcerpt = boundedText(excerpt);
-  const fingerprint = createProductV1DomainFingerprint(normalizedTitle, normalizedExcerpt);
+  const priority = options.priority ?? 'normal';
+  const separator = contentKey.indexOf(':');
+  const keyType = separator > 0 ? contentKey.slice(0, separator) : '';
+  const keyId = separator > 0 ? contentKey.slice(separator + 1) : '';
+  const inferredFeedType: FeedType | undefined = keyType === 'answer' || keyType === 'article'
+    ? keyType
+    : undefined;
+  const feedType = options.feedType ?? inferredFeedType;
+  const contentId = String(options.contentId ?? keyId).trim();
+  const questionId = String(options.questionId ?? '').trim();
+  const canUseNative = Boolean(feedType && contentId && (feedType !== 'answer' || questionId));
+  const cachedNativeTopics = canUseNative
+    ? await getCachedProductV1NativeTopics({ feedType: feedType!, contentId, questionId })
+    : [];
+  const nativeFingerprint = cachedNativeTopics
+    .map((topic) => `${topic.id}:${topic.topicId ?? ''}:${topic.name}:${topic.category ?? ''}`)
+    .join('|');
+  const nativeRequested = priority === 'high' && canUseNative;
+  // A visible badge intentionally performs a fast local pass before the native
+  // enrichment pass. Those two passes must never share one cache slot: otherwise
+  // the high-priority pass would hit the local result and skip the topic request.
+  const cacheKey = `${contentKey}\u0001${nativeRequested ? 'native' : 'local'}`;
+  const fingerprint = createProductV1DomainFingerprint(
+    normalizedTitle,
+    `${normalizedExcerpt}\u0000${nativeRequested ? questionId || contentId : ''}\u0000${nativeFingerprint}`,
+  );
 
   await ensurePersistentCacheLoaded();
-  const cached = cache.get(contentKey);
+  const cached = cache.get(cacheKey);
   if (cached?.fingerprint === fingerprint) {
-    cache.delete(contentKey);
-    cache.set(contentKey, cached);
+    cache.delete(cacheKey);
+    cache.set(cacheKey, cached);
     return cached.matches;
   }
 
-  const pendingKey = `${contentKey}\u0000${fingerprint}`;
-  return classificationQueue.enqueue(pendingKey, options.priority ?? 'normal', async () => {
+  const pendingKey = `${cacheKey}\u0000${fingerprint}\u0000${priority}`;
+  return classificationQueue.enqueue(pendingKey, priority, async () => {
     // Do not let the classifier itself trigger a Product V1 resource download.
     if (!isProductV1DomainClassificationAvailable()) return [];
 
-    const embedding = await encodeArticle({
-      title: normalizedTitle,
-      excerpt: normalizedExcerpt,
-    });
-    const bank = loadProductV1SeedBank();
-    const seedEmbeddings = await loadProductV1SeedEmbeddings();
-    const routed = routeSearchSeedsV2(embedding, bank, seedEmbeddings, {
-      primaryDomains: [],
-      variant: 'GLOBAL_COSINE',
-      topK: 24,
-    });
+    const graph = await loadProductV1TopicGraphAsync();
+    if (!graph) return [];
 
-    const matches = selectProductV1DomainMatches(
-      routed.map((row) => ({
-        domain: row.score.broadDomain,
-        score: row.score.semanticScore,
-      })),
-      {
-        minScore: 0.18,
-        maxGapFromBest: 0.08,
-        maxDomains: 3,
-        labelForDomain: productV1DomainLabel,
-      },
+    const titleMatches = selectProductV1ContentBadges(
+      normalizedTitle,
+      normalizedExcerpt,
+      graph,
+      2,
     );
 
-    cache.set(contentKey, { fingerprint, matches });
-    trimCache();
-    schedulePersistentCacheWrite();
+    let nativeTopics = cachedNativeTopics;
+    let cacheable = true;
+    // Off-screen/low-priority cards never create network traffic. Visible cards
+    // resolve Zhihu topics once; the resolver deduplicates and persists results.
+    if (priority === 'high' && canUseNative) {
+      const resolved = await resolveProductV1NativeTopics({
+        feedType: feedType!,
+        contentId,
+        questionId,
+        questionTopicIds: options.questionTopicIds,
+        signal: options.signal,
+      });
+      if (resolved === null) cacheable = false;
+      else nativeTopics = resolved;
+    }
+
+    const nativeMatches = selectProductV1NativeTopicBadges(
+      nativeTopics,
+      normalizedTitle,
+      normalizedExcerpt,
+      graph,
+      2,
+    );
+    const matches = fuseProductV1TopicBadges(titleMatches, nativeMatches, 2);
+
+    if (cacheable) {
+      const enrichedFingerprint = createProductV1DomainFingerprint(
+        normalizedTitle,
+        `${normalizedExcerpt}\u0000${nativeRequested ? questionId || contentId : ''}\u0000${nativeTopics
+          .map((topic) => `${topic.id}:${topic.topicId ?? ''}:${topic.name}:${topic.category ?? ''}`)
+          .join('|')}`,
+      );
+      cache.set(cacheKey, { fingerprint: enrichedFingerprint, matches });
+      trimCache();
+      schedulePersistentCacheWrite();
+    }
     return matches;
   }, options.signal);
 }
 
 export function clearProductV1DomainClassificationCache() {
   cache.clear();
+  clearProductV1NativeTopicCache();
   if (persistTimer) {
     clearTimeout(persistTimer);
     persistTimer = null;

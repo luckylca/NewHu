@@ -19,6 +19,7 @@ import {
   type ProductV1AssetDownloadProgress,
 } from '@/src/product-v1';
 import type { ProductV1Settings, ProductV1Trace } from '@/src/product-v1/types';
+import { PRODUCT_V1_RECOMMENDATION_DEMO, PRODUCT_V1_SEED_COUNT } from '@/src/product-v1/constants';
 import { Button, Card, Dialog, Divider, Icon, ListRow, SegmentedControl, Slider, Switch, Text, TopAppBar } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
@@ -166,9 +167,12 @@ export default function ProductV1Screen() {
     await persistRatio(next);
   };
 
+  const demoLabel = PRODUCT_V1_RECOMMENDATION_DEMO === 'V5_SOURCE_SCOPED_SEARCH_BACKGROUND'
+    ? 'V5 Source-Scoped 手机 Demo'
+    : PRODUCT_V1_RECOMMENDATION_DEMO;
   const statusText = health.encoderReady
-    ? `编码器正常 · 128D · ${health.seedCount} 种子\n活跃${health.activeCount}/备用${health.reserveCount}`
-    : health.lastError ? `降级运行 · ${health.lastError}` : '等待首次推荐流初始化';
+    ? `${demoLabel} · 编码器正常 · 128D · ${health.seedCount} 种子\n活跃${health.activeCount}/备用${health.reserveCount}`
+    : health.lastError ? `降级运行 · ${health.lastError}` : `${demoLabel} · 等待首次推荐流初始化`;
   const progressLabel = assetProgress?.phase === 'model'
     ? '推荐模型'
     : assetProgress?.phase === 'seed_bank'
@@ -177,14 +181,14 @@ export default function ProductV1Screen() {
   const onlineAssetSummary = assetDownloading
     ? `正在下载 ${assetProgress?.percent ?? 0}% · ${progressLabel}`
     : assetStatus.installed
-      ? `已安装 · ${(assetStatus.totalBytes / 1024 / 1024).toFixed(1)} MB · 2706 种子`
+      ? `已安装 · ${(assetStatus.totalBytes / 1024 / 1024).toFixed(1)} MB · ${PRODUCT_V1_SEED_COUNT} 种子`
       : `未完整安装 · 点击在线下载 ${(assetStatus.totalBytes / 1024 / 1024).toFixed(1)} MB`;
 
   if (!settings || !ratio) return <View style={{ flex: 1, backgroundColor: theme.colors.background }}><TopAppBar title="Product V1 推荐" back={() => router.back()} /></View>;
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <TopAppBar title="Product V1 推荐" back={() => router.back()} />
+      <TopAppBar title="Product V1 · V5 Demo" back={() => router.back()} />
       <ScrollView contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl, gap: theme.spacing.lg }}>
         <Card feedback="none">
           <ListRow title="本地推荐运行时" summary={statusText} summaryNumberOfLines={2} trailing={<Switch value={settings.enabled} interactive={false} />} onPress={() => void patchSettings({ enabled: !settings.enabled })} />

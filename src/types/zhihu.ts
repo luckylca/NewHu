@@ -33,6 +33,8 @@ export interface FeedItem {
     /** 问题描述（纯文本）；仅部分接口返回 question.detail，可能为空。 */
     questionExcerpt?: string;
     questionId: string;
+    /** 首页推荐接口随 question 返回的内部话题绑定 ID；空数组表示该问题无绑定话题。 */
+    questionTopicIds?: string[];
     questionAuthorName: string;
     questionAuthorAvatar: string;
     questionAuthorUrlToken: string;

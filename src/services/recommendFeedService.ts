@@ -84,6 +84,9 @@ export function normalizeRecommendItem(item: any): FeedItemInfo | null {
             questionTitle: questionTitle || (type === 'answer' ? title : ''),
             questionExcerpt: type === 'answer' ? getQuestionExcerpt(target.question) : '',
             questionId: String(target.question?.id || ''),
+            questionTopicIds: type === 'answer' && Array.isArray(target.question?.bound_topic_ids)
+                ? target.question.bound_topic_ids.map((value: unknown) => String(value)).filter(Boolean)
+                : undefined,
             questionAuthorName: target.question?.author?.name || '匿名用户',
             questionAuthorAvatar: target.question?.author?.avatar_url || '',
             questionAuthorUrlToken: target.question?.author?.url_token || '',

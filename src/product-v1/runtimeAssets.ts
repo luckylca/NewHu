@@ -1,6 +1,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import CryptoJS from 'crypto-js';
+import { yieldToUI } from './core/cooperative';
 
 export const PRODUCT_V1_ASSET_VERSION = '1';
 export const PRODUCT_V1_ASSET_BASE_URL =
@@ -43,6 +44,20 @@ export const PRODUCT_V1_SEED_EMBEDDINGS_SPEC: AssetSpec = {
   sha256: '1cc74b2d5e874b1333c2607498b57279cc2984d9c112ccdd6bf587c896d44144',
 };
 
+export const PRODUCT_V1_TOPIC_GRAPH_SPEC: AssetSpec = {
+  name: 'search_topic_graph_v1.compact.json',
+  size: 1_977_887,
+  md5: '43997e1b41978da37ddc01157c6f9daa',
+  sha256: '5b214299a1872a2e8e22cca51b67ec1d9f108c1a7382bf96d2fa111cc37817ed',
+};
+
+export const PRODUCT_V1_TOPIC_GRAPH_EMBEDDINGS_SPEC: AssetSpec = {
+  name: 'search_topic_graph_embeddings_v1.int8.bin',
+  size: 411_904,
+  md5: '98e56c329a8e1426f7c52b2705901a7a',
+  sha256: 'bb147ba152a9d3e76344c3d88e7b53241b8a3990a2bf2787b582959759fff82b',
+};
+
 export type ProductV1AssetDownloadProgress = {
   phase: 'seed_bank' | 'seed_embeddings' | 'model' | 'complete';
   currentFile: string;
@@ -56,6 +71,9 @@ export type ProductV1RuntimeAssetStatus = {
   modelInstalled: boolean;
   seedBankInstalled: boolean;
   seedEmbeddingsInstalled: boolean;
+  topicGraphInstalled: boolean;
+  topicGraphEmbeddingsInstalled: boolean;
+  topicGraphReady: boolean;
   installed: boolean;
   installedBytes: number;
   totalBytes: number;
@@ -73,6 +91,8 @@ const assetDirectory = new Directory(Paths.document, 'product-v1');
 const modelFile = new File(assetDirectory, PRODUCT_V1_MODEL_SPEC.name);
 const seedBankFile = new File(assetDirectory, PRODUCT_V1_SEED_BANK_SPEC.name);
 const seedEmbeddingsFile = new File(assetDirectory, PRODUCT_V1_SEED_EMBEDDINGS_SPEC.name);
+const topicGraphFile = new File(assetDirectory, PRODUCT_V1_TOPIC_GRAPH_SPEC.name);
+const topicGraphEmbeddingsFile = new File(assetDirectory, PRODUCT_V1_TOPIC_GRAPH_EMBEDDINGS_SPEC.name);
 const totalAssetBytes = PRODUCT_V1_MODEL_SPEC.size
   + PRODUCT_V1_SEED_BANK_SPEC.size
   + PRODUCT_V1_SEED_EMBEDDINGS_SPEC.size;
@@ -80,14 +100,20 @@ const totalAssetBytes = PRODUCT_V1_MODEL_SPEC.size
 let activeDownload: Promise<ProductV1RuntimeAssetStatus> | null = null;
 let activeProgress: ProductV1AssetDownloadProgress | null = null;
 const progressListeners = new Set<ProgressListener>();
+const verifiedAssetKeys = new Set<string>();
+let lastProgressKey = '';
+let lastProgressPercent = -1;
 
 function ensureAssetDirectory() {
   if (!assetDirectory.exists) assetDirectory.create({ idempotent: true, intermediates: true });
 }
 
+export function hasProductV1AssetSize(file: File, spec: AssetSpec) {
+  return file.exists && file.size === spec.size;
+}
+
 export function validateProductV1Asset(file: File, spec: AssetSpec) {
-  return file.exists
-    && file.size === spec.size
+  return hasProductV1AssetSize(file, spec)
     && file.md5?.toLowerCase() === spec.md5;
 }
 
@@ -99,16 +125,19 @@ function bytesToWordArray(bytes: Uint8Array) {
   return CryptoJS.lib.WordArray.create(words, bytes.length);
 }
 
-function sha256File(file: File) {
+async function sha256File(file: File) {
   const hasher = CryptoJS.algo.SHA256.create();
   const handle = file.open();
   let remaining = file.size;
   try {
     while (remaining > 0) {
-      const bytes = handle.readBytes(Math.min(1_048_576, remaining));
+      // Hash in short, cooperative slices; processing a 16 MB model in one JS
+      // loop used to starve Android's render and input threads.
+      const bytes = handle.readBytes(Math.min(128 * 1024, remaining));
       if (bytes.length === 0) break;
       hasher.update(bytesToWordArray(bytes));
       remaining -= bytes.length;
+      await yieldToUI();
     }
   } finally {
     handle.close();
@@ -116,24 +145,41 @@ function sha256File(file: File) {
   return remaining === 0 ? hasher.finalize().toString() : '';
 }
 
-function validateDownloadedAsset(file: File, spec: AssetSpec) {
-  return validateProductV1Asset(file, spec) && sha256File(file) === spec.sha256;
+function validationKey(file: File, spec: AssetSpec) {
+  return `${file.uri}:${spec.size}:${spec.sha256}`;
+}
+
+export async function validateProductV1AssetAsync(file: File, spec: AssetSpec) {
+  if (!hasProductV1AssetSize(file, spec)) return false;
+  const key = validationKey(file, spec);
+  if (verifiedAssetKeys.has(key)) return true;
+  const valid = (await sha256File(file)) === spec.sha256;
+  if (valid) verifiedAssetKeys.add(key);
+  return valid;
 }
 
 function emitProgress(progress: Omit<ProductV1AssetDownloadProgress, 'percent'>) {
-  activeProgress = {
+  const next = {
     ...progress,
     percent: Math.min(100, Math.round((progress.downloadedBytes / Math.max(1, progress.totalBytes)) * 100)),
   };
-  for (const listener of progressListeners) listener(activeProgress);
+  const key = `${next.phase}:${next.currentFile}`;
+  // Native download callbacks can fire dozens of times per second. Publish
+  // only useful percentage changes so a progress bar does not rerender the page.
+  if (key === lastProgressKey && next.percent === lastProgressPercent) return;
+  activeProgress = next;
+  lastProgressKey = key;
+  lastProgressPercent = next.percent;
+  for (const listener of progressListeners) listener(next);
 }
 
-function installValidatedFile(source: File, destination: File, spec: AssetSpec) {
-  if (!validateDownloadedAsset(source, spec)) {
+async function installValidatedFile(source: File, destination: File, spec: AssetSpec) {
+  if (!(await validateProductV1AssetAsync(source, spec))) {
     throw new Error(`${spec.name} 下载校验失败`);
   }
   if (destination.exists) destination.delete();
   source.move(destination);
+  verifiedAssetKeys.add(validationKey(destination, spec));
 }
 
 async function downloadFile(
@@ -159,7 +205,7 @@ async function downloadFile(
   try {
     const result = await task.downloadAsync();
     if (!result) throw new Error(`${spec.name} 下载已取消`);
-    installValidatedFile(new File(result.uri), destination, spec);
+    await installValidatedFile(new File(result.uri), destination, spec);
   } catch (error) {
     if (temporary.exists) temporary.delete();
     throw error;
@@ -191,7 +237,9 @@ async function downloadModel(completedBytes: number) {
       const result = await task.downloadAsync();
       if (!result) throw new Error(`${chunk.name} 下载已取消`);
       const downloaded = new File(result.uri);
-      if (!validateDownloadedAsset(downloaded, chunk)) {
+      // The complete assembled model receives the authoritative SHA-256 check.
+      // Per-chunk size checks avoid hashing the 16 MB model twice on the JS thread.
+      if (!hasProductV1AssetSize(downloaded, chunk)) {
         downloaded.delete();
         throw new Error(`${chunk.name} 下载校验失败`);
       }
@@ -205,7 +253,7 @@ async function downloadModel(completedBytes: number) {
     throw error;
   }
   handle.close();
-  installValidatedFile(assembled, modelFile, PRODUCT_V1_MODEL_SPEC);
+  await installValidatedFile(assembled, modelFile, PRODUCT_V1_MODEL_SPEC);
 }
 
 export function getProductV1ModelFile() {
@@ -220,15 +268,36 @@ export function getProductV1SeedEmbeddingsFile() {
   return seedEmbeddingsFile;
 }
 
+export function getProductV1TopicGraphFile() {
+  return topicGraphFile;
+}
+
+export function getProductV1TopicGraphEmbeddingsFile() {
+  return topicGraphEmbeddingsFile;
+}
+
 export function getProductV1RuntimeAssetStatus(): ProductV1RuntimeAssetStatus {
-  const modelInstalled = validateProductV1Asset(modelFile, PRODUCT_V1_MODEL_SPEC);
-  const seedBankInstalled = validateProductV1Asset(seedBankFile, PRODUCT_V1_SEED_BANK_SPEC);
-  const seedEmbeddingsInstalled = validateProductV1Asset(seedEmbeddingsFile, PRODUCT_V1_SEED_EMBEDDINGS_SPEC);
+  // Status checks run on settings and screen renders. File presence and size
+  // are constant-time metadata reads; full SHA-256 runs cooperatively at load.
+  const modelInstalled = hasProductV1AssetSize(modelFile, PRODUCT_V1_MODEL_SPEC);
+  const seedBankInstalled = hasProductV1AssetSize(seedBankFile, PRODUCT_V1_SEED_BANK_SPEC);
+  const seedEmbeddingsInstalled = hasProductV1AssetSize(seedEmbeddingsFile, PRODUCT_V1_SEED_EMBEDDINGS_SPEC);
+  const topicGraphInstalled = hasProductV1AssetSize(topicGraphFile, PRODUCT_V1_TOPIC_GRAPH_SPEC);
+  const topicGraphEmbeddingsInstalled = hasProductV1AssetSize(
+    topicGraphEmbeddingsFile,
+    PRODUCT_V1_TOPIC_GRAPH_EMBEDDINGS_SPEC,
+  );
   return {
     version: PRODUCT_V1_ASSET_VERSION,
     modelInstalled,
     seedBankInstalled,
     seedEmbeddingsInstalled,
+    topicGraphInstalled,
+    topicGraphEmbeddingsInstalled,
+    topicGraphReady: topicGraphInstalled && topicGraphEmbeddingsInstalled,
+    // Topic Graph V1 is an additive promoted extension. Keep the frozen Core
+    // install usable so Seed Router V2 remains a safe rollback path while the
+    // extension is unavailable or its cloud assets cannot be reached.
     installed: modelInstalled && seedBankInstalled && seedEmbeddingsInstalled,
     installedBytes: (modelInstalled ? PRODUCT_V1_MODEL_SPEC.size : 0)
       + (seedBankInstalled ? PRODUCT_V1_SEED_BANK_SPEC.size : 0)
@@ -252,6 +321,7 @@ export function removeProductV1RuntimeAssets() {
   const status = getProductV1RuntimeStorageStatus();
   if (assetDirectory.exists) assetDirectory.delete();
   activeProgress = null;
+  verifiedAssetKeys.clear();
   return status.bytes;
 }
 
@@ -275,16 +345,58 @@ async function downloadMissingAssets() {
   return status;
 }
 
+async function downloadExtensionFile(spec: AssetSpec, destination: File) {
+  ensureAssetDirectory();
+  const temporary = new File(assetDirectory, `${spec.name}.download`);
+  if (temporary.exists) temporary.delete();
+  try {
+    const result = await LegacyFileSystem.downloadAsync(
+      `${PRODUCT_V1_ASSET_BASE_URL}/${spec.name}`,
+      temporary.uri,
+    );
+    await installValidatedFile(new File(result.uri), destination, spec);
+  } catch (error) {
+    if (temporary.exists) temporary.delete();
+    throw error;
+  }
+}
+
+export async function ensureProductV1TopicGraphAssets() {
+  let status = getProductV1RuntimeAssetStatus();
+  if (!status.topicGraphInstalled) {
+    await downloadExtensionFile(PRODUCT_V1_TOPIC_GRAPH_SPEC, topicGraphFile);
+  }
+  status = getProductV1RuntimeAssetStatus();
+  if (!status.topicGraphEmbeddingsInstalled) {
+    await downloadExtensionFile(PRODUCT_V1_TOPIC_GRAPH_EMBEDDINGS_SPEC, topicGraphEmbeddingsFile);
+  }
+  status = getProductV1RuntimeAssetStatus();
+  if (!status.topicGraphReady) throw new Error('Search Topic Graph V1 在线资源安装不完整');
+  return status;
+}
+
+async function ensureCoreAssets() {
+  let status = getProductV1RuntimeAssetStatus();
+  const assets: [File, AssetSpec, boolean][] = [
+    [seedBankFile, PRODUCT_V1_SEED_BANK_SPEC, status.seedBankInstalled],
+    [seedEmbeddingsFile, PRODUCT_V1_SEED_EMBEDDINGS_SPEC, status.seedEmbeddingsInstalled],
+    [modelFile, PRODUCT_V1_MODEL_SPEC, status.modelInstalled],
+  ];
+  for (const [file, spec, present] of assets) {
+    if (present && !(await validateProductV1AssetAsync(file, spec)) && file.exists) file.delete();
+  }
+  status = getProductV1RuntimeAssetStatus();
+  return status.installed ? status : downloadMissingAssets();
+}
+
 export async function ensureProductV1RuntimeAssets(onProgress?: ProgressListener) {
   if (onProgress) {
     progressListeners.add(onProgress);
     if (activeProgress) onProgress(activeProgress);
   }
   try {
-    const status = getProductV1RuntimeAssetStatus();
-    if (status.installed) return status;
     if (!activeDownload) {
-      activeDownload = downloadMissingAssets().finally(() => {
+      activeDownload = ensureCoreAssets().finally(() => {
         activeDownload = null;
         activeProgress = null;
       });
@@ -296,18 +408,19 @@ export async function ensureProductV1RuntimeAssets(onProgress?: ProgressListener
 }
 
 export async function ensureProductV1ModelFile() {
-  if (!validateProductV1Asset(modelFile, PRODUCT_V1_MODEL_SPEC)) {
+  if (!(await validateProductV1AssetAsync(modelFile, PRODUCT_V1_MODEL_SPEC))) {
     const status = getProductV1RuntimeAssetStatus();
-    await downloadModel(status.installedBytes);
+    const completedBytes = status.installedBytes - (status.modelInstalled ? PRODUCT_V1_MODEL_SPEC.size : 0);
+    await downloadModel(completedBytes);
   }
   return modelFile;
 }
 
-export function installProductV1Model(source: File) {
+export async function installProductV1Model(source: File) {
   ensureAssetDirectory();
   const temporary = new File(assetDirectory, `${PRODUCT_V1_MODEL_SPEC.name}.installing`);
   if (temporary.exists) temporary.delete();
   source.copy(temporary);
-  installValidatedFile(temporary, modelFile, PRODUCT_V1_MODEL_SPEC);
+  await installValidatedFile(temporary, modelFile, PRODUCT_V1_MODEL_SPEC);
   return modelFile;
 }

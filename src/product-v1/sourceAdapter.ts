@@ -38,6 +38,9 @@ export function normalizeProductSearchItem(raw: any): FeedItemInfo | null {
       questionTitle,
       questionExcerpt: type === 'answer' ? plainText(object?.question?.detail).slice(0, 300) : '',
       questionId: String(object?.question?.id ?? ''),
+      questionTopicIds: type === 'answer' && Array.isArray(object?.question?.bound_topic_ids)
+        ? object.question.bound_topic_ids.map((value: unknown) => String(value)).filter(Boolean)
+        : undefined,
       questionAuthorName: plainText(object?.question?.author?.name) || '匿名用户',
       questionAuthorAvatar: String(object?.question?.author?.avatar_url ?? ''),
       questionAuthorUrlToken: String(object?.question?.author?.url_token ?? ''),

@@ -14,6 +14,9 @@ function getSession() {
     sessionPromise = loadProductV1ModelPath().then((modelPath) => InferenceSession.create(modelPath, {
       executionProviders: ['cpu'],
       graphOptimizationLevel: 'all',
+      executionMode: 'sequential',
+      intraOpNumThreads: 1,
+      interOpNumThreads: 1,
     }));
   }
   return sessionPromise;

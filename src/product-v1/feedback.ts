@@ -10,6 +10,7 @@ import { PRODUCT_V1_SCHEMA } from './constants';
 import { useProductV1HealthStore } from './store';
 import type { BehaviorEvent } from './core/types';
 import type { ProductV1FeedbackInput } from './types';
+import { sourceScopedV5Embedding } from './v5Geometry';
 
 const exposureIds = new Map<string, string>();
 
@@ -30,9 +31,15 @@ function findRecord(memory: Awaited<ReturnType<typeof ensureProductV1Memory>>, i
 }
 
 function similarity(memory: Awaited<ReturnType<typeof ensureProductV1Memory>>, left: string, right: string) {
-  const a = findRecord(memory, left)?.candidate.encoderEmbedding;
-  const b = findRecord(memory, right)?.candidate.encoderEmbedding;
-  return a && b ? cosineSimilarity(a, b) : 0;
+  const leftRecord = findRecord(memory, left);
+  const rightRecord = findRecord(memory, right);
+  const a = leftRecord?.candidate.encoderEmbedding;
+  const b = rightRecord?.candidate.encoderEmbedding;
+  if (!a || !b || !leftRecord || !rightRecord) return 0;
+  return cosineSimilarity(
+    sourceScopedV5Embedding(a, leftRecord.candidate.source),
+    sourceScopedV5Embedding(b, rightRecord.candidate.source),
+  );
 }
 
 async function persistFeedback(

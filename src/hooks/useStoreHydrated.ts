@@ -17,6 +17,10 @@ export function useStoreHydrated(store: {
 
     useEffect(() => {
         const unsub = store.persist.onFinishHydration(() => setHydrated(true));
+        // Hydration can finish after the initial render but before this effect
+        // subscribes. Recheck after subscribing so that completion is never
+        // lost and the app cannot remain behind the native splash screen.
+        if (store.persist.hasHydrated()) setHydrated(true);
         return unsub;
     }, [store]);
 

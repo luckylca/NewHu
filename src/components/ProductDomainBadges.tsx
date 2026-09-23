@@ -1,6 +1,7 @@
 import { classifyProductV1Domains } from '@/src/product-v1/domainClassifier';
 import type { ProductV1DomainMatch } from '@/src/product-v1/domainSelection';
 import type { ProductV1DomainClassificationPriority } from '@/src/product-v1/domainTaskQueue';
+import type { FeedType } from '@/src/types/zhihu';
 import { Text } from '@/src/ui/primitives';
 import { badgeColorSeed, getDistinctBadgePalette } from '@/src/ui/badgePalette';
 import { useTheme } from '@/src/ui/theme';
@@ -13,6 +14,10 @@ export function ProductDomainBadges({
   contentKey,
   title,
   excerpt,
+  feedType,
+  contentId,
+  questionId,
+  questionTopicIds,
   priority = 'normal',
   style,
 }: {
@@ -20,6 +25,10 @@ export function ProductDomainBadges({
   contentKey: string;
   title: string;
   excerpt: string;
+  feedType?: FeedType;
+  contentId?: string;
+  questionId?: string;
+  questionTopicIds?: string[];
   priority?: ProductV1DomainClassificationPriority;
   style?: StyleProp<ViewStyle>;
 }) {
@@ -34,22 +43,38 @@ export function ProductDomainBadges({
 
     let active = true;
     const controller = new AbortController();
-    void classifyProductV1Domains(contentKey, title, excerpt, {
-      priority,
-      signal: controller.signal,
-    })
+    const classify = (effectivePriority: ProductV1DomainClassificationPriority) => classifyProductV1Domains(
+      contentKey,
+      title,
+      excerpt,
+      {
+        feedType,
+        contentId,
+        questionId,
+        questionTopicIds,
+        priority: effectivePriority,
+        signal: controller.signal,
+      },
+    );
+
+    // Show local/cached evidence first. Visible cards then enrich with Zhihu's
+    // native topics, so a one-time topic request never delays known local tags.
+    void classify(priority === 'high' ? 'low' : priority)
       .then((matches) => {
         if (active) setDomains(matches);
+        if (!active || priority !== 'high') return null;
+        return classify('high');
       })
-      .catch(() => {
-        if (active) setDomains([]);
-      });
+      .then((matches) => {
+        if (active && matches) setDomains(matches);
+      })
+      .catch(() => undefined);
 
     return () => {
       active = false;
       controller.abort();
     };
-  }, [contentKey, enabled, excerpt, priority, title]);
+  }, [contentId, contentKey, enabled, excerpt, feedType, priority, questionId, questionTopicIds, title]);
 
   if (!enabled || domains.length === 0) return null;
 
