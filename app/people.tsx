@@ -3,6 +3,7 @@ import { Button, Divider, Icon, TopAppBar } from "@/src/ui";
 import { notify } from "@/src/stores/useNotificationStore";
 import { Text } from "@/src/ui/primitives";
 import { useTheme } from "@/src/ui/theme";
+import { formatProfileText } from '@/src/utils/profileText';
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
@@ -24,6 +25,8 @@ const PeopleHeader = React.memo(({ userInfo, isFollowing, isFollowPending, onTog
     const theme = useTheme();
     const primaryText = theme.colors.onBackground;
     const secondaryText = theme.colors.onSurfaceSecondary;
+    const headline = formatProfileText(userInfo.headline);
+    const description = formatProfileText(userInfo.description);
     const coverSource = React.useMemo(() => ({ uri: userInfo.cover_url }), [userInfo.cover_url]);
     const avatarSource = React.useMemo(() => ({ uri: userInfo.avatar_url }), [userInfo.avatar_url]);
     const vipSource = React.useMemo(() => ({ uri: userInfo.vip_info?.vip_icon?.url }), [userInfo.vip_info?.vip_icon?.url]);
@@ -66,9 +69,9 @@ const PeopleHeader = React.memo(({ userInfo, isFollowing, isFollowPending, onTog
                                 />
                             )}
                         </View>
-                        {userInfo.headline ? (
-                            <Text type="body2" numberOfLines={2} style={{ color: secondaryText, marginTop: 4 }}>
-                                {userInfo.headline}
+                        {headline ? (
+                            <Text type="body2" style={{ color: secondaryText, marginTop: 4 }}>
+                                {headline}
                             </Text>
                         ) : null}
                     </View>
@@ -93,9 +96,9 @@ const PeopleHeader = React.memo(({ userInfo, isFollowing, isFollowPending, onTog
                 <Divider style={{ marginVertical: 16 }} />
 
                 <View style={{ marginBottom: 20 }}>
-                    {userInfo.description ? (
+                    {description ? (
                         <Text type="body2" color={primaryText} style={{ marginBottom: 12 }}>
-                            {userInfo.description}
+                            {description}
                         </Text>
                     ) : null}
 
@@ -282,7 +285,7 @@ const PeopleScreen = () => {
     }, [fetchActivities, urlToken])
 
     return (
-        <View style={{ flex: 1 ,backgroundColor: theme.colors.background}}>
+        <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
             <TopAppBar title={userInfo ? userInfo.name : "人物信息"} back={() => router.back()} />
             {userInfo ? (
                 <FlatList
@@ -298,7 +301,7 @@ const PeopleScreen = () => {
                         />
                     }
                     renderItem={({ item }) => (
-                        <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
+                        <View style={{ paddingHorizontal: 16, marginBottom: 16, alignItems: 'center' }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 4 }}>
                                 <Icon name="history" size={16} color={secondaryText} />
                                 <Text type="footnote1" color={secondaryText}>

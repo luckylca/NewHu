@@ -8,19 +8,20 @@ import {
 import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { notify } from '@/src/stores/useNotificationStore';
-import { Card, Icon, SearchBar, Text } from '@/src/ui';
+import { Card, Icon, Pressable, SearchBar, Text } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import type { FeedType } from '@/src/types/zhihu';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Keyboard, Linking, Pressable, ScrollView, View } from 'react-native';
-import MiuixProgressIndicator from '@/src/components/MiuixProgressIndicator';
+import { FlatList, Keyboard, Linking, ScrollView, View } from 'react-native';
+import ProgressIndicator from '@/src/components/ProgressIndicator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { searchLocalLibrary } from '@/src/services/localSearchService';
 import { useLaterReadStore } from '@/src/stores/useLaterReadStore';
 import { useDraftStore } from '@/src/stores/useDraftStore';
 import type { LocalSearchResult, LocalSearchSource } from '@/src/types/localSearch';
+import { formatProfileText } from '@/src/utils/profileText';
 
 type SearchMode = 'general' | 'local' | 'answer' | 'article' | 'people' | 'ai';
 
@@ -130,7 +131,7 @@ function normalizeResult(raw: any, mode: SearchMode): SearchResult | null {
             id,
             type: 'people',
             name: plainText(object?.name) || '匿名用户',
-            headline: plainText(object?.headline ?? object?.description),
+            headline: formatProfileText(object?.headline ?? object?.description),
             urlToken,
             avatarUrl: String(object?.avatar_url ?? ''),
             followerCount: Number(object?.follower_count ?? 0),
@@ -725,7 +726,7 @@ export default function SearchScreen() {
                     </View>
                     {aiLoading && !aiAnswer ? (
                         <View style={{ paddingVertical: theme.spacing.xl, alignItems: 'center' }}>
-                            <View style={{ width: 140 }}><MiuixProgressIndicator indeterminate /></View>
+                            <View style={{ width: 140 }}><ProgressIndicator indeterminate /></View>
                             <Text type="body2" color={theme.colors.onSurfaceVariantSummary} style={{ marginTop: theme.spacing.md }}>
                                 正在整理知乎内容…
                             </Text>
@@ -737,7 +738,7 @@ export default function SearchScreen() {
                             {aiError || '暂时没有回答内容'}
                         </Text>
                     )}
-                    {aiLoading && aiAnswer ? <View style={{ width: 120, marginTop: theme.spacing.md }}><MiuixProgressIndicator indeterminate height={3} /></View> : null}
+                    {aiLoading && aiAnswer ? <View style={{ width: 120, marginTop: theme.spacing.md }}><ProgressIndicator indeterminate height={3} /></View> : null}
                 </Card>
             ) : (
                 <View style={{ alignItems: 'center', paddingHorizontal: theme.spacing.xxl }}>
@@ -809,7 +810,7 @@ export default function SearchScreen() {
     const emptyComponent = mode === 'ai' ? renderAiEmpty() : query.trim() && !hasSubmittedSearch ? null : (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.xxl }}>
             {loading ? (
-                <View style={{ width: 150 }}><MiuixProgressIndicator indeterminate /></View>
+                <View style={{ width: 150 }}><ProgressIndicator indeterminate /></View>
             ) : (
                 <>
                     <Icon name={error ? 'alert-circle-outline' : 'magnify'} size={34} color={theme.colors.onSurfaceVariantActions} />
@@ -858,7 +859,7 @@ export default function SearchScreen() {
                 onEndReachedThreshold={0.35}
                 ListEmptyComponent={emptyComponent}
                 ListFooterComponent={loadingMore ? (
-                    <View style={{ paddingVertical: theme.spacing.lg, paddingHorizontal: theme.spacing.xxl }}><MiuixProgressIndicator indeterminate height={4} /></View>
+                    <View style={{ paddingVertical: theme.spacing.lg, paddingHorizontal: theme.spacing.xxl }}><ProgressIndicator indeterminate height={4} /></View>
                 ) : null}
             />
 

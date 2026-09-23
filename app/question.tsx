@@ -2,6 +2,7 @@ import { getQuestion, getQuestionAnswers } from "@/src/api/ZhihuApi";
 import { Divider, Icon, ListRow, TopAppBar } from "@/src/ui";
 import { Text } from "@/src/ui/primitives";
 import { useTheme } from "@/src/ui/theme";
+import { formatProfileText } from '@/src/utils/profileText';
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import { FlatList, Image, View } from "react-native";
@@ -113,7 +114,7 @@ const QuestionScreen = () => {
     );
 
     return (
-        <View style={{ flex: 1 ,backgroundColor: theme.colors.background}}>
+        <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
             <TopAppBar title={questionInfo ? questionInfo.title : "问题信息"} back={() => router.back()} />
             {questionInfo ? (
                 <FlatList
@@ -135,7 +136,7 @@ const QuestionScreen = () => {
                                         />
                                     }
                                     title={questionInfo.author.name}
-                                    summary={questionInfo.author.headline}
+                                    summary={formatProfileText(questionInfo.author.headline)}
                                     onPress={() => {
                                         if (questionInfo.author.url_token) {
                                             router.push({ pathname: '/people', params: { urlToken: questionInfo.author.url_token } });
@@ -163,7 +164,7 @@ const QuestionScreen = () => {
                         </View>
                     )}
                     renderItem={({ item }) => (
-                        <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
+                        <View style={{ paddingHorizontal: 16, marginBottom: 16, alignItems: 'center' }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 4 }}>
                                 <Icon name="history" size={16} color={theme.colors.onSurfaceVariantSummary} />
                                 <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
