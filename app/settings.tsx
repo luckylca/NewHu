@@ -20,6 +20,10 @@ export default function SettingsScreen() {
     const setFilterPaid = useSettingStore((state) => state.setPaid);
     const deduplicateFeed = useSettingStore((state) => state.deduplicateFeed);
     const setDeduplicateFeed = useSettingStore((state) => state.setDeduplicateFeed);
+    const browseAndSaveOfflineEnabled = useSettingStore((state) => state.browseAndSaveOfflineEnabled);
+    const setBrowseAndSaveOfflineEnabled = useSettingStore((state) => state.setBrowseAndSaveOfflineEnabled);
+    const browseAndSaveWithImages = useSettingStore((state) => state.browseAndSaveWithImages);
+    const setBrowseAndSaveWithImages = useSettingStore((state) => state.setBrowseAndSaveWithImages);
     const aiTextDetectionEnabled = useSettingStore((state) => state.aiTextDetectionEnabled);
     const setAiTextDetectionEnabled = useSettingStore((state) => state.setAiTextDetectionEnabled);
     const aiSensitivity = useSettingStore((state) => state.aiTextDetectionSensitivity);
@@ -66,6 +70,27 @@ export default function SettingsScreen() {
                         trailing={<Switch value={deduplicateFeed} interactive={false} />}
                         onPress={() => setDeduplicateFeed(!deduplicateFeed)}
                     />
+                    <Divider style={{ marginLeft: 60 }} />
+                    <SettingRow
+                        icon="download-outline"
+                        title="边看边存"
+                        summary={`刷新时额外获取一页，缓存正文、最多 100 条根评论及每条最多 100 条子评论${browseAndSaveWithImages ? '和图片' : '（不含图片）'}`}
+                        summaryNumberOfLines={3}
+                        trailing={<Switch value={browseAndSaveOfflineEnabled} interactive={false} />}
+                        onPress={() => setBrowseAndSaveOfflineEnabled(!browseAndSaveOfflineEnabled)}
+                    />
+                    {browseAndSaveOfflineEnabled ? (
+                        <>
+                            <Divider style={{ marginLeft: 60 }} />
+                            <SettingRow
+                                icon="image-outline"
+                                title="缓存图片"
+                                summary="保存正文、评论图片及作者头像"
+                                trailing={<Switch value={browseAndSaveWithImages} interactive={false} />}
+                                onPress={() => setBrowseAndSaveWithImages(!browseAndSaveWithImages)}
+                            />
+                        </>
+                    ) : null}
                     <Divider style={{ marginLeft: 60 }} />
                     <SettingRow
                         icon="robot-outline"
@@ -164,7 +189,7 @@ function SettingsGroup({ title, children }: { title: string; children: ReactNode
     );
 }
 
-function SettingRow({ icon, ...props }: { icon: IconName; title: string; summary: string; trailing?: ReactNode; onPress: () => void; onPressIn?: () => void }) {
+function SettingRow({ icon, ...props }: { icon: IconName; title: string; summary: string; summaryNumberOfLines?: number; trailing?: ReactNode; onPress: () => void; onPressIn?: () => void }) {
     const theme = useTheme();
     return (
         <ListRow

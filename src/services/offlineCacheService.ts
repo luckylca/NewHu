@@ -185,6 +185,19 @@ export async function cacheBodyOnlyFromId(
     return { ...result, reusedLocal: false };
 }
 
+/** Cache a saved feed item with the same comment/image options as bulk offline caching. */
+export async function cacheContentForOfflineFromId(
+    contentId: string,
+    contentType: FeedType,
+    options: Omit<Parameters<typeof cacheContent>[0], 'content' | 'contentType'>,
+) {
+    const local = await getContent(contentId, contentType);
+    if (local?.hasBody && local.content) {
+        return cacheContent({ content: local, contentType, ...options });
+    }
+    return cacheContentFromId(contentId, contentType, options);
+}
+
 export async function removeCachedContent(contentId: string, contentType: FeedType) {
     await removeOfflinePin(contentId, contentType);
     await markBodyCacheState(contentId, contentType, 'transient');

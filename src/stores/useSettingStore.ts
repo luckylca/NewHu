@@ -39,6 +39,10 @@ interface SettingState {
     setPaid: (enabled: boolean) => void;
     deduplicateFeed: boolean; // 是否剔除已经推送过的文章和回答
     setDeduplicateFeed: (enabled: boolean) => void;
+    browseAndSaveOfflineEnabled: boolean;
+    setBrowseAndSaveOfflineEnabled: (enabled: boolean) => void;
+    browseAndSaveWithImages: boolean;
+    setBrowseAndSaveWithImages: (enabled: boolean) => void;
     aiTextDetectionEnabled: boolean;
     setAiTextDetectionEnabled: (enabled: boolean) => void;
     aiTextDetectionSensitivity: AiTextDetectionSensitivity;
@@ -75,6 +79,10 @@ export const useSettingStore = create<SettingState>()(
             setPaid: (enabled) => set({ isPaid: enabled }),
             deduplicateFeed: true,
             setDeduplicateFeed: (enabled) => set({ deduplicateFeed: enabled }),
+            browseAndSaveOfflineEnabled: false,
+            setBrowseAndSaveOfflineEnabled: (enabled) => set({ browseAndSaveOfflineEnabled: enabled }),
+            browseAndSaveWithImages: true,
+            setBrowseAndSaveWithImages: (enabled) => set({ browseAndSaveWithImages: enabled }),
             aiTextDetectionEnabled: false,
             setAiTextDetectionEnabled: (enabled) => set({ aiTextDetectionEnabled: enabled }),
             // 新安装默认使用模型报告建议的平衡 operating point；
@@ -89,7 +97,7 @@ export const useSettingStore = create<SettingState>()(
         {
             name: 'setting-store',
             storage: createJSONStorage(() => createSecureZustandStorage('setting-store', 'cookie', 'newhu.zhihu.debug-cookie')),
-            version: 3,
+            version: 5,
             migrate: (persistedState) => {
                 const stored = (persistedState ?? {}) as Record<string, unknown>;
                 const wallpaperBlurLevel = migrateWallpaperBlurLevel(stored.wallpaperBlurLevel, stored.wallpaperBlur);
@@ -104,6 +112,8 @@ export const useSettingStore = create<SettingState>()(
                     stored.aiTextDetectionSensitivity === 'balanced' || stored.aiTextDetectionSensitivity === 'sensitive'
                         ? stored.aiTextDetectionSensitivity
                         : 'conservative';
+                migrated.browseAndSaveOfflineEnabled = stored.browseAndSaveOfflineEnabled === true;
+                migrated.browseAndSaveWithImages = stored.browseAndSaveWithImages !== false;
                 return { ...migrated, wallpaperBlurLevel } as unknown as SettingState;
             },
             // 所有设置字段都是可序列化的，整体持久化即可

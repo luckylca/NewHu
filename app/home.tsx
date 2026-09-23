@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getNetworkStatus, useNetworkStore, type NetworkStatus } from '@/src/stores/useNetworkStore';
 import { notify } from '@/src/stores/useNotificationStore';
 import { getRecentFeed, saveFeedEntries, trimTransientFeedEntries } from '@/src/db/repositories/feedRepository';
+import { fetchAndSaveRecommendationPage } from '@/src/services/browseAndSaveService';
 import { recordUserEvent } from '@/src/db/repositories/userEventRepository';
 import { useConsentStore } from '@/src/stores/useConsentStore';
 import { getProductV1RuntimeAssetStatus, processProductV1Feed, recordProductV1Exposure, recordProductV1Feedback } from '@/src/product-v1';
@@ -114,6 +115,10 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetect
                         contentKey={`${type}:${item.id}`}
                         title={title || '无标题'}
                         excerpt={semanticExcerpt(type, item, getContentPreview(item))}
+                        feedType={type}
+                        contentId={item.id}
+                        questionId={type === 'answer' ? item.questionId : undefined}
+                        questionTopicIds={type === 'answer' ? item.questionTopicIds : undefined}
                         priority={domainPriority}
                         style={{ marginLeft: 6, marginTop: 2 }}
                     />
@@ -239,6 +244,10 @@ const WaterfallItem = memo(({ item, type, needToGet, measurementKey, showDomainL
                         contentKey={`${type}:${item.id}`}
                         title={title || '无标题'}
                         excerpt={semanticExcerpt(type, item, getContentPreview(item))}
+                        feedType={type}
+                        contentId={item.id}
+                        questionId={type === 'answer' ? item.questionId : undefined}
+                        questionTopicIds={type === 'answer' ? item.questionTopicIds : undefined}
                         priority={domainPriority}
                         style={{ marginLeft: 6, marginTop: 2 }}
                     />
@@ -342,6 +351,10 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                                 contentKey={`${type}:${item.id}`}
                                 title={title || '无标题'}
                                 excerpt={semanticExcerpt(type, item, preview)}
+                                feedType={type}
+                                contentId={item.id}
+                                questionId={type === 'answer' ? item.questionId : undefined}
+                                questionTopicIds={type === 'answer' ? item.questionTopicIds : undefined}
                                 priority={domainPriority}
                                 style={{ marginLeft: 8, marginTop: 3 }}
                             />
@@ -440,6 +453,8 @@ const HomeScreen = () => {
         setVisibleDomainKeys((current) => sameStringSet(current, next) ? current : next);
     }, []);
     const requestInFlightRef = useRef(false);
+    const productMergeGenerationRef = useRef(0);
+    const offlineSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
 
     useFocusEffect(useCallback(() => {
         setDomainLabelsEnabled(getProductV1RuntimeAssetStatus().installed);
@@ -541,9 +556,11 @@ const HomeScreen = () => {
         requestInFlightRef.current = true;
 
         if (isRefresh) {
+            productMergeGenerationRef.current += 1;
             setIsRefreshing(true);
             sessionTokenRef.current = ""; 
         }
+        const productMergeGeneration = productMergeGenerationRef.current;
 
         try {
             if (networkStatus === 'offline') {
@@ -596,16 +613,12 @@ const HomeScreen = () => {
                 // Cursor 分页必须等待上一页返回 next 游标，不能安全地把
                 // 第 2/3 页同时发出；但每页拿到后立即落库并更新 UI，
                 // 避免首页为了凑满 8 条而长时间白屏。
-                let persistedPage = await saveFeedEntries(
+                const persistedPage = await saveFeedEntries(
                     acceptedItems,
                     'recommend',
                     getRecommendSessionToken(requestCursor),
                     deduplicateFeed && !isRefresh,
                 );
-                if (persistedPage.length > 0 && useConsentStore.getState().aiInterestAnalysisEnabled) {
-                    const rankedPage = await processProductV1Feed(persistedPage);
-                    persistedPage = await saveFeedEntries(rankedPage, 'product-v1', sessionTokenRef.current, false);
-                }
                 if (persistedPage.length > 0) {
                     const mergedData = isRefresh && !hasRenderedRefreshPage
                         ? persistedPage
@@ -619,6 +632,33 @@ const HomeScreen = () => {
                     visibleItemCount += persistedPage.filter((item) => (
                         !(filterAds && item.isAds) && !(filterPaid && item.isPaid)
                     )).length;
+
+                    // Render fetched recommendations now; embedding and search-based
+                    // personalization can take several seconds on a device. Merge its
+                    // results into the list when it finishes without blocking scroll.
+                    if (useConsentStore.getState().aiInterestAnalysisEnabled) {
+                        const productInput = [...persistedPage];
+                        const productSession = getRecommendSessionToken(requestCursor);
+                        void processProductV1Feed(productInput)
+                            .then((rankedPage) => saveFeedEntries(rankedPage, 'product-v1', productSession, false))
+                            .then((rankedPage) => {
+                                if (productMergeGenerationRef.current !== productMergeGeneration) return;
+                                const replacements = new Map(rankedPage.map((item) => [getFeedKey(item), item]));
+                                const current = feedListRef.current;
+                                const currentKeys = new Set(current.map(getFeedKey));
+                                const merged = current.map((item) => replacements.get(getFeedKey(item)) ?? item);
+                                for (const item of rankedPage) {
+                                    const key = getFeedKey(item);
+                                    if (!currentKeys.has(key)) {
+                                        currentKeys.add(key);
+                                        merged.push(item);
+                                    }
+                                }
+                                feedListRef.current = merged;
+                                setFeedList(merged);
+                            })
+                            .catch((error) => console.error('Product 推荐后台处理失败:', error));
+                    }
                 }
 
                 nextToken = getRecommendNextCursor(res?.paging?.next);
@@ -636,6 +676,38 @@ const HomeScreen = () => {
     };
 
     loadDataRef.current = loadData;
+
+    const queueOfflineSavePage = useCallback((cursor: string) => {
+        if (!cursor || getNetworkStatus() !== 'online' || !useUserStore.getState().cookies) return;
+        offlineSaveQueueRef.current = offlineSaveQueueRef.current
+            .catch(() => undefined)
+            .then(async () => {
+                if (
+                    !useSettingStore.getState().browseAndSaveOfflineEnabled
+                    || getNetworkStatus() !== 'online'
+                ) return;
+                const result = await fetchAndSaveRecommendationPage({
+                    cursor,
+                    cookie: useUserStore.getState().cookies || '',
+                    filterAds: useSettingStore.getState().isAds,
+                    filterPaid: useSettingStore.getState().isPaid,
+                    withImages: useSettingStore.getState().browseAndSaveWithImages,
+                });
+                if (result.failed > 0) {
+                    console.warn('边看边存部分内容失败:', result);
+                }
+            })
+            .catch((error) => console.error('边看边存推荐页失败:', error));
+    }, []);
+
+    const refreshHome = useCallback(async (loadMoreWhenDisabled: boolean) => {
+        await loadDataRef.current?.(true);
+        if (useSettingStore.getState().browseAndSaveOfflineEnabled) {
+            queueOfflineSavePage(sessionTokenRef.current);
+        } else if (loadMoreWhenDisabled) {
+            await loadDataRef.current?.(false);
+        }
+    }, [queueOfflineSavePage]);
 
     const scrollHomeToTop = useCallback(() => {
         currentIndexRef.current = 0;
@@ -660,11 +732,10 @@ const HomeScreen = () => {
         const refresh = async () => {
             scrollHomeToTop();
             currentIndexRef.current = 0;
-            await loadDataRef.current?.(true);
-            await loadDataRef.current?.(false);
+            await refreshHome(true);
         };
         void refresh();
-    }, [refreshRequest, scrollHomeToTop]);
+    }, [refreshRequest, refreshHome, scrollHomeToTop]);
 
     useEffect(() => {
         if (!userHydrated || !settingHydrated || !contentHydrated) return;
@@ -986,7 +1057,7 @@ const HomeScreen = () => {
                     refreshControl={(
                         <RefreshControl
                             refreshing={isRefreshing}
-                            onRefresh={() => { void loadData(true); }}
+                            onRefresh={() => { void refreshHome(false); }}
                             tintColor={theme.colors.primary}
                         />
                     )}
@@ -1027,7 +1098,7 @@ const HomeScreen = () => {
                     ListEmptyComponent={feedEmptyState}
                     keyExtractor={(item) => item.item.id.toString()}
                     refreshing={isRefreshing}
-                    onRefresh={() => loadData(true)}
+                    onRefresh={() => refreshHome(false)}
                     onEndReached={() => loadData(false)}
                     onEndReachedThreshold={0.8}
                     onViewableItemsChanged={onViewableItemsChanged}
