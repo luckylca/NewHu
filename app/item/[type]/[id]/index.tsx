@@ -1,5 +1,5 @@
 // app/item/type/[id]/index.tsx
-import { addReadHistory, favoriteAnswer, favoriteArticle, getAnswer, getArticle, unfavoriteAnswer, unfavoriteArticle } from "@/src/api/ZhihuApi";
+import { addReadHistory, favoriteAnswer, favoriteArticle, getAnswer, getArticle, getVideoPlayInfo, unfavoriteAnswer, unfavoriteArticle } from "@/src/api/ZhihuApi";
 import type { FeedDetail } from "@/src/types/zhihu";
 import ImageReanimatedModal from "@/src/components/ImageReanimatedModal";
 import LoadingView from "@/src/components/LoadingView";
@@ -15,17 +15,17 @@ import { useLaterReadStore } from "@/src/stores/useLaterReadStore";
 import { useNetworkStore } from "@/src/stores/useNetworkStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, FlatList, Image, Pressable, useWindowDimensions, View } from "react-native";
+import { Animated, FlatList, Image, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useFocusEffect } from "@react-navigation/native";
-import { Divider, Icon, ListRow, Menu, TopAppBar } from "@/src/ui";
+import { Divider, Icon, ListRow, Menu, Pressable, TopAppBar } from "@/src/ui";
 import { notify } from '@/src/stores/useNotificationStore';
 import { PressIndication, Text } from "@/src/ui/primitives";
 import type { IconName } from "@/src/ui/primitives";
 import { useTheme } from "@/src/ui/theme";
 import { exportImage, exportPdf, htmlToPlainText } from '@/src/utils/contentExport';
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
-import RenderHtml from 'react-native-render-html';
+import RenderHtml, { HTMLContentModel, HTMLElementModel } from 'react-native-render-html';
 import { DomUtils, parseDocument } from 'htmlparser2';
 import { getContent, upsertContent } from "@/src/db/repositories/contentRepository";
 import { setContentLibrarySource } from '@/src/db/repositories/localSearchRepository';
@@ -36,6 +36,7 @@ import { useConsentStore } from '@/src/stores/useConsentStore';
 import { getProductV1RuntimeAssetStatus, recordProductV1Feedback } from '@/src/product-v1';
 import { semanticExcerpt } from '@/src/product-v1/semanticInput';
 import { useReadingProgress } from '@/src/hooks/useReadingProgress';
+import { extractZhihuMp4Url, normalizeZhihuVideoEmbeds } from '@/src/services/zhihuVideo';
 
 export type ItemParams = {
     id: string;
@@ -57,6 +58,21 @@ type ArrowEffect = {
 
 const imageAspectCache = new Map<string, number>();
 const imageAspectRequests = new Map<string, Promise<number | null>>();
+const articleHtmlModels = {
+    'newhu-video': HTMLElementModel.fromCustomModel({
+        tagName: 'newhu-video',
+        contentModel: HTMLContentModel.block,
+    }),
+};
+
+type MediaOrigin = { x: number; y: number; width: number; height: number };
+type VideoSelection = {
+    videoId: string;
+    posterUrl: string;
+    origin: MediaOrigin;
+    uri: string;
+    loading: boolean;
+};
 
 function getImageAspect(uri: string) {
     const cached = imageAspectCache.get(uri);
@@ -188,6 +204,7 @@ const CustomImageRenderer = React.memo(({ tnode, setOrigin, setImageUrl, setModa
     return (
         <View collapsable={false} style={{ width: '100%', alignItems: 'center', marginVertical: 8 }}>
             <Pressable
+                showIndication={false}
                 onPress={() => {
                     console.log('图片地址:', src);
                     if (localImageRef.current) {
@@ -219,6 +236,83 @@ const CustomImageRenderer = React.memo(({ tnode, setOrigin, setImageUrl, setModa
 });
 CustomImageRenderer.displayName = 'CustomImageRenderer';
 
+const CustomVideoRenderer = React.memo(({ tnode, contentWidth, onOpenVideo }: any) => {
+    const attrs = tnode.attributes || {};
+    const videoId = String(attrs['data-video-id'] || '');
+    const directUrl = normalizeRemoteUrl(String(attrs['data-video-src'] || ''));
+    const posterUrl = normalizeRemoteUrl(String(attrs['data-poster'] || ''));
+    const title = String(attrs['data-video-title'] || '');
+    const previewRef = useRef<View>(null);
+    const pressed = useSharedValue(0);
+    const theme = useTheme();
+
+    const open = () => {
+        if (!videoId && !directUrl) return;
+        previewRef.current?.measureInWindow((x, y, width, height) => {
+            onOpenVideo({
+                videoId,
+                directUrl,
+                posterUrl,
+                origin: { x, y, width, height },
+            });
+        });
+    };
+
+    return (
+        <View style={{ width: contentWidth, marginVertical: 8 }}>
+            <Pressable
+                showIndication={false}
+                onPress={open}
+                onPressIn={() => (pressed.value = 1)}
+                onPressOut={() => (pressed.value = 0)}
+                style={{ width: '100%', borderRadius: theme.radius.tabContour, overflow: 'hidden' }}
+            >
+                <View
+                    ref={previewRef}
+                    collapsable={false}
+                    style={{
+                        width: '100%',
+                        aspectRatio: 16 / 9,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        overflow: 'hidden',
+                        backgroundColor: theme.colors.surfaceContainerHigh,
+                    }}
+                >
+                    {posterUrl ? (
+                        <Image source={{ uri: posterUrl }} resizeMode="cover" style={{ width: '100%', height: '100%' }} />
+                    ) : null}
+                    <View
+                        pointerEvents="none"
+                        style={{
+                            position: 'absolute',
+                            left: 0,
+                            right: 0,
+                            top: 0,
+                            bottom: 0,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: 'rgba(0,0,0,0.16)',
+                        }}
+                    >
+                        <Icon name="play-circle" size={58} color="#ffffff" />
+                        <Text type="footnote1" color="#ffffff" style={{ marginTop: 4 }}>
+                            点击播放 · 可拖动进度
+                        </Text>
+                    </View>
+                </View>
+                <PressIndication pressed={pressed} color={theme.colors.onBackground} radius={theme.radius.tabContour} />
+            </Pressable>
+            {title ? (
+                <Text type="footnote1" color={theme.colors.onSurfaceSecondary} numberOfLines={2} style={{ marginTop: 6 }}>
+                    {title}
+                </Text>
+            ) : null}
+        </View>
+    );
+});
+CustomVideoRenderer.displayName = 'CustomVideoRenderer';
+
 // 底部操作按钮：图标 + 可选计数，DS 按压缩放（alpha 覆盖层）
 const ContentActionButton = ({ name, count, alwaysShowCount, color, onPress }: {
     name: IconName;
@@ -232,6 +326,7 @@ const ContentActionButton = ({ name, count, alwaysShowCount, color, onPress }: {
     const showCount = count != null && (count > 0 || alwaysShowCount);
     return (
         <Pressable
+            showIndication={false}
             accessibilityRole="button"
             onPress={onPress}
             onPressIn={() => (pressed.value = 1)}
@@ -272,6 +367,7 @@ const StableArticleBody = React.memo(function StableArticleBody({
             enableExperimentalMarginCollapsing
             enableExperimentalGhostLinesPrevention
             renderers={renderers as any}
+            customHTMLElementModels={articleHtmlModels}
             ignoredDomTags={['noscript']}
             defaultTextProps={{ selectable: false }}
         />
@@ -295,6 +391,8 @@ export default function Item() {
     const [origin, setOrigin] = useState({ x: 0, y: 0, width: 0, height: 0 });
     const [modalVisible, setModalVisible] = useState(false);
     const [imageUrl, setImageUrl] = useState("");
+    const [videoModalVisible, setVideoModalVisible] = useState(false);
+    const [videoSelection, setVideoSelection] = useState<VideoSelection | null>(null);
     const [imageExporting, setImageExporting] = useState(false);
     const [documentExporting, setDocumentExporting] = useState(false);
     const [domainLabelsEnabled, setDomainLabelsEnabled] = useState(() => getProductV1RuntimeAssetStatus().installed);
@@ -327,6 +425,47 @@ export default function Item() {
         sessionMaxScrollRatioRef,
     } = useReadingProgress({ contentId: String(id), contentType });
     const requestLaterReadPanelOpen = useLaterReadStore((state) => state.requestPanelOpen);
+
+    const openVideo = React.useCallback((selection: {
+        videoId: string;
+        directUrl: string;
+        posterUrl: string;
+        origin: MediaOrigin;
+    }) => {
+        setVideoSelection({
+            videoId: selection.videoId,
+            posterUrl: selection.posterUrl,
+            origin: selection.origin,
+            uri: selection.directUrl,
+            loading: !selection.directUrl,
+        });
+        setVideoModalVisible(true);
+    }, []);
+
+    useEffect(() => {
+        if (!videoModalVisible || !videoSelection?.loading || !videoSelection.videoId) return;
+        let active = true;
+        const videoId = videoSelection.videoId;
+        const fallbackUri = `https://www.zhihu.com/video/${encodeURIComponent(videoId)}`;
+        void getVideoPlayInfo(videoId, String(id), contentType)
+            .then((response) => {
+                const uri = extractZhihuMp4Url(response) || fallbackUri;
+                if (active) {
+                    setVideoSelection((current) => current?.videoId === videoId
+                        ? { ...current, uri, loading: false }
+                        : current);
+                }
+            })
+            .catch((error) => {
+                console.warn('获取视频播放地址失败，回退到知乎播放器', error);
+                if (active) {
+                    setVideoSelection((current) => current?.videoId === videoId
+                        ? { ...current, uri: fallbackUri, loading: false }
+                        : current);
+                }
+            });
+        return () => { active = false; };
+    }, [contentType, id, videoModalVisible, videoSelection?.loading, videoSelection?.videoId]);
 
     useFocusEffect(React.useCallback(() => {
         setDomainLabelsEnabled(getProductV1RuntimeAssetStatus().installed);
@@ -703,11 +842,21 @@ export default function Item() {
                 setImageUrl={setImageUrl}
                 setModalVisible={setModalVisible}
             />
-        )
-    }), []);
+        ),
+        'newhu-video': (props: any) => (
+            <CustomVideoRenderer
+                {...props}
+                contentWidth={width - 32}
+                onOpenVideo={openVideo}
+            />
+        ),
+    }), [openVideo, width]);
 
     const htmlContent = readData?.content || "<p>暂无正文内容</p>";
-    const articleChunks = useMemo(() => splitArticleHtml(htmlContent), [htmlContent]);
+    const articleChunks = useMemo(
+        () => splitArticleHtml(normalizeZhihuVideoEmbeds(htmlContent)),
+        [htmlContent],
+    );
     const aiDetectionText = useMemo(
         () => htmlToPlainText(readData?.content || readData?.excerpt || ''),
         [readData?.content, readData?.excerpt],
@@ -744,6 +893,15 @@ export default function Item() {
                 origin={origin}
                 onClose={() => setModalVisible(false)}
                 onLongPress={() => void runImageExport()}
+            />
+            <ImageReanimatedModal
+                visible={videoModalVisible}
+                url={videoSelection?.uri || ''}
+                origin={videoSelection?.origin || origin}
+                mediaType="video"
+                posterUrl={videoSelection?.posterUrl}
+                loading={videoSelection?.loading ?? false}
+                onClose={() => setVideoModalVisible(false)}
             />
 
             {/* 顶部导航栏 */}
@@ -819,6 +977,7 @@ export default function Item() {
                 ListHeaderComponent={(
                     <>
                         <Pressable
+                            showIndication={false}
                             onPress={() => handleTitlePress()}
                             onPressIn={() => (titlePressed.value = 1)}
                             onPressOut={() => (titlePressed.value = 0)}
@@ -836,6 +995,10 @@ export default function Item() {
                                     contentKey={`${contentType}:${readData.id}`}
                                     title={title}
                                     excerpt={semanticExcerpt(contentType, readData, aiDetectionText)}
+                                    feedType={contentType}
+                                    contentId={readData.id}
+                                    questionId={contentType === 'answer' ? readData.questionId : undefined}
+                                    questionTopicIds={contentType === 'answer' ? readData.questionTopicIds : undefined}
                                     priority="high"
                                     style={{ marginLeft: 8, marginTop: 4 }}
                                 />

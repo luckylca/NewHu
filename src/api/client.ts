@@ -41,7 +41,7 @@ interface ZhihuClient {
     setCookie(cookie: string): void;
     setTransferListener(listener?: TransferListener): void;
     get(url: string): Promise<any>;
-    post(url: string, data?: any, isJson?: boolean): Promise<any>;
+    post(url: string, data?: any, isJson?: boolean, extraHeaders?: Record<string, string>): Promise<any>;
     postStream(url: string, data: any, onChunk: (chunk: string) => void): Promise<void>;
     put(url: string, data?: any): Promise<any>;
     delete(url: string): Promise<any>;
@@ -151,12 +151,13 @@ class ZhihuClient {
      * @param {object} data 
      * @param {boolean} isJson - 是否使用 JSON 格式发送 (默认 false)
      */
-    async post(url: string, data: any = {}, isJson: boolean = false) {
+    async post(url: string, data: any = {}, isJson: boolean = false, extraHeaders: Record<string, string> = {}) {
         if (!this.canLoad) {
             throw new Error('请求已被阻止');
         }
 
         const { url: finalUrl, headers } = generateSignature(url, this.cookie);
+        Object.assign(headers, extraHeaders);
 
         // --- 核心修改开始 ---
         let body;

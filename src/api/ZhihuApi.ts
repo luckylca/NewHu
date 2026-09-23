@@ -85,6 +85,10 @@ export async function getAnswer(answerId: string) {
     return data;
 }
 
+export async function getVideoPlayInfo(videoId: string, contentId: string, contentType: 'answer' | 'article') {
+    return requireApiInstance().getVideoPlayInfo(videoId, contentId, contentType);
+}
+
 // 获取文章详情。
 export async function getArticle(articleId: string) {
     const data = await requireApiInstance().getArticle(articleId);

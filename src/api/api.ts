@@ -18,6 +18,7 @@ interface ZhihuAPI {
     getRecommend(cursor?: string): Promise<any>;
     getFollowingFeed(offset?: number): Promise<any>;
     getAnswer(answerId: string): Promise<any>;
+    getVideoPlayInfo(videoId: string, contentId: string, contentType: 'answer' | 'article'): Promise<any>;
     voteupAnswer(answerId: string): Promise<any>;
     cancelVoteupAnswer(answerId: string): Promise<any>;
     dislikeAnswer(answerId: string): Promise<any>;
@@ -194,9 +195,20 @@ class ZhihuAPI {
         const include = 'author,content,voteup_count,comment_count,favlists_count,thanks_count,pagination_info,content,created_time,updated_time,reshipment_settings,mark_infos,is_collapsed,collapse_reason,is_normal,relationship.voting,relationship.is_author,relationship.is_favorited,suggest_edit.unnormal_details,commercial_info,relevant_info,excerpt,attachment';
         return this.client.get(`https://www.zhihu.com/api/v4/answers/${answerId}?include=${include}`);
     }
+
+    async getVideoPlayInfo(videoId: string, contentId: string, contentType: 'answer' | 'article') {
+        const url = `https://www.zhihu.com/api/v4/video/play_info?r=${encodeURIComponent(videoId)}`;
+        return this.client.post(url, {
+            content_id: contentId,
+            content_type_str: contentType,
+            video_id: videoId,
+            scene_code: `${contentType}_detail_web`,
+            is_only_video: true,
+        }, true, { 'x-app-za': 'OS=webplayer' });
+    }
     async getArticle(articleId: string, include?: string) {
         const defaultInclude =
-            'comment_count,content,voteup_count,favlists_count,created,updated,author,excerpt,can_comment,comment_permission,relationship.is_author,relationship.is_following,relationship.is_favorited';
+            'comment_count,content,voteup_count,favlists_count,created,updated,author,excerpt,topics,can_comment,comment_permission,relationship.is_author,relationship.is_following,relationship.is_favorited';
         const includeParam = encodeURIComponent(include || defaultInclude);
         return this.client.get(`https://www.zhihu.com/api/v4/articles/${articleId}?include=${includeParam}`);
     }
@@ -268,7 +280,10 @@ class ZhihuAPI {
      * @param {string} questionId - 问题 ID
      */
     async getQuestion(questionId: string) {
-        const include = 'answer_count,visit_count,comment_count,follower_count,author,detail';
+        // `topics` exposes Zhihu's native taxonomy. Product V1 uses it as a
+        // semantic capsule signal instead of trying to infer every topic from
+        // title substrings alone.
+        const include = 'answer_count,visit_count,comment_count,follower_count,author,detail,topics';
         return this.client.get(`https://www.zhihu.com/api/v4/questions/${questionId}?include=${include}`);
     }
 

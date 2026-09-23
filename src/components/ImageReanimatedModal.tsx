@@ -15,15 +15,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useTheme } from '@/src/ui/theme';
 import { useReducedMotionPreference } from '@/src/ui/motion';
+import { VideoPlaybackSurface } from '@/src/components/VideoPlaybackSurface';
 
 type ImageOrigin = { x: number; y: number; width: number; height: number };
 
-const ImageReanimatedModal = ({ origin, visible, url, onClose, onLongPress }: {
+const ImageReanimatedModal = ({ origin, visible, url, onClose, onLongPress, mediaType = 'image', posterUrl, loading = false }: {
     origin: ImageOrigin;
     visible: boolean;
     url: string;
     onClose: () => void;
     onLongPress?: () => void;
+    mediaType?: 'image' | 'video';
+    posterUrl?: string;
+    loading?: boolean;
 }) => {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const insets = useSafeAreaInsets();
@@ -88,7 +92,7 @@ const ImageReanimatedModal = ({ origin, visible, url, onClose, onLongPress }: {
         opacity: interpolate(progress.value, [0, 1], [0, 1], Extrapolation.CLAMP),
     }));
 
-    if (!mounted || !url) return null;
+    if (!mounted || (mediaType === 'image' && !url)) return null;
 
     const openImageMenu = (x: number, y: number) => {
         if (!onLongPress) return;
@@ -109,11 +113,15 @@ const ImageReanimatedModal = ({ origin, visible, url, onClose, onLongPress }: {
                 <StatusBar barStyle="light-content" backgroundColor="#000000" />
                 <Animated.View style={[styles.backdrop, backdropStyle]} />
                 <Animated.View style={[styles.container, containerStyle]}>
-                    <ImageLayout
-                        uri={url}
-                        onClose={onClose}
-                        onLongPress={openImageMenu}
-                    />
+                    {mediaType === 'video' ? (
+                        <VideoPlaybackSurface uri={url} posterUri={posterUrl} loading={loading} />
+                    ) : (
+                        <ImageLayout
+                            uri={url}
+                            onClose={onClose}
+                            onLongPress={openImageMenu}
+                        />
+                    )}
                 </Animated.View>
                 <Menu
                     visible={menuVisible}
