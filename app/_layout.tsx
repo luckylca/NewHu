@@ -142,6 +142,7 @@ export default function RootLayout() {
 								<Stack.Screen name="people" options={{ title: '人物信息' }} />
 								<Stack.Screen name="question" options={{ title: '问题详情' }} />
 								<Stack.Screen name="dev/design-system" options={{ title: 'UI Showcase' }} />
+								<Stack.Screen name="dev/performance-benchmark" options={{ title: 'Hyper UI Performance Benchmark' }} />
 								<Stack.Screen name="dev/hyper-glow" options={{ title: '动态柔光预览' }} />
 								</Stack.Protected>
 							</Stack>

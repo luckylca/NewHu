@@ -1,4 +1,4 @@
-import { BottomSheet, Button, Card, Dialog, Input, ListRow, Menu, NavigationBar, SearchBar, SegmentedControl, Snackbar, Switch, TopAppBar } from '@/src/ui';
+import { BottomSheet, Button, Card, Checkbox, Dialog, Input, ListRow, Menu, NavigationBar, NumberWheel, ProgressIndicator, SearchBar, SegmentedControl, Slider, Snackbar, Switch, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
@@ -42,7 +42,12 @@ export default function DesignSystemShowcase() {
 
     // component states
     const [switchOn, setSwitchOn] = useState(true);
+    const [checkboxOn, setCheckboxOn] = useState(true);
     const [seg, setSeg] = useState(1);
+    const [sliderValue, setSliderValue] = useState(40);
+    const [wheelValue, setWheelValue] = useState(25);
+    const [progress, setProgress] = useState(64);
+    const [progressAnimating, setProgressAnimating] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [sheetOpen, setSheetOpen] = useState(false);
     const [snackVisible, setSnackVisible] = useState(false);
@@ -139,6 +144,51 @@ export default function DesignSystemShowcase() {
                         <Switch value={!switchOn} onValueChange={() => {}} />
                         <Switch value disabled />
                         <Switch value={false} disabled />
+                    </View>
+                </Section>
+
+                {/* Checkbox */}
+                <Section title="Checkbox">
+                    <View style={{ paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 24 }}>
+                        <Checkbox value={checkboxOn} onValueChange={setCheckboxOn} accessibilityLabel="启用复选框" />
+                        <Checkbox value={false} onValueChange={() => {}} accessibilityLabel="未选中复选框" />
+                        <Checkbox value disabled accessibilityLabel="禁用复选框" />
+                    </View>
+                </Section>
+
+                {/* Slider / Progress */}
+                <Section title="Slider">
+                    <View style={{ paddingHorizontal: 16, gap: 12 }}>
+                        <Slider
+                            value={sliderValue}
+                            minimumValue={0}
+                            maximumValue={100}
+                            step={5}
+                            showKeyPoints
+                            onValueChange={setSliderValue}
+                            accessibilityLabel="展示用滑块"
+                        />
+                        <Text type="footnote2" color={theme.colors.onSurfaceVariantSummary}>当前值：{sliderValue}</Text>
+                    </View>
+                </Section>
+
+                <Section title="ProgressIndicator">
+                    <View style={{ paddingHorizontal: 16, gap: 16 }}>
+                        <ProgressIndicator progress={progress / 100} />
+                        <ProgressIndicator indeterminate={progressAnimating} />
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                            <Text type="footnote2" color={theme.colors.onSurfaceVariantSummary}>确定进度 {progress}%</Text>
+                            <Button onPress={() => setProgress((value) => value >= 100 ? 0 : value + 10)}>推进</Button>
+                            <Button onPress={() => setProgressAnimating((value) => !value)}>{progressAnimating ? '停止动画' : '启动动画'}</Button>
+                        </View>
+                    </View>
+                </Section>
+
+                {/* NumberWheel */}
+                <Section title="NumberWheel">
+                    <View style={{ paddingHorizontal: 16, alignItems: 'center' }}>
+                        <NumberWheel value={wheelValue} min={0} max={100} step={5} onChange={setWheelValue} />
+                        <Text type="footnote2" color={theme.colors.onSurfaceVariantSummary}>当前值：{wheelValue}</Text>
                     </View>
                 </Section>
 
