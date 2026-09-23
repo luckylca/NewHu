@@ -1,17 +1,17 @@
-import { useTheme } from '@/src/ui/theme';
-import { linearEasing, useReducedMotionPreference } from '@/src/ui/motion';
+import { useTheme } from '../theme';
+import { linearEasing, useReducedMotionPreference } from '../motion';
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 
-type MiuixProgressIndicatorProps = {
+type ProgressIndicatorProps = {
     progress?: number;
     indeterminate?: boolean;
     height?: number;
 };
 
 /** Determinate linear ProgressIndicator ported from miuix-vue. */
-export default function MiuixProgressIndicator({ progress = 0, indeterminate = false, height = 6 }: MiuixProgressIndicatorProps) {
+const ProgressIndicator = React.memo(function ProgressIndicator({ progress = 0, indeterminate = false, height = 6 }: ProgressIndicatorProps) {
     const theme = useTheme();
     const reducedMotion = useReducedMotionPreference();
     const [trackWidth, setTrackWidth] = useState(0);
@@ -58,4 +58,6 @@ export default function MiuixProgressIndicator({ progress = 0, indeterminate = f
             )}
         </View>
     );
-}
+});
+ProgressIndicator.displayName = 'HyperProgressIndicator';
+export default ProgressIndicator;

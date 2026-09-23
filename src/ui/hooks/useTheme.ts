@@ -1,2 +1,2 @@
-export { ThemeProvider, useTheme } from '../theme';
-export type { ThemeMode } from '../theme';
+// Compatibility entry; implementation lives in the reusable UI package.
+export * from 'react-native-hyper-ui/hooks/useTheme';

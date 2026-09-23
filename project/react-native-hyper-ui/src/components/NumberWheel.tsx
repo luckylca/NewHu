@@ -1,5 +1,5 @@
-import { Text } from '@/src/ui/primitives';
-import { useTheme } from '@/src/ui/theme';
+import { Text } from '../primitives';
+import { useTheme } from '../theme';
 import React, { memo, useCallback, useEffect, useMemo } from 'react';
 import { View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -69,7 +69,7 @@ const WheelItem = memo(function WheelItem({ index, value, currentIndex, offset, 
     );
 });
 
-export default function MiuixNumberWheel({
+const NumberWheel = React.memo(function NumberWheel({
     value,
     min = 0,
     max,
@@ -191,4 +191,6 @@ export default function MiuixNumberWheel({
             </GestureDetector>
         </View>
     );
-}
+});
+NumberWheel.displayName = 'HyperNumberWheel';
+export default NumberWheel;

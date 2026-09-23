@@ -1,0 +1,404 @@
+{
+  "name": "react-native-hyper-ui",
+  "version": "0.1.0",
+  "description": "HyperOS-inspired React Native components, themes and motion extracted from NewHu.",
+  "license": "UNLICENSED",
+  "main": "./lib/commonjs/index.js",
+  "module": "./lib/module/index.js",
+  "types": "./lib/types/index.d.ts",
+  "react-native": "./src/index.ts",
+  "sideEffects": false,
+  "files": [
+    "src",
+    "lib",
+    "README.md",
+    "NOTICE.md"
+  ],
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "build": "npm run clean && tsc -p tsconfig.build.json && tsc -p tsconfig.module.json && node scripts/module-package.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "peerDependencies": {
+    "react": ">=19 <20",
+    "react-native": ">=0.81 <0.82",
+    "@expo/vector-icons": "^15.0.3",
+    "react-native-reanimated": "^4.1.1",
+    "react-native-worklets": "^0.5.1",
+    "react-native-gesture-handler": "^2.28.0",
+    "react-native-safe-area-context": "^5.6.0",
+    "react-native-svg": "^15.12.1"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.2",
+    "@types/react": "~19.1.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "react-native": "./src/index.ts",
+      "import": "./lib/module/index.js",
+      "require": "./lib/commonjs/index.js",
+      "default": "./lib/module/index.js"
+    },
+    "./theme": {
+      "types": "./lib/types/theme/index.d.ts",
+      "react-native": "./src/theme/index.ts",
+      "import": "./lib/module/theme/index.js",
+      "require": "./lib/commonjs/theme/index.js",
+      "default": "./lib/module/theme/index.js"
+    },
+    "./motion": {
+      "types": "./lib/types/motion/index.d.ts",
+      "react-native": "./src/motion/index.ts",
+      "import": "./lib/module/motion/index.js",
+      "require": "./lib/commonjs/motion/index.js",
+      "default": "./lib/module/motion/index.js"
+    },
+    "./primitives": {
+      "types": "./lib/types/primitives/index.d.ts",
+      "react-native": "./src/primitives/index.ts",
+      "import": "./lib/module/primitives/index.js",
+      "require": "./lib/commonjs/primitives/index.js",
+      "default": "./lib/module/primitives/index.js"
+    },
+    "./components": {
+      "types": "./lib/types/components/index.d.ts",
+      "react-native": "./src/components/index.ts",
+      "import": "./lib/module/components/index.js",
+      "require": "./lib/commonjs/components/index.js",
+      "default": "./lib/module/components/index.js"
+    },
+    "./hooks": {
+      "types": "./lib/types/hooks/index.d.ts",
+      "react-native": "./src/hooks/index.ts",
+      "import": "./lib/module/hooks/index.js",
+      "require": "./lib/commonjs/hooks/index.js",
+      "default": "./lib/module/hooks/index.js"
+    },
+    "./badgePalette": {
+      "types": "./lib/types/badgePalette.d.ts",
+      "react-native": "./src/badgePalette.ts",
+      "import": "./lib/module/badgePalette.js",
+      "require": "./lib/commonjs/badgePalette.js",
+      "default": "./lib/module/badgePalette.js"
+    },
+    "./inputPresentation": {
+      "types": "./lib/types/inputPresentation.d.ts",
+      "react-native": "./src/inputPresentation.ts",
+      "import": "./lib/module/inputPresentation.js",
+      "require": "./lib/commonjs/inputPresentation.js",
+      "default": "./lib/module/inputPresentation.js"
+    },
+    "./index": {
+      "types": "./lib/types/index.d.ts",
+      "react-native": "./src/index.ts",
+      "import": "./lib/module/index.js",
+      "require": "./lib/commonjs/index.js",
+      "default": "./lib/module/index.js"
+    },
+    "./motion/easings": {
+      "types": "./lib/types/motion/easings.d.ts",
+      "react-native": "./src/motion/easings.ts",
+      "import": "./lib/module/motion/easings.js",
+      "require": "./lib/commonjs/motion/easings.js",
+      "default": "./lib/module/motion/easings.js"
+    },
+    "./motion/folmeSpringByResponse": {
+      "types": "./lib/types/motion/folmeSpringByResponse.d.ts",
+      "react-native": "./src/motion/folmeSpringByResponse.ts",
+      "import": "./lib/module/motion/folmeSpringByResponse.js",
+      "require": "./lib/commonjs/motion/folmeSpringByResponse.js",
+      "default": "./lib/module/motion/folmeSpringByResponse.js"
+    },
+    "./motion/folmeSpring": {
+      "types": "./lib/types/motion/folmeSpring.d.ts",
+      "react-native": "./src/motion/folmeSpring.ts",
+      "import": "./lib/module/motion/folmeSpring.js",
+      "require": "./lib/commonjs/motion/folmeSpring.js",
+      "default": "./lib/module/motion/folmeSpring.js"
+    },
+    "./motion/presets": {
+      "types": "./lib/types/motion/presets.d.ts",
+      "react-native": "./src/motion/presets.ts",
+      "import": "./lib/module/motion/presets.js",
+      "require": "./lib/commonjs/motion/presets.js",
+      "default": "./lib/module/motion/presets.js"
+    },
+    "./motion/index": {
+      "types": "./lib/types/motion/index.d.ts",
+      "react-native": "./src/motion/index.ts",
+      "import": "./lib/module/motion/index.js",
+      "require": "./lib/commonjs/motion/index.js",
+      "default": "./lib/module/motion/index.js"
+    },
+    "./motion/MotionProvider": {
+      "types": "./lib/types/motion/MotionProvider.d.ts",
+      "react-native": "./src/motion/MotionProvider.tsx",
+      "import": "./lib/module/motion/MotionProvider.js",
+      "require": "./lib/commonjs/motion/MotionProvider.js",
+      "default": "./lib/module/motion/MotionProvider.js"
+    },
+    "./primitives/PressableScale": {
+      "types": "./lib/types/primitives/PressableScale.d.ts",
+      "react-native": "./src/primitives/PressableScale.tsx",
+      "import": "./lib/module/primitives/PressableScale.js",
+      "require": "./lib/commonjs/primitives/PressableScale.js",
+      "default": "./lib/module/primitives/PressableScale.js"
+    },
+    "./primitives/Pressable": {
+      "types": "./lib/types/primitives/Pressable.d.ts",
+      "react-native": "./src/primitives/Pressable.tsx",
+      "import": "./lib/module/primitives/Pressable.js",
+      "require": "./lib/commonjs/primitives/Pressable.js",
+      "default": "./lib/module/primitives/Pressable.js"
+    },
+    "./primitives/Surface": {
+      "types": "./lib/types/primitives/Surface.d.ts",
+      "react-native": "./src/primitives/Surface.tsx",
+      "import": "./lib/module/primitives/Surface.js",
+      "require": "./lib/commonjs/primitives/Surface.js",
+      "default": "./lib/module/primitives/Surface.js"
+    },
+    "./primitives/Icon": {
+      "types": "./lib/types/primitives/Icon.d.ts",
+      "react-native": "./src/primitives/Icon.tsx",
+      "import": "./lib/module/primitives/Icon.js",
+      "require": "./lib/commonjs/primitives/Icon.js",
+      "default": "./lib/module/primitives/Icon.js"
+    },
+    "./primitives/Divider": {
+      "types": "./lib/types/primitives/Divider.d.ts",
+      "react-native": "./src/primitives/Divider.tsx",
+      "import": "./lib/module/primitives/Divider.js",
+      "require": "./lib/commonjs/primitives/Divider.js",
+      "default": "./lib/module/primitives/Divider.js"
+    },
+    "./primitives/PressIndication": {
+      "types": "./lib/types/primitives/PressIndication.d.ts",
+      "react-native": "./src/primitives/PressIndication.tsx",
+      "import": "./lib/module/primitives/PressIndication.js",
+      "require": "./lib/commonjs/primitives/PressIndication.js",
+      "default": "./lib/module/primitives/PressIndication.js"
+    },
+    "./primitives/index": {
+      "types": "./lib/types/primitives/index.d.ts",
+      "react-native": "./src/primitives/index.ts",
+      "import": "./lib/module/primitives/index.js",
+      "require": "./lib/commonjs/primitives/index.js",
+      "default": "./lib/module/primitives/index.js"
+    },
+    "./primitives/Text": {
+      "types": "./lib/types/primitives/Text.d.ts",
+      "react-native": "./src/primitives/Text.tsx",
+      "import": "./lib/module/primitives/Text.js",
+      "require": "./lib/commonjs/primitives/Text.js",
+      "default": "./lib/module/primitives/Text.js"
+    },
+    "./components/BottomSheet": {
+      "types": "./lib/types/components/BottomSheet.d.ts",
+      "react-native": "./src/components/BottomSheet.tsx",
+      "import": "./lib/module/components/BottomSheet.js",
+      "require": "./lib/commonjs/components/BottomSheet.js",
+      "default": "./lib/module/components/BottomSheet.js"
+    },
+    "./components/Card": {
+      "types": "./lib/types/components/Card.d.ts",
+      "react-native": "./src/components/Card.tsx",
+      "import": "./lib/module/components/Card.js",
+      "require": "./lib/commonjs/components/Card.js",
+      "default": "./lib/module/components/Card.js"
+    },
+    "./components/Slider": {
+      "types": "./lib/types/components/Slider.d.ts",
+      "react-native": "./src/components/Slider.tsx",
+      "import": "./lib/module/components/Slider.js",
+      "require": "./lib/commonjs/components/Slider.js",
+      "default": "./lib/module/components/Slider.js"
+    },
+    "./components/ProgressIndicator": {
+      "types": "./lib/types/components/ProgressIndicator.d.ts",
+      "react-native": "./src/components/ProgressIndicator.tsx",
+      "import": "./lib/module/components/ProgressIndicator.js",
+      "require": "./lib/commonjs/components/ProgressIndicator.js",
+      "default": "./lib/module/components/ProgressIndicator.js"
+    },
+    "./components/ListRow": {
+      "types": "./lib/types/components/ListRow.d.ts",
+      "react-native": "./src/components/ListRow.tsx",
+      "import": "./lib/module/components/ListRow.js",
+      "require": "./lib/commonjs/components/ListRow.js",
+      "default": "./lib/module/components/ListRow.js"
+    },
+    "./components/SearchBar": {
+      "types": "./lib/types/components/SearchBar.d.ts",
+      "react-native": "./src/components/SearchBar.tsx",
+      "import": "./lib/module/components/SearchBar.js",
+      "require": "./lib/commonjs/components/SearchBar.js",
+      "default": "./lib/module/components/SearchBar.js"
+    },
+    "./components/Switch": {
+      "types": "./lib/types/components/Switch.d.ts",
+      "react-native": "./src/components/Switch.tsx",
+      "import": "./lib/module/components/Switch.js",
+      "require": "./lib/commonjs/components/Switch.js",
+      "default": "./lib/module/components/Switch.js"
+    },
+    "./components/NumberWheel": {
+      "types": "./lib/types/components/NumberWheel.d.ts",
+      "react-native": "./src/components/NumberWheel.tsx",
+      "import": "./lib/module/components/NumberWheel.js",
+      "require": "./lib/commonjs/components/NumberWheel.js",
+      "default": "./lib/module/components/NumberWheel.js"
+    },
+    "./components/TopAppBar": {
+      "types": "./lib/types/components/TopAppBar.d.ts",
+      "react-native": "./src/components/TopAppBar.tsx",
+      "import": "./lib/module/components/TopAppBar.js",
+      "require": "./lib/commonjs/components/TopAppBar.js",
+      "default": "./lib/module/components/TopAppBar.js"
+    },
+    "./components/Dialog": {
+      "types": "./lib/types/components/Dialog.d.ts",
+      "react-native": "./src/components/Dialog.tsx",
+      "import": "./lib/module/components/Dialog.js",
+      "require": "./lib/commonjs/components/Dialog.js",
+      "default": "./lib/module/components/Dialog.js"
+    },
+    "./components/Menu": {
+      "types": "./lib/types/components/Menu.d.ts",
+      "react-native": "./src/components/Menu.tsx",
+      "import": "./lib/module/components/Menu.js",
+      "require": "./lib/commonjs/components/Menu.js",
+      "default": "./lib/module/components/Menu.js"
+    },
+    "./components/NavigationBar": {
+      "types": "./lib/types/components/NavigationBar.d.ts",
+      "react-native": "./src/components/NavigationBar.tsx",
+      "import": "./lib/module/components/NavigationBar.js",
+      "require": "./lib/commonjs/components/NavigationBar.js",
+      "default": "./lib/module/components/NavigationBar.js"
+    },
+    "./components/index": {
+      "types": "./lib/types/components/index.d.ts",
+      "react-native": "./src/components/index.ts",
+      "import": "./lib/module/components/index.js",
+      "require": "./lib/commonjs/components/index.js",
+      "default": "./lib/module/components/index.js"
+    },
+    "./components/Button": {
+      "types": "./lib/types/components/Button.d.ts",
+      "react-native": "./src/components/Button.tsx",
+      "import": "./lib/module/components/Button.js",
+      "require": "./lib/commonjs/components/Button.js",
+      "default": "./lib/module/components/Button.js"
+    },
+    "./components/Snackbar": {
+      "types": "./lib/types/components/Snackbar.d.ts",
+      "react-native": "./src/components/Snackbar.tsx",
+      "import": "./lib/module/components/Snackbar.js",
+      "require": "./lib/commonjs/components/Snackbar.js",
+      "default": "./lib/module/components/Snackbar.js"
+    },
+    "./components/Checkbox": {
+      "types": "./lib/types/components/Checkbox.d.ts",
+      "react-native": "./src/components/Checkbox.tsx",
+      "import": "./lib/module/components/Checkbox.js",
+      "require": "./lib/commonjs/components/Checkbox.js",
+      "default": "./lib/module/components/Checkbox.js"
+    },
+    "./components/SegmentedControl": {
+      "types": "./lib/types/components/SegmentedControl.d.ts",
+      "react-native": "./src/components/SegmentedControl.tsx",
+      "import": "./lib/module/components/SegmentedControl.js",
+      "require": "./lib/commonjs/components/SegmentedControl.js",
+      "default": "./lib/module/components/SegmentedControl.js"
+    },
+    "./components/Input": {
+      "types": "./lib/types/components/Input.d.ts",
+      "react-native": "./src/components/Input.tsx",
+      "import": "./lib/module/components/Input.js",
+      "require": "./lib/commonjs/components/Input.js",
+      "default": "./lib/module/components/Input.js"
+    },
+    "./theme/liquidGlass": {
+      "types": "./lib/types/theme/liquidGlass.d.ts",
+      "react-native": "./src/theme/liquidGlass.ts",
+      "import": "./lib/module/theme/liquidGlass.js",
+      "require": "./lib/commonjs/theme/liquidGlass.js",
+      "default": "./lib/module/theme/liquidGlass.js"
+    },
+    "./theme/coloros": {
+      "types": "./lib/types/theme/coloros.d.ts",
+      "react-native": "./src/theme/coloros.ts",
+      "import": "./lib/module/theme/coloros.js",
+      "require": "./lib/commonjs/theme/coloros.js",
+      "default": "./lib/module/theme/coloros.js"
+    },
+    "./theme/types": {
+      "types": "./lib/types/theme/types.d.ts",
+      "react-native": "./src/theme/types.ts",
+      "import": "./lib/module/theme/types.js",
+      "require": "./lib/commonjs/theme/types.js",
+      "default": "./lib/module/theme/types.js"
+    },
+    "./theme/tokens": {
+      "types": "./lib/types/theme/tokens.d.ts",
+      "react-native": "./src/theme/tokens.ts",
+      "import": "./lib/module/theme/tokens.js",
+      "require": "./lib/commonjs/theme/tokens.js",
+      "default": "./lib/module/theme/tokens.js"
+    },
+    "./theme/hyperos": {
+      "types": "./lib/types/theme/hyperos.d.ts",
+      "react-native": "./src/theme/hyperos.ts",
+      "import": "./lib/module/theme/hyperos.js",
+      "require": "./lib/commonjs/theme/hyperos.js",
+      "default": "./lib/module/theme/hyperos.js"
+    },
+    "./theme/ThemeProvider": {
+      "types": "./lib/types/theme/ThemeProvider.d.ts",
+      "react-native": "./src/theme/ThemeProvider.tsx",
+      "import": "./lib/module/theme/ThemeProvider.js",
+      "require": "./lib/commonjs/theme/ThemeProvider.js",
+      "default": "./lib/module/theme/ThemeProvider.js"
+    },
+    "./theme/index": {
+      "types": "./lib/types/theme/index.d.ts",
+      "react-native": "./src/theme/index.ts",
+      "import": "./lib/module/theme/index.js",
+      "require": "./lib/commonjs/theme/index.js",
+      "default": "./lib/module/theme/index.js"
+    },
+    "./theme/wallpaper": {
+      "types": "./lib/types/theme/wallpaper.d.ts",
+      "react-native": "./src/theme/wallpaper.ts",
+      "import": "./lib/module/theme/wallpaper.js",
+      "require": "./lib/commonjs/theme/wallpaper.js",
+      "default": "./lib/module/theme/wallpaper.js"
+    },
+    "./hooks/useComponentStyles": {
+      "types": "./lib/types/hooks/useComponentStyles.d.ts",
+      "react-native": "./src/hooks/useComponentStyles.ts",
+      "import": "./lib/module/hooks/useComponentStyles.js",
+      "require": "./lib/commonjs/hooks/useComponentStyles.js",
+      "default": "./lib/module/hooks/useComponentStyles.js"
+    },
+    "./hooks/useTheme": {
+      "types": "./lib/types/hooks/useTheme.d.ts",
+      "react-native": "./src/hooks/useTheme.ts",
+      "import": "./lib/module/hooks/useTheme.js",
+      "require": "./lib/commonjs/hooks/useTheme.js",
+      "default": "./lib/module/hooks/useTheme.js"
+    },
+    "./hooks/index": {
+      "types": "./lib/types/hooks/index.d.ts",
+      "react-native": "./src/hooks/index.ts",
+      "import": "./lib/module/hooks/index.js",
+      "require": "./lib/commonjs/hooks/index.js",
+      "default": "./lib/module/hooks/index.js"
+    }
+  },
+  "private": true
+}

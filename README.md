@@ -75,3 +75,7 @@ HttpOnly session cookies and to clear WebView cookies on logout.
 - [ ] 安装包大小、启动速度、首页内存与长列表性能优化。
 - [ ] 统一设置页与高级功能的信息架构。
 - [ ] 建立更完整的真机 smoke / regression 测试清单。
+
+## Reusable UI package
+
+The extracted HyperOS-inspired React Native components live in [project/react-native-hyper-ui](project/react-native-hyper-ui/README.md). NewHu consumes this package through a local file dependency while its npm package metadata and build outputs are prepared.
