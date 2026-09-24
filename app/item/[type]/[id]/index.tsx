@@ -983,25 +983,27 @@ export default function Item() {
                             onPressOut={() => (titlePressed.value = 0)}
                             style={{ width: '100%', borderRadius: theme.radius.component, overflow: 'hidden', paddingTop: 8, paddingBottom: 8 }}
                         >
-                            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-                                <Text type="title2" weight="bold" color={primaryText} style={{ flexShrink: 1 }}>{title}</Text>
-                                <AiSuspicionBadge
-                                    contentKey={`${contentType}:${readData.id}`}
-                                    text={aiDetectionText}
-                                    style={{ marginLeft: 8, marginTop: 4 }}
-                                />
-                                <ProductDomainBadges
-                                    enabled={domainLabelsEnabled}
-                                    contentKey={`${contentType}:${readData.id}`}
-                                    title={title}
-                                    excerpt={semanticExcerpt(contentType, readData, aiDetectionText)}
-                                    feedType={contentType}
-                                    contentId={readData.id}
-                                    questionId={contentType === 'answer' ? readData.questionId : undefined}
-                                    questionTopicIds={contentType === 'answer' ? readData.questionTopicIds : undefined}
-                                    priority="high"
-                                    style={{ marginLeft: 8, marginTop: 4 }}
-                                />
+                            <View>
+                                <Text type="title2" weight="bold" color={primaryText}>{title}</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', minHeight: 22, marginTop: 8 }}>
+                                    <AiSuspicionBadge
+                                        contentKey={`${contentType}:${readData.id}`}
+                                        text={aiDetectionText}
+                                        style={{ marginRight: 8 }}
+                                    />
+                                    <ProductDomainBadges
+                                        enabled={domainLabelsEnabled}
+                                        contentKey={`${contentType}:${readData.id}`}
+                                        title={title}
+                                        excerpt={semanticExcerpt(contentType, readData, aiDetectionText)}
+                                        feedType={contentType}
+                                        contentId={readData.id}
+                                        questionId={contentType === 'answer' ? readData.questionId : undefined}
+                                        questionTopicIds={contentType === 'answer' ? readData.questionTopicIds : undefined}
+                                        priority="high"
+                                        style={{ flex: 1 }}
+                                    />
+                                </View>
                             </View>
                             <PressIndication pressed={titlePressed} color={primaryText} radius={theme.radius.component} />
                         </Pressable>

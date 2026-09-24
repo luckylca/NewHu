@@ -99,29 +99,33 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetect
             contentStyle={{ backgroundColor: cardBgColor, paddingHorizontal: 16, paddingVertical: 14 }}
         >
             {!hideTitle && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-                    <Text type="headline1" weight="bold" color={theme.colors.onBackground} style={{ flexShrink: 1 }} numberOfLines={2}>
+                <View style={{ marginBottom: 8 }}>
+                    <Text type="headline1" weight="bold" color={theme.colors.onBackground} numberOfLines={2}>
                         {title}
                     </Text>
-                    {showAiDetection ? (
-                        <AiSuspicionBadge
-                            contentKey={`${type}:${item.id}`}
-                            text={getAiDetectionText(item)}
-                            style={{ marginLeft: 6, marginTop: 2 }}
-                        />
+                    {(showAiDetection || showDomainLabels) ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', minHeight: 24, marginTop: 6 }}>
+                            {showAiDetection ? (
+                                <AiSuspicionBadge
+                                    contentKey={`${type}:${item.id}`}
+                                    text={getAiDetectionText(item)}
+                                    style={{ marginRight: 6 }}
+                                />
+                            ) : null}
+                            <ProductDomainBadges
+                                enabled={Boolean(showDomainLabels)}
+                                contentKey={`${type}:${item.id}`}
+                                title={title || '无标题'}
+                                excerpt={semanticExcerpt(type, item, getContentPreview(item))}
+                                feedType={type}
+                                contentId={item.id}
+                                questionId={type === 'answer' ? item.questionId : undefined}
+                                questionTopicIds={type === 'answer' ? item.questionTopicIds : undefined}
+                                priority={domainPriority}
+                                style={{ flex: 1 }}
+                            />
+                        </View>
                     ) : null}
-                    <ProductDomainBadges
-                        enabled={Boolean(showDomainLabels)}
-                        contentKey={`${type}:${item.id}`}
-                        title={title || '无标题'}
-                        excerpt={semanticExcerpt(type, item, getContentPreview(item))}
-                        feedType={type}
-                        contentId={item.id}
-                        questionId={type === 'answer' ? item.questionId : undefined}
-                        questionTopicIds={type === 'answer' ? item.questionTopicIds : undefined}
-                        priority={domainPriority}
-                        style={{ marginLeft: 6, marginTop: 2 }}
-                    />
                 </View>
             )}
             <Text type="body2" color={metaColor} style={{ marginBottom: 10, lineHeight: 20 }} numberOfLines={3}>
@@ -162,7 +166,7 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetect
 });
 RenderItem.displayName = 'RenderItem';
 
-function estimateWaterfallHeight(feed: FeedItemInfo, showRecommendationReason = true) {
+function estimateWaterfallHeight(feed: FeedItemInfo, showRecommendationReason = true, showDomainLabels = true) {
     const title = feed.feedType === 'answer' && feed.item.questionTitle ? feed.item.questionTitle : feed.item.title;
     // A narrow waterfall column wraps Chinese titles earlier than a full-width card.
     // Keep the placement estimate at least as tall as the rendered 3-line title,
@@ -173,7 +177,8 @@ function estimateWaterfallHeight(feed: FeedItemInfo, showRecommendationReason = 
     // The old estimate was 40–50dp taller than the rendered card, which made
     // a tight waterfall look like cards were overlapping or leaving large gaps.
     const recommendationReasonHeight = showRecommendationReason && feed.item.recommendationReason ? 23 : 0;
-    return 28 + titleLines * 23 + 8 + excerptLines * 20 + recommendationReasonHeight + 12 + 15;
+    const badgeRowHeight = showDomainLabels ? 28 : 0;
+    return 28 + titleLines * 23 + badgeRowHeight + 8 + excerptLines * 20 + recommendationReasonHeight + 12 + 15;
 }
 
 type WaterfallPlacement = {
@@ -230,27 +235,29 @@ const WaterfallItem = memo(({ item, type, needToGet, measurementKey, showDomainL
                 style={{ width: '100%' }}
                 contentStyle={{ paddingHorizontal: 13, paddingVertical: 14 }}
             >
-                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <Text type="headline1" weight="bold" color={theme.colors.onBackground} numberOfLines={3} style={{ lineHeight: 23, flexShrink: 1 }}>
+                <View style={{ marginBottom: 8 }}>
+                    <Text type="headline1" weight="bold" color={theme.colors.onBackground} numberOfLines={3} style={{ lineHeight: 23 }}>
                         {title || '无标题'}
                     </Text>
-                    <AiSuspicionBadge
-                        contentKey={`${type}:${item.id}`}
-                        text={getAiDetectionText(item)}
-                        style={{ marginLeft: 6, marginTop: 2 }}
-                    />
-                    <ProductDomainBadges
-                        enabled={Boolean(showDomainLabels)}
-                        contentKey={`${type}:${item.id}`}
-                        title={title || '无标题'}
-                        excerpt={semanticExcerpt(type, item, getContentPreview(item))}
-                        feedType={type}
-                        contentId={item.id}
-                        questionId={type === 'answer' ? item.questionId : undefined}
-                        questionTopicIds={type === 'answer' ? item.questionTopicIds : undefined}
-                        priority={domainPriority}
-                        style={{ marginLeft: 6, marginTop: 2 }}
-                    />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', minHeight: 22, marginTop: 6 }}>
+                        <AiSuspicionBadge
+                            contentKey={`${type}:${item.id}`}
+                            text={getAiDetectionText(item)}
+                            style={{ marginRight: 6 }}
+                        />
+                        <ProductDomainBadges
+                            enabled={Boolean(showDomainLabels)}
+                            contentKey={`${type}:${item.id}`}
+                            title={title || '无标题'}
+                            excerpt={semanticExcerpt(type, item, getContentPreview(item))}
+                            feedType={type}
+                            contentId={item.id}
+                            questionId={type === 'answer' ? item.questionId : undefined}
+                            questionTopicIds={type === 'answer' ? item.questionTopicIds : undefined}
+                            priority={domainPriority}
+                            style={{ flex: 1 }}
+                        />
+                    </View>
                 </View>
                 <Text type="body2" color={metaColor} numberOfLines={excerptLines} style={{ marginTop: 8, lineHeight: 20 }}>
                     {item.excerpt || '暂无简介'}
@@ -332,32 +339,34 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                     contentStyle={{ backgroundColor: cardBgColor, borderRadius: 24, padding: 20, flex: 1 }}
                 >
                     {!hideTitle && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+                        <View style={{ marginBottom: 12 }}>
                             <Text
                                 type="title3"
                                 weight="bold"
-                                style={{ color: textColor, lineHeight: 31, flexShrink: 1 }}
+                                style={{ color: textColor, lineHeight: 31 }}
                                 numberOfLines={3}
                             >
                                 {title || '无标题'}
                             </Text>
-                            <AiSuspicionBadge
-                                contentKey={`${type}:${item.id}`}
-                                text={getAiDetectionText(item)}
-                                style={{ marginLeft: 8, marginTop: 3 }}
-                            />
-                            <ProductDomainBadges
-                                enabled={Boolean(showDomainLabels)}
-                                contentKey={`${type}:${item.id}`}
-                                title={title || '无标题'}
-                                excerpt={semanticExcerpt(type, item, preview)}
-                                feedType={type}
-                                contentId={item.id}
-                                questionId={type === 'answer' ? item.questionId : undefined}
-                                questionTopicIds={type === 'answer' ? item.questionTopicIds : undefined}
-                                priority={domainPriority}
-                                style={{ marginLeft: 8, marginTop: 3 }}
-                            />
+                            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', minHeight: 22, marginTop: 8 }}>
+                                <AiSuspicionBadge
+                                    contentKey={`${type}:${item.id}`}
+                                    text={getAiDetectionText(item)}
+                                    style={{ marginRight: 8 }}
+                                />
+                                <ProductDomainBadges
+                                    enabled={Boolean(showDomainLabels)}
+                                    contentKey={`${type}:${item.id}`}
+                                    title={title || '无标题'}
+                                    excerpt={semanticExcerpt(type, item, preview)}
+                                    feedType={type}
+                                    contentId={item.id}
+                                    questionId={type === 'answer' ? item.questionId : undefined}
+                                    questionTopicIds={type === 'answer' ? item.questionTopicIds : undefined}
+                                    priority={domainPriority}
+                                    style={{ flex: 1 }}
+                                />
+                            </View>
                         </View>
                     )}
                     
@@ -904,7 +913,7 @@ const HomeScreen = () => {
             const columnIndex = heights[0] <= heights[1] ? 0 : 1;
             const measurementKey = getFeedKey(feed);
             const height = waterfallMeasuredHeights[measurementKey]
-                ?? estimateWaterfallHeight(feed, personalizationEnabled);
+                ?? estimateWaterfallHeight(feed, personalizationEnabled, domainLabelsEnabled);
             // Each column owns its vertical cursor. This keeps every gap
             // identical and lets the natural card-height difference create
             // the masonry stagger without inserting artificial blank space.
