@@ -3,6 +3,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import { getNetworkStatus } from '@/src/stores/useNetworkStore';
 import { addResourceRef, deleteResourceRecord, getResource, listResourcesForCleanup, touchResource, upsertResource } from '@/src/db/repositories/resourceRepository';
 import type { ResourceRecord } from '@/src/db/types';
+import { isOfflineCacheStopError, runOfflineCacheRequest } from './offlineCacheRequestPacer';
 
 const imageDirectory = new Directory(Paths.document, 'offline', 'images');
 const inFlightDownloads = new Map<string, Promise<ResourceRecord | null>>();
@@ -154,12 +155,15 @@ export async function downloadResources(
             const existing = await getResource(unique[index]);
             const alreadyDownloaded = Boolean(existing?.status === 'ready' && existing.localUri && new File(existing.localUri).exists);
             try {
-                const result = await downloadResource(unique[index]);
+                const result = await runOfflineCacheRequest(() => downloadResource(unique[index]));
                 if (result?.status === 'ready') {
                     successful += 1;
                     if (!alreadyDownloaded) bytesDownloaded += result.fileSize || 0;
                 }
-            } catch { /* one resource may fail without aborting a content job */ }
+            } catch (error) {
+                if (isOfflineCacheStopError(error)) throw error;
+                // One missing image should not fail the entire content job.
+            }
             completed += 1;
             onProgress?.(completed, unique.length, {
                 bytesDownloaded,
@@ -167,7 +171,7 @@ export async function downloadResources(
             });
         }
     };
-    await Promise.all(Array.from({ length: Math.min(4, Math.max(unique.length, 1)) }, worker));
+    await Promise.all(Array.from({ length: Math.min(1, Math.max(unique.length, 1)) }, worker));
     return successful;
 }
 

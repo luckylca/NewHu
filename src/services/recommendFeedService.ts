@@ -1,5 +1,6 @@
 import { getApiInstance } from '@/src/api/ZhihuApi';
 import { saveFeedEntries } from '@/src/db/repositories/feedRepository';
+import { runOfflineCacheRequest } from './offlineCacheRequestPacer';
 import type { FeedItemInfo, FeedType } from '@/src/types/zhihu';
 
 export function getRecommendSessionToken(next: unknown): string {
@@ -129,7 +130,7 @@ export async function fetchRecommendBatch(options: {
         if (visitedCursors.has(nextCursor)) break;
         visitedCursors.add(nextCursor);
 
-        const response = await api.getRecommend(nextCursor);
+        const response = await runOfflineCacheRequest(() => api.getRecommend(nextCursor));
         const pageItems = (Array.isArray(response?.data) ? response.data : [])
             .map(normalizeRecommendItem)
             .filter((item: FeedItemInfo | null): item is FeedItemInfo => item !== null)

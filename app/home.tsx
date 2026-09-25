@@ -20,7 +20,8 @@ import { getRecentFeed, saveFeedEntries, trimTransientFeedEntries } from '@/src/
 import { fetchAndSaveRecommendationPage } from '@/src/services/browseAndSaveService';
 import { recordUserEvent } from '@/src/db/repositories/userEventRepository';
 import { useConsentStore } from '@/src/stores/useConsentStore';
-import { getProductV1RuntimeAssetStatus, processProductV1Feed, recordProductV1Exposure, recordProductV1Feedback } from '@/src/product-v1';
+import { processProductV1Feed, recordProductV1Exposure, recordProductV1Feedback } from '@/src/product-v1';
+import { isProductV1DomainClassificationAvailable } from '@/src/product-v1/domainClassifier';
 import { AiSuspicionBadge } from '@/src/components/AiSuspicionBadge';
 import { ProductDomainBadges } from '@/src/components/ProductDomainBadges';
 import { semanticExcerpt } from '@/src/product-v1/semanticInput';
@@ -446,6 +447,7 @@ const HomeScreen = () => {
     const filterAds = useSettingStore((state) => state.isAds);
     const filterPaid = useSettingStore((state) => state.isPaid);
     const deduplicateFeed = useSettingStore((state) => state.deduplicateFeed);
+    const browseAndSaveOfflineEnabled = useSettingStore((state) => state.browseAndSaveOfflineEnabled);
     const userHydrated = useStoreHydrated(useUserStore); // 等用户 store 完成水合再初始化 API
     const settingHydrated = useStoreHydrated(useSettingStore);
     const contentHydrated = useStoreHydrated(useContentStore);
@@ -456,7 +458,7 @@ const HomeScreen = () => {
     const [cardListHeight, setCardListHeight] = useState(0);
     const [actionMenuTarget, setActionMenuTarget] = useState<{ item: FeedItem; type: FeedType } | null>(null);
     const [actionMenuAnchor, setActionMenuAnchor] = useState({ x: 0, y: 0, width: 1, height: 1 });
-    const [domainLabelsEnabled, setDomainLabelsEnabled] = useState(() => getProductV1RuntimeAssetStatus().installed);
+    const [domainLabelsEnabled, setDomainLabelsEnabled] = useState(() => isProductV1DomainClassificationAvailable());
     const [visibleDomainKeys, setVisibleDomainKeys] = useState<Set<string>>(() => new Set());
     const commitVisibleDomainKeys = useCallback((next: Set<string>) => {
         setVisibleDomainKeys((current) => sameStringSet(current, next) ? current : next);
@@ -464,9 +466,11 @@ const HomeScreen = () => {
     const requestInFlightRef = useRef(false);
     const productMergeGenerationRef = useRef(0);
     const offlineSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+    const lastOfflineSaveCursorRef = useRef('');
+    const previousBrowseAndSaveEnabledRef = useRef(browseAndSaveOfflineEnabled);
 
     useFocusEffect(useCallback(() => {
-        setDomainLabelsEnabled(getProductV1RuntimeAssetStatus().installed);
+        setDomainLabelsEnabled(isProductV1DomainClassificationAvailable());
     }, []));
     const visibleFeedList = useMemo(() => feedList.filter((feed) => (
         !(filterAds && feed.isAds) && !(filterPaid && feed.isPaid)
@@ -687,14 +691,23 @@ const HomeScreen = () => {
     loadDataRef.current = loadData;
 
     const queueOfflineSavePage = useCallback((cursor: string) => {
-        if (!cursor || getNetworkStatus() !== 'online' || !useUserStore.getState().cookies) return;
+        if (
+            !cursor
+            || cursor === lastOfflineSaveCursorRef.current
+            || getNetworkStatus() !== 'online'
+            || !useUserStore.getState().cookies
+        ) return;
+        lastOfflineSaveCursorRef.current = cursor;
         offlineSaveQueueRef.current = offlineSaveQueueRef.current
             .catch(() => undefined)
             .then(async () => {
                 if (
                     !useSettingStore.getState().browseAndSaveOfflineEnabled
                     || getNetworkStatus() !== 'online'
-                ) return;
+                ) {
+                    if (lastOfflineSaveCursorRef.current === cursor) lastOfflineSaveCursorRef.current = '';
+                    return;
+                }
                 const result = await fetchAndSaveRecommendationPage({
                     cursor,
                     cookie: useUserStore.getState().cookies || '',
@@ -705,9 +718,33 @@ const HomeScreen = () => {
                 if (result.failed > 0) {
                     console.warn('边看边存部分内容失败:', result);
                 }
+                if (result.fetched > 0) {
+                    notify({
+                        message: `边看边存：新增 ${result.saved} 篇，已缓存 ${result.skipped} 篇，失败 ${result.failed} 篇`,
+                        duration: 3500,
+                    });
+                }
             })
-            .catch((error) => console.error('边看边存推荐页失败:', error));
+            .catch((error) => {
+                if (lastOfflineSaveCursorRef.current === cursor) lastOfflineSaveCursorRef.current = '';
+                console.error('边看边存推荐页失败:', error);
+            });
     }, []);
+
+    useFocusEffect(useCallback(() => {
+        const wasEnabled = previousBrowseAndSaveEnabledRef.current;
+        previousBrowseAndSaveEnabledRef.current = browseAndSaveOfflineEnabled;
+        if (
+            settingHydrated
+            && wasEnabled !== browseAndSaveOfflineEnabled
+            && browseAndSaveOfflineEnabled
+            && networkStatus === 'online'
+        ) {
+            // Turning the setting on while Home is behind Settings saves the
+            // next recommendation page as soon as the user returns.
+            queueOfflineSavePage(sessionTokenRef.current);
+        }
+    }, [browseAndSaveOfflineEnabled, networkStatus, queueOfflineSavePage, settingHydrated]));
 
     const refreshHome = useCallback(async (loadMoreWhenDisabled: boolean) => {
         await loadDataRef.current?.(true);
@@ -769,11 +806,11 @@ const HomeScreen = () => {
             setFeedList([]);
             sessionTokenRef.current = '';
             getApiInstance(cookies);
-            void loadDataRef.current?.(true).then(() => loadDataRef.current?.(false));
+            void refreshHome(true);
         }
 
         previousNetworkStatusRef.current = networkStatus;
-    }, [contentHydrated, cookies, networkStatus, settingHydrated, userHydrated, setFeedList]);
+    }, [contentHydrated, cookies, networkStatus, refreshHome, settingHydrated, userHydrated, setFeedList]);
 
     useEffect(() => {
         currentIndexRef.current = 0;

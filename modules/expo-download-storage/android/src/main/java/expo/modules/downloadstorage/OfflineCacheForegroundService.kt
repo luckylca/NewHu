@@ -13,7 +13,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import kotlin.math.roundToInt
 
-private const val CHANNEL_ID = "offline-cache"
+internal const val OFFLINE_CACHE_CHANNEL_ID = "offline-cache-v2"
 private const val NOTIFICATION_ID = 4201
 private const val WAKE_LOCK_TIMEOUT_MS = 6 * 60 * 60 * 1000L
 
@@ -54,8 +54,8 @@ class OfflineCacheForegroundService : Service() {
   private fun createNotificationChannel() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
     val manager = getSystemService(NotificationManager::class.java)
-    val channel = NotificationChannel(CHANNEL_ID, "离线缓存", NotificationManager.IMPORTANCE_LOW).apply {
-      description = "显示离线内容缓存进度并保持任务运行"
+    val channel = NotificationChannel(OFFLINE_CACHE_CHANNEL_ID, "离线缓存", NotificationManager.IMPORTANCE_DEFAULT).apply {
+      description = "显示离线内容缓存进度和完成提醒"
       setShowBadge(false)
     }
     manager.createNotificationChannel(channel)
@@ -87,8 +87,6 @@ class OfflineCacheForegroundService : Service() {
 
   private fun finishCaching(success: Int, failed: Int, message: String?) {
     releaseWakeLock()
-    stopForeground(STOP_FOREGROUND_REMOVE)
-    stopSelf()
 
     val resultText = message?.takeIf(String::isNotBlank)
       ?: if (failed > 0) "完成 $success 篇，$failed 篇失败" else "已完成 $success 篇离线缓存"
@@ -99,8 +97,12 @@ class OfflineCacheForegroundService : Service() {
       .setCategory(Notification.CATEGORY_STATUS)
       .setAutoCancel(true)
       .setOnlyAlertOnce(true)
+      .setOngoing(false)
       .build()
-    getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification)
+    val manager = getSystemService(NotificationManager::class.java)
+    stopForeground(STOP_FOREGROUND_DETACH)
+    manager.notify(NOTIFICATION_ID, notification)
+    stopSelf()
   }
 
   private fun stopCaching() {
@@ -111,7 +113,7 @@ class OfflineCacheForegroundService : Service() {
 
   private fun notificationBuilder(): Notification.Builder {
     val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      Notification.Builder(this, CHANNEL_ID)
+      Notification.Builder(this, OFFLINE_CACHE_CHANNEL_ID)
     } else {
       @Suppress("DEPRECATION")
       Notification.Builder(this)

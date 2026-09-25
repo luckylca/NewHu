@@ -45,7 +45,8 @@ export function savePdfToDownloads(sourceUri: string, fileName: string) {
 export async function ensureOfflineCacheNotificationPermission() {
     const module = getNativeModule();
     if (module.hasNotificationPermission()) return true;
-    return Boolean((await module.requestNotificationPermission()).granted);
+    const result = await module.requestNotificationPermission();
+    return Boolean(result.granted && module.hasNotificationPermission());
 }
 
 export function startOfflineCacheForeground(total: number) {

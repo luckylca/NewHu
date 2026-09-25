@@ -3,7 +3,10 @@ import { getOfflinePin } from '@/src/db/repositories/offlineCacheRepository';
 import { upsertContent } from '@/src/db/repositories/contentRepository';
 import { cacheContentForOfflineFromId } from '@/src/services/offlineCacheService';
 import type { FeedItemInfo } from '@/src/types/zhihu';
+import { mapWithConcurrency } from '@/src/utils/mapWithConcurrency';
 import { normalizeRecommendItem } from './recommendFeedService';
+
+const CONTENT_CACHE_CONCURRENCY = 3;
 
 export type BrowseAndSaveResult = {
     fetched: number;
@@ -31,7 +34,7 @@ export async function fetchAndSaveRecommendationPage(options: {
     for (const item of candidates) unique.set(`${item.feedType}:${item.item.id}`, item);
 
     const result: BrowseAndSaveResult = { fetched: candidates.length, saved: 0, skipped: 0, failed: 0 };
-    for (const item of unique.values()) {
+    await mapWithConcurrency([...unique.values()], CONTENT_CACHE_CONCURRENCY, async (item) => {
         try {
             const existingPin = await getOfflinePin(item.item.id, item.feedType);
             const hasEnoughComments = existingPin?.rootCommentMode === 'all'
@@ -45,7 +48,7 @@ export async function fetchAndSaveRecommendationPage(options: {
                 && hasEnoughImages
             ) {
                 result.skipped += 1;
-                continue;
+                return;
             }
 
             // Preserve a body already included in the recommendation response. If it
@@ -62,7 +65,7 @@ export async function fetchAndSaveRecommendationPage(options: {
             result.failed += 1;
             console.warn('边看边存内容失败:', item.feedType, item.item.id, error);
         }
-    }
+    });
 
     return result;
 }

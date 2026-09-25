@@ -1,8 +1,10 @@
 package expo.modules.downloadstorage
 
 import android.Manifest
+import android.app.NotificationManager
 import android.content.ContentResolver
 import android.content.ContentValues
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -39,8 +41,7 @@ class ExpoDownloadStorageModule : Module() {
     }
 
     Function("hasNotificationPermission") {
-      Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-        appContext.permissions?.hasGrantedPermissions(Manifest.permission.POST_NOTIFICATIONS) == true
+      hasOfflineCacheNotificationPermission()
     }
 
     AsyncFunction("requestNotificationPermission") { promise: Promise ->
@@ -73,6 +74,18 @@ class ExpoDownloadStorageModule : Module() {
   }
 
   private fun requireReactContext() = appContext.reactContext ?: throw Exceptions.AppContextLost()
+
+  private fun hasOfflineCacheNotificationPermission(): Boolean {
+    val context = appContext.reactContext ?: return false
+    val runtimePermissionGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+      context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    if (!runtimePermissionGranted) return false
+
+    val manager = context.getSystemService(NotificationManager::class.java)
+    if (!manager.areNotificationsEnabled()) return false
+    return Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+      manager.getNotificationChannel(OFFLINE_CACHE_CHANNEL_ID)?.importance != NotificationManager.IMPORTANCE_NONE
+  }
 
   private suspend fun copyFileToDownloads(
     sourceUri: String,

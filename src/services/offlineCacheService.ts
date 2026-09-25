@@ -8,6 +8,7 @@ import { createCacheJob, purgeOfflineCacheRecords, removeOfflinePin, updateCache
 import type { OfflineCacheTarget } from '@/src/db/repositories/offlineCacheRepository';
 import { downloadResources, extractImageUrls, referenceResource } from './resourceService';
 import { File } from 'expo-file-system';
+import { runOfflineCacheRequest } from './offlineCacheRequestPacer';
 import type { FeedType } from '@/src/types/zhihu';
 import type { RootCommentMode } from '@/src/db/types';
 
@@ -36,7 +37,9 @@ async function cacheRootComments(contentId: string, contentType: FeedType, targe
     let next = page?.nextOffset || '';
     let isEnd = page?.isEnd ?? false;
     while (!isEnd && (target == null || cached.length < target)) {
-        const response = await api.getRootComments(contentId, contentType === 'answer' ? 'answers' : 'articles', next, orderBy);
+        const response = await runOfflineCacheRequest(() =>
+            api.getRootComments(contentId, contentType === 'answer' ? 'answers' : 'articles', next, orderBy),
+        );
         const incoming = (response?.data || []).map((item: any) => normalizeComment(item)).filter(Boolean);
         next = nextOffset(response?.paging?.next);
         isEnd = Boolean(response?.paging?.is_end) || !next;
@@ -62,7 +65,7 @@ async function cacheChildComments(contentId: string, contentType: FeedType, root
         let next = page?.nextOffset || '';
         let isEnd = page?.isEnd ?? false;
         while (!isEnd && cached.length < childLimit) {
-            const response = await api.getChildComments(root.id, next, orderBy);
+            const response = await runOfflineCacheRequest(() => api.getChildComments(root.id, next, orderBy));
             const incoming = (response?.data || []).map((item: any) => normalizeComment(item)).filter(Boolean);
             next = nextOffset(response?.paging?.next);
             isEnd = Boolean(response?.paging?.is_end) || !next;
@@ -229,6 +232,8 @@ export async function removeCachedContents(targets: OfflineCacheTarget[]) {
 export async function cacheContentFromId(contentId: string, contentType: FeedType, options: Omit<Parameters<typeof cacheContent>[0], 'content' | 'contentType'>) {
     const api = await ensureApi();
     options.onProgress?.(0.01);
-    const raw = contentType === 'answer' ? await api.getAnswer(contentId) : await api.getArticle(contentId);
+    const raw = await runOfflineCacheRequest(() =>
+        contentType === 'answer' ? api.getAnswer(contentId) : api.getArticle(contentId),
+    );
     return cacheContent({ content: normalizeContent(raw, contentType), contentType, ...options });
 }
