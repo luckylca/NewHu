@@ -8,24 +8,28 @@ import {
 import { topNamedInterests } from '@/src/product-v1/core/profile';
 import type { ProfileState } from '@/src/product-v1/core/types';
 import {
-  getProductV1ModelStatus,
-  getProductV1RuntimeAssetStatus,
-  importProductV1Model,
   loadProductV1Settings,
-  resetProductV1Runtime,
   updateProductV1Settings,
   useProductV1HealthStore,
   warmProductV1Runtime,
-  type ProductV1AssetDownloadProgress,
 } from '@/src/product-v1';
 import type { ProductV1Settings, ProductV1Trace } from '@/src/product-v1/types';
-import { PRODUCT_V1_RECOMMENDATION_DEMO, PRODUCT_V1_SEED_COUNT } from '@/src/product-v1/constants';
 import { Button, Card, Dialog, Divider, Icon, ListRow, SegmentedControl, Slider, Switch, Text, TopAppBar } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
+import { notify } from '@/src/stores/useNotificationStore';
 import { router } from 'expo-router';
 import React from 'react';
 import { ScrollView, View } from 'react-native';
-import { notify } from '@/src/stores/useNotificationStore';
+import { resolveRecommendationBackend, scopedRecommendationState } from '@/src/semantic-v2/recommendationBackend';
+import { resetSemanticV2Runtime } from '@/src/semantic-v2/badgeSelector';
+import {
+  checkSemanticV2RuntimeAssetUpdates,
+  ensureSemanticV2RuntimeAssets,
+  getSemanticV2RuntimeAssetStatus,
+  installSemanticV2RuntimeAssetUpdate,
+  type SemanticV2AssetDownloadProgress,
+  type SemanticV2RuntimeAssetUpdate,
+} from '@/src/semantic-v2/runtimeAssets';
 
 const INTEREST_LABELS: Record<string, string> = {
   AI: '人工智能', Anime: '动漫', Architecture: '建筑', Biology: '生物', Books: '阅读', Business: '商业',
@@ -42,12 +46,6 @@ const INTEREST_LABELS: Record<string, string> = {
 const INTEREST_OPTIONS = Object.keys(INTEREST_LABELS);
 
 const label = (interest: string) => INTEREST_LABELS[interest] ?? interest;
-const PRESS_FEEDBACK_DELAY_MS = 140;
-
-function waitForPressFeedback() {
-  return new Promise<void>((resolve) => setTimeout(resolve, PRESS_FEEDBACK_DELAY_MS));
-}
-
 export default function ProductV1Screen() {
   const theme = useTheme();
   const health = useProductV1HealthStore();
@@ -56,96 +54,111 @@ export default function ProductV1Screen() {
   const [profile, setProfile] = React.useState<ProfileState | null>(null);
   const [trace, setTrace] = React.useState<ProductV1Trace | null>(null);
   const [pickerVisible, setPickerVisible] = React.useState(false);
-  const [modelStatus, setModelStatus] = React.useState(() => getProductV1ModelStatus());
-  const [modelImporting, setModelImporting] = React.useState(false);
-  const [assetStatus, setAssetStatus] = React.useState(() => getProductV1RuntimeAssetStatus());
-  const [assetProgress, setAssetProgress] = React.useState<ProductV1AssetDownloadProgress | null>(null);
+  const [semanticAssets, setSemanticAssets] = React.useState(() => getSemanticV2RuntimeAssetStatus());
+  const [assetProgress, setAssetProgress] = React.useState<SemanticV2AssetDownloadProgress | null>(null);
   const [assetDownloading, setAssetDownloading] = React.useState(false);
-  const modelImportPending = React.useRef(false);
-  const assetDownloadPending = React.useRef(false);
+  const [checkingAssetUpdates, setCheckingAssetUpdates] = React.useState(false);
+  const [pendingAssetUpdate, setPendingAssetUpdate] = React.useState<SemanticV2RuntimeAssetUpdate | null>(null);
+  const [assetUpdateDialogVisible, setAssetUpdateDialogVisible] = React.useState(false);
+  const checkingAssetUpdatesRef = React.useRef(false);
 
   const reload = React.useCallback(async () => {
-    const [nextSettings, nextRatio, nextProfile, nextTrace] = await Promise.all([
-      loadProductV1Settings(),
-      loadProductState<RatioControllerStateV2>('ratio'),
-      loadProductState<ProfileState>('profile'),
+    const nextSettings = await loadProductV1Settings();
+    const backend = resolveRecommendationBackend(nextSettings.recommendationBackend, nextSettings.native512GeometryMode);
+    const [nextRatio, nextProfile, nextTrace] = await Promise.all([
+      loadProductState<RatioControllerStateV2>(scopedRecommendationState(backend.stateScope, 'ratio')),
+      loadProductState<ProfileState>(scopedRecommendationState(backend.stateScope, 'profile')),
       getLatestProductTrace(),
     ]);
     setSettings(nextSettings);
     setRatio(nextRatio ?? createRatioControllerV2([], 'AUTO'));
     setProfile(nextProfile);
     setTrace(nextTrace);
+    setSemanticAssets(getSemanticV2RuntimeAssetStatus());
+  }, []);
+
+  const checkForAssetUpdates = React.useCallback(async (notifyWhenCurrent: boolean) => {
+    if (checkingAssetUpdatesRef.current) return;
+    checkingAssetUpdatesRef.current = true;
+    setCheckingAssetUpdates(true);
+    try {
+      const update = await checkSemanticV2RuntimeAssetUpdates();
+      setSemanticAssets(getSemanticV2RuntimeAssetStatus());
+      if (update.changedAssets.length > 0) {
+        setPendingAssetUpdate(update);
+        setAssetUpdateDialogVisible(true);
+      } else if (notifyWhenCurrent) {
+        notify(`模型与 Seed 已是最新版本（Gitee v${update.latestVersion}）`);
+      }
+    } catch (error) {
+      console.warn('[SemanticV2] failed to check runtime asset updates', error);
+      if (notifyWhenCurrent) {
+        notify(error instanceof Error ? `检查更新失败：${error.message}` : '检查更新失败，请稍后重试');
+      }
+    } finally {
+      checkingAssetUpdatesRef.current = false;
+      setCheckingAssetUpdates(false);
+    }
   }, []);
 
   React.useEffect(() => {
     void reload();
-    const current = getProductV1RuntimeAssetStatus();
-    setAssetStatus(current);
-    setAssetDownloading(!current.installed);
-    void warmProductV1Runtime(setAssetProgress)
-      .then(() => {
-        setAssetStatus(getProductV1RuntimeAssetStatus());
-        setModelStatus(getProductV1ModelStatus());
-      })
-      .catch(() => undefined)
-      .finally(() => setAssetDownloading(false));
-  }, [reload]);
+    void warmProductV1Runtime().catch(() => undefined);
+    void checkForAssetUpdates(false);
+  }, [checkForAssetUpdates, reload]);
 
   const patchSettings = async (patch: Partial<ProductV1Settings>) => {
-    setSettings(await updateProductV1Settings(patch));
+    const next = await updateProductV1Settings(patch);
+    setSettings(next);
   };
 
-  const importModel = async () => {
-    if (modelImportPending.current) return;
-    modelImportPending.current = true;
-    setModelImporting(true);
-    try {
-      await waitForPressFeedback();
-      await importProductV1Model();
-      setModelStatus(getProductV1ModelStatus());
-      setAssetStatus(getProductV1RuntimeAssetStatus());
-      resetProductV1Runtime();
-      setAssetDownloading(true);
-      await warmProductV1Runtime(setAssetProgress);
-      setAssetStatus(getProductV1RuntimeAssetStatus());
-      notify({ message: '推荐模型已安装', duration: 3000 });
-    } catch (error) {
-      notify({ message: error instanceof Error ? error.message : '模型导入失败', duration: 4500 });
-    } finally {
-      modelImportPending.current = false;
-      setModelImporting(false);
-      setAssetDownloading(false);
-    }
-  };
-
-  const downloadAssets = async () => {
-    if (assetDownloadPending.current) return;
-    assetDownloadPending.current = true;
-    if (assetStatus.installed) {
-      notify({ message: '在线推荐资源已安装', duration: 2200 });
-      assetDownloadPending.current = false;
-      return;
-    }
+  const downloadSemanticAssets = async () => {
+    if (assetDownloading) return;
     setAssetDownloading(true);
     setAssetProgress(null);
     try {
-      await waitForPressFeedback();
-      resetProductV1Runtime();
-      await warmProductV1Runtime(setAssetProgress);
-      setAssetStatus(getProductV1RuntimeAssetStatus());
-      setModelStatus(getProductV1ModelStatus());
-      notify({ message: '在线推荐资源已安装', duration: 3000 });
-    } catch (error) {
-      notify({ message: error instanceof Error ? error.message : '在线推荐资源下载失败', duration: 4500 });
+      const status = await ensureSemanticV2RuntimeAssets(setAssetProgress);
+      setSemanticAssets(status);
+      resetSemanticV2Runtime();
+      await warmProductV1Runtime().catch(() => undefined);
     } finally {
-      assetDownloadPending.current = false;
       setAssetDownloading(false);
+      setAssetProgress(null);
+      setSemanticAssets(getSemanticV2RuntimeAssetStatus());
     }
   };
 
+  const downloadAssetUpdate = async () => {
+    if (!pendingAssetUpdate || assetDownloading) return;
+    setAssetUpdateDialogVisible(false);
+    setAssetDownloading(true);
+    setAssetProgress(null);
+    try {
+      const status = await installSemanticV2RuntimeAssetUpdate(pendingAssetUpdate, setAssetProgress);
+      setSemanticAssets(status);
+      setPendingAssetUpdate(null);
+      resetSemanticV2Runtime();
+      await warmProductV1Runtime().catch((error) => {
+        console.warn('[SemanticV2] runtime warm-up after update failed', error);
+      });
+      notify(`模型与 Seed 更新完成（Gitee v${status.version}）`);
+    } catch (error) {
+      console.error('[SemanticV2] runtime asset update failed', error);
+      notify(error instanceof Error ? `模型与 Seed 更新失败：${error.message}` : '模型与 Seed 更新失败，请稍后重试');
+    } finally {
+      setAssetDownloading(false);
+      setAssetProgress(null);
+      setSemanticAssets(getSemanticV2RuntimeAssetStatus());
+    }
+  };
+
+  const formatAssetBytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
   const persistRatio = async (next: RatioControllerStateV2) => {
+    if (!settings) return;
+    const backend = resolveRecommendationBackend(settings.recommendationBackend, settings.native512GeometryMode);
     setRatio({ ...next, entries: next.entries.map((entry) => ({ ...entry })) });
-    await saveProductState('ratio', 2, next);
+    await saveProductState(scopedRecommendationState(backend.stateScope, 'ratio'), 2, next);
   };
 
   const setRatioMode = async (mode: 'AUTO' | 'EXPLICIT') => {
@@ -167,51 +180,64 @@ export default function ProductV1Screen() {
     await persistRatio(next);
   };
 
-  const demoLabel = PRODUCT_V1_RECOMMENDATION_DEMO === 'V5_SOURCE_SCOPED_SEARCH_BACKGROUND'
-    ? 'V5 Source-Scoped 手机 Demo'
-    : PRODUCT_V1_RECOMMENDATION_DEMO;
+  const selectedBackend = settings
+    ? resolveRecommendationBackend(settings.recommendationBackend, settings.native512GeometryMode)
+    : resolveRecommendationBackend('native512', 'relevanceMax');
   const statusText = health.encoderReady
-    ? `${demoLabel} · 编码器正常 · 128D · ${health.seedCount} 种子\n活跃${health.activeCount}/备用${health.reserveCount}`
-    : health.lastError ? `降级运行 · ${health.lastError}` : `${demoLabel} · 等待首次推荐流初始化`;
-  const progressLabel = assetProgress?.phase === 'model'
-    ? '推荐模型'
-    : assetProgress?.phase === 'seed_bank'
-      ? '种子库'
-      : assetProgress?.phase === 'seed_embeddings' ? '种子向量' : '资源校验';
-  const onlineAssetSummary = assetDownloading
-    ? `正在下载 ${assetProgress?.percent ?? 0}% · ${progressLabel}`
-    : assetStatus.installed
-      ? `已安装 · ${(assetStatus.totalBytes / 1024 / 1024).toFixed(1)} MB · ${PRODUCT_V1_SEED_COUNT} 种子`
-      : `未完整安装 · 点击在线下载 ${(assetStatus.totalBytes / 1024 / 1024).toFixed(1)} MB`;
+    ? `${selectedBackend.label} · 编码器正常 · ${health.embeddingDimension}D · ${health.seedCount} 种子\n活跃${health.activeCount}/备用${health.reserveCount}`
+    : health.lastError ? `降级运行 · ${health.lastError}` : `${selectedBackend.label} · 等待首次推荐流初始化`;
+  const traceRatioSummary = trace
+    ? Object.entries(trace.ratioTarget)
+        .filter(([, target]) => target > 0)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([interest, target]) => `${label(interest)} ${Math.round(target * 100)}%→${Math.round((trace.ratioAchieved[interest] ?? 0) * 100)}%`)
+        .join(' · ')
+    : '';
+  const traceSearchSummary = trace
+    ? `Search请求 ${trace.searchRequestCount} · 前20展示 ${trace.searchDisplayedCount ?? 0} (${Math.round((trace.searchDisplayedShare ?? 0) * 100)}%)`
+    : '';
 
-  if (!settings || !ratio) return <View style={{ flex: 1, backgroundColor: theme.colors.background }}><TopAppBar title="Product V1 推荐" back={() => router.back()} /></View>;
+  if (!settings || !ratio) return <View style={{ flex: 1, backgroundColor: theme.colors.background }}><TopAppBar title="512D 推荐" back={() => router.back()} /></View>;
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <TopAppBar title="Product V1 · V5 Demo" back={() => router.back()} />
+      <TopAppBar title="Native512 推荐" back={() => router.back()} />
       <ScrollView contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl, gap: theme.spacing.lg }}>
         <Card feedback="none">
           <ListRow title="本地推荐运行时" summary={statusText} summaryNumberOfLines={2} trailing={<Switch value={settings.enabled} interactive={false} />} onPress={() => void patchSettings({ enabled: !settings.enabled })} />
           <Divider style={{ marginLeft: theme.spacing.lg }} />
           <ListRow
-            title="在线推荐资源"
-            summary={onlineAssetSummary}
-            icon={<Icon name={assetStatus.installed ? 'cloud-check-outline' : 'cloud-download-outline'} size={24} color={theme.colors.primary} />}
+            title="512D 语义推荐资源"
+            summary={assetDownloading && assetProgress
+              ? `正在下载 ${assetProgress.percent}% · ${assetProgress.currentFile || '校验资源'}`
+              : semanticAssets.installed
+                ? `Gitee v${semanticAssets.version} · 已安装 ${formatAssetBytes(semanticAssets.installedBytes)} · ${semanticAssets.totalFiles}/${semanticAssets.totalFiles} 文件`
+                : `未安装 · 点击下载 ${formatAssetBytes(semanticAssets.totalBytes)} · Gitee v${semanticAssets.version}`}
+            summaryNumberOfLines={2}
+            icon={<Icon name={semanticAssets.installed ? "cloud-check-outline" : "cloud-download-outline"} size={24} color={theme.colors.primary} />}
             disabled={assetDownloading}
-            onPress={() => void downloadAssets()}
+            onPress={() => void downloadSemanticAssets()}
           />
           <Divider style={{ marginLeft: theme.spacing.lg }} />
           <ListRow
-            title="手动导入模型"
-            summary={modelImporting
-              ? '正在导入并校验'
-              : modelStatus.installed
-                ? `已安装 · ${(modelStatus.size / 1024 / 1024).toFixed(1)} MB`
-                : '从本机选择 Tiny Encoder .onnx'}
-            icon={<Icon name={modelStatus.installed ? 'check-circle-outline' : 'download-outline'} size={24} color={theme.colors.primary} />}
-            disabled={modelImporting}
-            onPress={() => void importModel()}
+            title="检查模型与 Seed 更新"
+            summary={checkingAssetUpdates
+              ? '正在检查 Gitee 上的模型与 Seed 文件…'
+              : '自动检查更新，也可以随时手动检查'}
+            summaryNumberOfLines={2}
+            icon={<Icon name="cloud-download-outline" size={24} color={theme.colors.primary} />}
+            disabled={checkingAssetUpdates || assetDownloading}
+            onPress={() => void checkForAssetUpdates(true)}
           />
+          <Divider style={{ marginLeft: theme.spacing.lg }} />
+          <View style={{ padding: theme.spacing.lg }}>
+            <Text type="footnote1" weight="bold" color={theme.colors.primary} style={{ marginBottom: theme.spacing.sm }}>推荐语义后端</Text>
+            <Text type="body2" weight="medium">Native512 · RelevanceMax</Text>
+            <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary} style={{ marginTop: theme.spacing.sm }}>
+              推荐系统已整体升级到原生 512D。文章、用户画像、Seed、Topic Graph 与 Search Routing 统一使用同一 512D 语义空间。
+            </Text>
+          </View>
           <Divider style={{ marginLeft: theme.spacing.lg }} />
           <View style={{ padding: theme.spacing.lg }}>
             <Text type="footnote1" weight="bold" color={theme.colors.primary} style={{ marginBottom: theme.spacing.sm }}>运行模式</Text>
@@ -257,7 +283,10 @@ export default function ProductV1Screen() {
         <Card feedback="none">
           <ListRow
             title="最近运行"
-            summary={trace ? `${trace.status} · 推荐 ${trace.recommendationCount} · 搜索 ${trace.searchRequestCount} · ${new Date(trace.startedAt).toLocaleString()}` : '暂无 cycle'}
+            summary={trace
+              ? `${trace.status} · 系统推荐输入 ${trace.recommendationCount} · ${new Date(trace.startedAt).toLocaleString()}\n${traceSearchSummary}${traceRatioSummary ? `\n${traceRatioSummary}` : ''}`
+              : '暂无 cycle'}
+            summaryNumberOfLines={3}
             icon={<Icon name="chart-timeline-variant" size={24} color={theme.colors.primary} />}
           />
           {trace?.error ? <Text type="footnote1" color={theme.colors.error} style={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.lg }}>{trace.error}</Text> : null}
@@ -280,6 +309,32 @@ export default function ProductV1Screen() {
           })}
         </ScrollView>
         <View style={{ alignItems: 'flex-end', marginTop: theme.spacing.md }}><Button type="primary" onPress={() => setPickerVisible(false)}>完成</Button></View>
+      </Dialog>
+
+      <Dialog
+        visible={assetUpdateDialogVisible}
+        onClose={() => {
+          if (!assetDownloading) setAssetUpdateDialogVisible(false);
+        }}
+        closeOnClickModal={!assetDownloading}
+        title="发现模型与 Seed 更新"
+        summary={pendingAssetUpdate ? `Gitee v${pendingAssetUpdate.currentVersion} → v${pendingAssetUpdate.latestVersion}` : undefined}
+      >
+        {pendingAssetUpdate ? (
+          <>
+            <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>
+              更新文件：{pendingAssetUpdate.changedAssets.map((asset) => asset.label).join('、')}
+              {'\n'}下载大小：{formatAssetBytes(pendingAssetUpdate.changedAssets.reduce((sum, asset) => sum + asset.size, 0))}
+              {'\n'}下载后会校验 SHA-256，校验通过再替换本地运行资源。
+            </Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: theme.spacing.sm, marginTop: theme.spacing.lg }}>
+              <Button type="default" disabled={assetDownloading} onPress={() => setAssetUpdateDialogVisible(false)}>稍后</Button>
+              <Button type="primary" disabled={assetDownloading} onPress={() => void downloadAssetUpdate()}>
+                {assetDownloading && assetProgress ? `下载中 ${assetProgress.percent}%` : '下载并更新'}
+              </Button>
+            </View>
+          </>
+        ) : null}
       </Dialog>
     </View>
   );

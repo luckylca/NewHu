@@ -2,6 +2,7 @@ import type { FeedItemInfo, FeedType } from '@/src/types/zhihu';
 import type { CandidateArticle } from './core/candidateAcquisition';
 import type { ExposureHistoryState, ProfileState, RewardStatsState } from './core/types';
 import type { RatioControllerStateV2 } from './core/explicitInterestRatioV2';
+import type { Native512GeometryMode, RecommendationBackendId } from '@/src/semantic-v2/recommendationBackend';
 
 export type ProductV1Mode = 'live' | 'shadow';
 
@@ -13,6 +14,8 @@ export type ProductV1Settings = {
   mode: ProductV1Mode;
   highQualityEnabled: boolean;
   bubbleBreakEnabled: boolean;
+  recommendationBackend: RecommendationBackendId;
+  native512GeometryMode: Native512GeometryMode;
 };
 
 export type ProductV1RuntimeState = {
@@ -37,13 +40,23 @@ export type ProductV1Trace = {
   recommendationCount: number;
   searchRequestCount: number;
   searchSeedIds: string[];
+  searchUnitKeys?: string[];
+  searchDisplayedCount?: number;
+  searchDisplayedShare?: number;
+  autoSearchProactiveRequestCount?: number;
   bubbleBreakEnabled?: boolean;
   bubbleSearchRequestCount?: number;
   bubbleSeedIds?: string[];
   bubbleDisplayedCount?: number;
+  recommendationBackend?: RecommendationBackendId;
+  native512GeometryMode?: Native512GeometryMode;
+  embeddingDimension?: number;
   reserveActivated: number;
   reserveInserted: number;
   desiredSupply: Record<string, number>;
+  rawActiveSupply?: Record<string, number>;
+  displayableSupply?: Record<string, number>;
+  searchDisplayQuota?: Record<string, number>;
   deficits: Record<string, number>;
   activeCount: number;
   reserveCount: number;
@@ -73,6 +86,8 @@ export type ProductV1Health = {
   phase: 'idle' | 'initializing' | 'ready' | 'degraded' | 'running';
   encoderReady: boolean;
   encoderNorm: number | null;
+  recommendationBackend: RecommendationBackendId;
+  embeddingDimension: number;
   seedCount: number;
   activeCount: number;
   reserveCount: number;

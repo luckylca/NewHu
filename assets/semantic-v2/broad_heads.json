@@ -1,0 +1,155 @@
+{
+  "domainOrder": [
+    "AI",
+    "Anime",
+    "Architecture",
+    "Beauty / Personal Care",
+    "Biology",
+    "Books",
+    "Business",
+    "Career",
+    "Cars",
+    "Cloud",
+    "Consumer Electronics",
+    "Crypto",
+    "Cybersecurity",
+    "Databases",
+    "Design",
+    "Digital Life",
+    "Economics",
+    "Education",
+    "Embedded",
+    "Entrepreneurship",
+    "Fashion",
+    "Film",
+    "Finance",
+    "Fitness",
+    "Food",
+    "Games",
+    "Hardware",
+    "History",
+    "Home",
+    "Investing",
+    "Law",
+    "Lifestyle",
+    "Mathematics",
+    "Medicine",
+    "Mobile",
+    "Music",
+    "Open Source",
+    "Operating Systems",
+    "Parenting",
+    "Philosophy",
+    "Photography",
+    "Physics",
+    "Politics",
+    "Programming",
+    "Psychology",
+    "Quant",
+    "Relationships",
+    "Robotics",
+    "Science",
+    "Sports",
+    "Technology",
+    "Travel",
+    "Video",
+    "Writing / Creative Writing"
+  ],
+  "activation": "GELU",
+  "heads": {
+    "title": {
+      "architecture": "Linear(512,128)->GELU->Linear(128,54)",
+      "hidden": 128,
+      "tensors": [
+        {
+          "name": "0.weight",
+          "shape": [
+            128,
+            512
+          ],
+          "dtype": "float32-le",
+          "offsetBytes": 0,
+          "lengthBytes": 262144
+        },
+        {
+          "name": "0.bias",
+          "shape": [
+            128
+          ],
+          "dtype": "float32-le",
+          "offsetBytes": 262144,
+          "lengthBytes": 512
+        },
+        {
+          "name": "2.weight",
+          "shape": [
+            54,
+            128
+          ],
+          "dtype": "float32-le",
+          "offsetBytes": 262656,
+          "lengthBytes": 27648
+        },
+        {
+          "name": "2.bias",
+          "shape": [
+            54
+          ],
+          "dtype": "float32-le",
+          "offsetBytes": 290304,
+          "lengthBytes": 216
+        }
+      ],
+      "strict2528Accuracy": 0.7302215189873418,
+      "kd": 0.5
+    },
+    "excerpt": {
+      "architecture": "Linear(512,64)->GELU->Linear(64,54)",
+      "hidden": 64,
+      "tensors": [
+        {
+          "name": "0.weight",
+          "shape": [
+            64,
+            512
+          ],
+          "dtype": "float32-le",
+          "offsetBytes": 290520,
+          "lengthBytes": 131072
+        },
+        {
+          "name": "0.bias",
+          "shape": [
+            64
+          ],
+          "dtype": "float32-le",
+          "offsetBytes": 421592,
+          "lengthBytes": 256
+        },
+        {
+          "name": "2.weight",
+          "shape": [
+            54,
+            64
+          ],
+          "dtype": "float32-le",
+          "offsetBytes": 421848,
+          "lengthBytes": 13824
+        },
+        {
+          "name": "2.bias",
+          "shape": [
+            54
+          ],
+          "dtype": "float32-le",
+          "offsetBytes": 435672,
+          "lengthBytes": 216
+        }
+      ],
+      "strict500Accuracy": 0.886,
+      "titleAccuracy": 0.71875,
+      "kd": 0.25,
+      "augmentationWeight": 0.9
+    }
+  }
+}

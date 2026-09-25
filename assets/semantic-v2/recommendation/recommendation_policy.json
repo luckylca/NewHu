@@ -1,0 +1,27 @@
+{
+  "version": "Native512ProductionPolicyV1",
+  "productionBackend": "native512",
+  "productionMode": "relevanceMax",
+  "embeddingDimension": 512,
+  "retrieval": "raw512",
+  "semanticScore": "raw512",
+  "interestAssignment": "raw512",
+  "profileUpdate": "raw512",
+  "diversity": "raw512",
+  "routing": "raw512",
+  "stateScope": "semantic_b_native512_relevanceMax",
+  "decision": "B Native512 RelevanceMax promoted as the sole production recommendation backend on 2026-09-24",
+  "evidence": [
+    "reports/unified_embedding_parallel_status_v9.json",
+    "reports/unified_ab_app_plaintext_behavior_v48.json",
+    "reports/unified_b512_microbalanced_app_plaintext_v49.json",
+    "reports/unified_b512_screenbalanced_app_plaintext_v50.json"
+  ],
+  "retiredRuntimePaths": [
+    "Product V1 128D",
+    "A Compat128",
+    "B MicroBalanced",
+    "screenBalanced"
+  ],
+  "badgePathUnchangedRaw512": true
+}

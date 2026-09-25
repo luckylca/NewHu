@@ -5,9 +5,40 @@ import type { FeedType } from '@/src/types/zhihu';
 import { Text } from '@/src/ui/primitives';
 import { badgeColorSeed, getDistinctBadgePalette } from '@/src/ui/badgePalette';
 import { useTheme } from '@/src/ui/theme';
+import { StableAsyncResultCache } from '@/src/utils/stableAsyncResultCache';
 import React from 'react';
 import { View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
+
+type BadgeClassificationInput = {
+  contentKey: string;
+  title: string;
+  excerpt: string;
+  feedType?: FeedType;
+  contentId?: string;
+  questionId?: string;
+  questionTopicIds?: string[];
+};
+
+const stableBadges = new StableAsyncResultCache<ProductV1DomainMatch[]>(500);
+
+function classify(input: BadgeClassificationInput, priority: ProductV1DomainClassificationPriority, signal: AbortSignal) {
+  return classifyProductV1Domains(input.contentKey, input.title, input.excerpt, {
+    feedType: input.feedType,
+    contentId: input.contentId,
+    questionId: input.questionId,
+    questionTopicIds: input.questionTopicIds,
+    priority,
+    signal,
+  });
+}
+
+function getStableBadges(input: BadgeClassificationInput) {
+  // Classify once when a card first becomes visible. The request is shared by
+  // every mount of this feed item, so virtualized scrolling cannot restart it
+  // or replace the capsule with a different low-priority guess.
+  return stableBadges.get(input.contentKey, () => classify(input, 'high', new AbortController().signal));
+}
 
 export function ProductDomainBadges({
   enabled,
@@ -33,48 +64,46 @@ export function ProductDomainBadges({
   style?: StyleProp<ViewStyle>;
 }) {
   const theme = useTheme();
-  const [domains, setDomains] = React.useState<ProductV1DomainMatch[]>([]);
+  const [classification, setClassification] = React.useState(() => ({
+    key: contentKey,
+    domains: [] as ProductV1DomainMatch[],
+  }));
+  const input: BadgeClassificationInput = {
+    contentKey,
+    title,
+    excerpt,
+    feedType,
+    contentId,
+    questionId,
+    questionTopicIds,
+  };
 
   React.useEffect(() => {
-    if (!enabled) {
-      setDomains([]);
+    if (!enabled || priority !== 'high') {
+      if (classification.key !== contentKey) {
+        setClassification({ key: contentKey, domains: [] });
+      }
       return;
     }
 
     let active = true;
-    const controller = new AbortController();
-    const classify = (effectivePriority: ProductV1DomainClassificationPriority) => classifyProductV1Domains(
-      contentKey,
-      title,
-      excerpt,
-      {
-        feedType,
-        contentId,
-        questionId,
-        questionTopicIds,
-        priority: effectivePriority,
-        signal: controller.signal,
-      },
-    );
-
-    // Show local/cached evidence first. Visible cards then enrich with Zhihu's
-    // native topics, so a one-time topic request never delays known local tags.
-    void classify(priority === 'high' ? 'low' : priority)
+    void getStableBadges(input)
       .then((matches) => {
-        if (active) setDomains(matches);
-        if (!active || priority !== 'high') return null;
-        return classify('high');
-      })
-      .then((matches) => {
-        if (active && matches) setDomains(matches);
+        if (active) setClassification({ key: contentKey, domains: matches });
       })
       .catch(() => undefined);
 
     return () => {
+      // Keep the shared request alive when this card leaves the render window.
+      // Its result is memoized and reused if the user scrolls back to it.
       active = false;
-      controller.abort();
     };
-  }, [contentId, contentKey, enabled, excerpt, feedType, priority, questionId, questionTopicIds, title]);
+  // Input is intentionally captured on the first visible render for this key.
+  // Updates caused by preview hydration or scrolling must not alter its label.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contentKey, enabled, priority]);
+
+  const domains = classification.key === contentKey ? classification.domains : [];
 
   if (!enabled || domains.length === 0) return null;
 

@@ -48,8 +48,8 @@ export default function PrivacyPersonalizationScreen() {
                         />
                         <Divider style={{ marginLeft: theme.spacing.lg }} />
                         <ListRow
-                            title="Product V1 推荐"
-                            summary="兴趣比例、运行模式与本地模型状态"
+                            title="Native512 推荐"
+                            summary="兴趣比例、运行模式与在线 512D 资源状态"
                             onPress={() => router.push('/product-v1' as any)}
                         />
                         <Divider style={{ marginLeft: theme.spacing.lg }} />

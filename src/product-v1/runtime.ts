@@ -2,7 +2,7 @@ import { yieldToUI } from './core/cooperative';
 import type { FeedItemInfo } from '@/src/types/zhihu';
 import { commitProductCycle, loadProductCandidates, loadProductState } from '@/src/db/repositories/productV1Repository';
 import { CandidateInventoryV3, supplyInterestV3 } from './core/candidateInventoryV3';
-import { candidateDuplicateKey, type CandidateArticle } from './core/candidateAcquisition';
+import { candidateDuplicateKey, type CandidateArticle, type SearchSeedCompact } from './core/candidateAcquisition';
 import { computeCandidateDeficits, desiredSupplyFromExplicit, desiredSupplyFromProfile } from './core/candidateDeficit';
 import { createExposureHistory, repetitionRate } from './core/exposureHistory';
 import { createProfileState, topNamedInterests } from './core/profile';
@@ -15,48 +15,61 @@ import {
   targetMapV2,
   type RatioControllerStateV2,
 } from './core/explicitInterestRatioV2';
-import { routeSearchSeedsV2Async, ROUTING_DOMAIN_SOFT_GATE, selectDiverseSearchSeedsV2 } from './core/searchSeedRouterV2';
-import { routeTopicGraphV1Async } from './core/searchTopicGraphV1';
+import { routeSearchSeedsV2Async, ROUTING_DOMAIN_SOFT_GATE } from './core/searchSeedRouterV2';
+import { routeTopicGraphV1Async, topicGraphBroadDomainVector } from './core/searchTopicGraphV1';
 import { highQualityEligibleV2 } from './core/highQualityAcquisitionV2';
+import {
+  AUTO_SEARCH_EXPLORATION_TARGET,
+  AUTO_SEARCH_MAX_PROACTIVE_REQUESTS,
+  displayableSupplySnapshot,
+  nextSearchOffset,
+  pruneSearchUnitHistory,
+  recordSearchUnit,
+  reserveCapForDesiredSupply,
+  SEARCH_CANDIDATES_RETAINED_PER_REQUEST,
+  SEARCH_MAX_REQUESTS_PER_CYCLE,
+  searchDisplayQuota,
+  searchRequestBudget,
+  searchSeedFamily,
+  searchUnitKey,
+  selectSearchSeedUnit,
+  type SearchPageOffset,
+  type SearchUnitHistoryEntry,
+} from './core/searchAcquisitionV4';
 import { bubbleSlotCount, sampleDomainSeed } from './core/bubbleBreakPolicy';
 import type { ExposureHistoryState, ProfileState, RewardStatsState, ScoreBreakdown } from './core/types';
-import { cosineSimilarity, encodeArticle, resetProductV1Encoder, verifyProductV1Encoder } from './encoder';
-import {
-  loadProductV1SeedBankAsync,
-  loadProductV1SeedEmbeddings,
-  loadProductV1TopicGraphAsync,
-  loadProductV1TopicGraphEmbeddings,
-  resetProductV1AssetCache,
-} from './assets';
 import { fetchProductSearch } from './sourceAdapter';
 import { loadProductV1Settings } from './settings';
 import { PRODUCT_V1_SCHEMA, PRODUCT_V1_VERSION } from './constants';
 import { updateProductV1Health } from './store';
 import type { ProductV1CandidateRecord, ProductV1RuntimeState, ProductV1Trace } from './types';
-import {
-  ensureProductV1RuntimeAssets,
-  ensureProductV1TopicGraphAssets,
-  type ProductV1AssetDownloadProgress,
-} from './runtimeAssets';
 import { buildProductV1RecommendationReason } from './recommendationReason';
 import { semanticExcerpt, semanticTitle } from './semanticInput';
-import { PRODUCT_V1_DEMO_GEOMETRY_VERSION, sourceScopedV5Embedding } from './v5Geometry';
 import {
   capAutoDesiredSupply,
   composeBubbleDisplayRecords,
-  MAX_SEARCH_CANDIDATES_PER_SEED,
+  promoteAutoSearchExploration,
   selectDiverseDisplayRecords,
 } from './displayPolicy';
+import {
+  resetRecommendationBackendRuntime,
+  resolveRecommendationBackend,
+  scopedRecommendationCandidateNamespace,
+  scopedRecommendationState,
+  type RecommendationBackend,
+} from '@/src/semantic-v2/recommendationBackend';
+import { cosineRecommendationVector, scoreInterestGeometries } from '@/src/semantic-v2/recommendationGeometry';
 
 type RuntimeMemory = ProductV1RuntimeState & {
+  backend: RecommendationBackend;
   inventory: CandidateInventoryV3;
   records: Map<string, ProductV1CandidateRecord>;
-  recentSearchSeedIds: string[];
+  searchUnitHistory: SearchUnitHistoryEntry[];
 };
 
 let memoryPromise: Promise<RuntimeMemory> | null = null;
 let runtimeQueue: Promise<unknown> = Promise.resolve();
-let initialized = false;
+let initializedBackendScope: string | null = null;
 
 function id(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -68,15 +81,21 @@ function enqueue<T>(task: () => Promise<T>) {
   return run;
 }
 
-async function loadMemory(mode: 'live' | 'shadow'): Promise<RuntimeMemory> {
-  const profile = await loadProductState<ProfileState>('profile') ?? createProfileState();
-  const rewardStats = await loadProductState<RewardStatsState>('rewardStats') ?? createRewardStats();
-  const exposureHistory = await loadProductState<ExposureHistoryState>('exposureHistory') ?? createExposureHistory();
-  const used = await loadProductState<string[]>('used') ?? [];
-  const recentSearchSeedIds = await loadProductState<string[]>('recentSearchSeedIds') ?? [];
-  let ratio = await loadProductState<RatioControllerStateV2>('ratio');
+async function loadMemory(mode: 'live' | 'shadow', backend: RecommendationBackend): Promise<RuntimeMemory> {
+  const state = (component: string) => scopedRecommendationState(backend.stateScope, component);
+  const profile = await loadProductState<ProfileState>(state('profile')) ?? createProfileState();
+  const rewardStats = await loadProductState<RewardStatsState>(state('rewardStats')) ?? createRewardStats();
+  const exposureHistory = await loadProductState<ExposureHistoryState>(state('exposureHistory')) ?? createExposureHistory();
+  const used = await loadProductState<string[]>(state('used')) ?? [];
+  const searchUnitHistory = pruneSearchUnitHistory(
+    await loadProductState<SearchUnitHistoryEntry[]>(state('searchUnitHistory')) ?? [],
+  );
+  let ratio = await loadProductState<RatioControllerStateV2>(state('ratio'));
   if (!ratio || ratio.version !== 2) ratio = createRatioControllerV2([], 'AUTO');
-  const namespaces = mode === 'shadow' ? ['shadow_active', 'shadow_reserve'] : ['active', 'reserve'];
+  const namespaces = [
+    scopedRecommendationCandidateNamespace(backend.stateScope, mode, 'active'),
+    scopedRecommendationCandidateNamespace(backend.stateScope, mode, 'reserve'),
+  ];
   const stored = await loadProductCandidates(namespaces);
   const inventory = new CandidateInventoryV3();
   const records = new Map<string, ProductV1CandidateRecord>();
@@ -90,31 +109,38 @@ async function loadMemory(mode: 'live' | 'shadow'): Promise<RuntimeMemory> {
     if (!inventory.used.has(record.candidate.duplicateKey)) inventory.reserve.set(record.candidate.duplicateKey, record.candidate);
   }
   inventory.pruneReserve();
-  return { profile, rewardStats, exposureHistory, ratio, used, inventory, records, recentSearchSeedIds };
+  return { backend, profile, rewardStats, exposureHistory, ratio, used, inventory, records, searchUnitHistory };
 }
 
-async function initializeProductV1(onProgress?: (progress: ProductV1AssetDownloadProgress) => void) {
-  if (initialized) return;
-  updateProductV1Health({ phase: 'initializing', lastError: null });
+function backendFromSettings(settings: Awaited<ReturnType<typeof loadProductV1Settings>>) {
+  return resolveRecommendationBackend(settings.recommendationBackend, settings.native512GeometryMode);
+}
+
+async function initializeProductV1(selectedBackend?: RecommendationBackend) {
+  const backend = selectedBackend ?? backendFromSettings(await loadProductV1Settings());
+  const backendScope = `${backend.id}:${backend.stateScope}`;
+  if (initializedBackendScope === backendScope) return;
+  updateProductV1Health({
+    phase: 'initializing',
+    lastError: null,
+    recommendationBackend: backend.id,
+    embeddingDimension: backend.embeddingDimension,
+  });
   try {
-    await ensureProductV1RuntimeAssets(onProgress);
-    const seedBank = await loadProductV1SeedBankAsync();
-    await loadProductV1SeedEmbeddings();
-    // Search Topic Graph V1 is the promoted additive extension. Its cloud
-    // assets are best-effort so the frozen Seed Router V2 remains usable as
-    // the documented rollback route when the extension is unavailable.
-    try {
-      const graphStatus = await ensureProductV1TopicGraphAssets();
-      if (graphStatus.topicGraphReady) {
-        await loadProductV1TopicGraphAsync();
-        await loadProductV1TopicGraphEmbeddings();
-      }
-    } catch {
-      // Fallback is intentional; acquireSearch() will use Seed Router V2.
-    }
-    const norm = await verifyProductV1Encoder();
-    initialized = true;
-    updateProductV1Health({ phase: 'ready', encoderReady: true, encoderNorm: norm, seedCount: seedBank.seedCount });
+    const seedBank = await backend.loadSeedBank();
+    await backend.loadSeedEmbeddings();
+    const graph = await backend.loadTopicGraph();
+    if (graph) await backend.loadTopicGraphEmbeddings();
+    const norm = await backend.verify();
+    initializedBackendScope = backendScope;
+    updateProductV1Health({
+      phase: 'ready',
+      encoderReady: true,
+      encoderNorm: norm,
+      seedCount: seedBank.seedCount,
+      recommendationBackend: backend.id,
+      embeddingDimension: backend.embeddingDimension,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     updateProductV1Health({ phase: 'degraded', encoderReady: false, lastError: message });
@@ -122,15 +148,14 @@ async function initializeProductV1(onProgress?: (progress: ProductV1AssetDownloa
   }
 }
 
-export function warmProductV1Runtime(onProgress?: (progress: ProductV1AssetDownloadProgress) => void) {
-  return enqueue(() => initializeProductV1(onProgress));
+export function warmProductV1Runtime() {
+  return enqueue(() => initializeProductV1());
 }
 
 export function resetProductV1Runtime() {
-  initialized = false;
+  initializedBackendScope = null;
   memoryPromise = null;
-  resetProductV1AssetCache();
-  resetProductV1Encoder();
+  resetRecommendationBackendRuntime();
   updateProductV1Health({ phase: 'idle', encoderReady: false, encoderNorm: null, lastError: null });
 }
 
@@ -180,7 +205,9 @@ function toCandidate(feed: FeedItemInfo, source: 'recommendation' | 'search', cy
   };
 }
 
-function interestVectors(memory: RuntimeMemory) {
+type InterestGeometry = 'profile' | 'routing' | 'semantic' | 'assignment';
+
+function interestVectors(memory: RuntimeMemory, geometry: InterestGeometry = 'profile') {
   const output: Record<string, Float32Array> = {};
   const weights: Record<string, number> = {};
   for (const center of memory.profile.centers) {
@@ -188,7 +215,13 @@ function interestVectors(memory: RuntimeMemory) {
       const record = [...memory.records.values()].find((item) => item.candidate.articleId === exemplar.articleId);
       const embedding = record?.candidate.encoderEmbedding;
       if (!embedding || !record) continue;
-      const scoringEmbedding = sourceScopedV5Embedding(embedding, record.candidate.source);
+      const scoringEmbedding = geometry === 'profile'
+        ? memory.backend.profileEmbedding(embedding, record.candidate.source)
+        : geometry === 'routing'
+          ? memory.backend.routingCenterEmbedding(embedding, record.candidate.source)
+          : geometry === 'semantic'
+            ? memory.backend.semanticEmbedding(embedding, record.candidate.source)
+            : memory.backend.assignmentEmbedding(embedding, record.candidate.source);
       for (const tag of center.tags) {
         output[tag] ??= new Float32Array(scoringEmbedding.length);
         weights[tag] = (weights[tag] ?? 0) + exemplar.weight;
@@ -203,21 +236,35 @@ function interestVectors(memory: RuntimeMemory) {
   return output;
 }
 
-async function enrichCandidate(candidate: CandidateArticle, memory: RuntimeMemory, targetInterest?: string) {
+async function enrichCandidate(
+  candidate: CandidateArticle,
+  memory: RuntimeMemory,
+  targetInterest?: string,
+  targetCenterOverride?: ArrayLike<number>,
+) {
   await yieldToUI();
-  const embedding = await encodeArticle(candidate);
+  const embedding = await memory.backend.encodeArticle(candidate);
   candidate.encoderEmbedding = Array.from(embedding);
-  candidate.rawMetadata.demoGeometry = PRODUCT_V1_DEMO_GEOMETRY_VERSION;
-  const scoringEmbedding = sourceScopedV5Embedding(embedding, candidate.source);
-  const centers = interestVectors(memory);
-  const matches = Object.entries(centers)
-    .map(([interest, center]) => [interest, cosineSimilarity(scoringEmbedding, center)] as const)
-    .sort((a, b) => b[1] - a[1]);
+  candidate.rawMetadata.demoGeometry = memory.backend.geometryVersion;
+  candidate.rawMetadata.recommendationBackend = memory.backend.id;
+  const semanticEmbedding = memory.backend.semanticEmbedding(embedding, candidate.source);
+  const assignmentEmbedding = memory.backend.assignmentEmbedding(embedding, candidate.source);
+  const semanticCenters = interestVectors(memory, 'semantic');
+  const assignmentCenters = interestVectors(memory, 'assignment');
+  const { semanticScores, assignmentMatches, bestSemanticScore } = scoreInterestGeometries(
+    semanticEmbedding,
+    assignmentEmbedding,
+    semanticCenters,
+    assignmentCenters,
+  );
 
-  if (!targetInterest) {
-    const bank = await loadProductV1SeedBankAsync();
-    const seedEmbeddings = await loadProductV1SeedEmbeddings();
-    const routed = await routeSearchSeedsV2Async(embedding, bank, seedEmbeddings, {
+  // Product V1 / A preserve the established seed-domain fusion. Native512 follows the
+  // final research contract: assignment geometry chooses the interest, while raw512
+  // remains the relevance geometry. Seed routing is only a cold-start fallback for B.
+  if (!targetInterest && (memory.backend.id !== 'native512' || assignmentMatches.length === 0)) {
+    const bank = await memory.backend.loadSeedBank();
+    const seedEmbeddings = await memory.backend.loadSeedEmbeddings();
+    const routed = await routeSearchSeedsV2Async(memory.backend.candidateRoutingEmbedding(embedding), bank, seedEmbeddings, {
       primaryDomains: [],
       variant: 'GLOBAL_COSINE',
       topK: 12,
@@ -230,24 +277,29 @@ async function enrichCandidate(candidate: CandidateArticle, memory: RuntimeMemor
       ));
     }
     for (const [domain, score] of broadDomains) {
-      const existing = matches.findIndex(([interest]) => interest === domain);
-      if (existing >= 0) matches[existing] = [domain, Math.max(matches[existing][1], score)];
-      else matches.push([domain, score]);
+      semanticScores.set(domain, Math.max(semanticScores.get(domain) ?? -1, score));
+      const existing = assignmentMatches.findIndex(([interest]) => interest === domain);
+      if (existing >= 0) assignmentMatches[existing] = [domain, Math.max(assignmentMatches[existing][1], score)];
+      else assignmentMatches.push([domain, score]);
     }
-    matches.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    assignmentMatches.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }
 
-  candidate.matchedInterestIds = matches.map(([interest]) => interest);
-  candidate.matchedInterestScores = matches.map(([, score]) => score);
-  candidate.bestMatchedInterest = matches[0]?.[0] ?? null;
-  candidate.bestSemanticScore = matches[0]?.[1] ?? 0;
-  candidate.qualified = targetInterest
-    ? (matches.find(([interest]) => interest === targetInterest)?.[1] ?? cosineSimilarity(scoringEmbedding, centers[targetInterest] ?? scoringEmbedding)) >= 0.24
-    : candidate.bestSemanticScore >= 0.18;
+  const finalBestSemanticScore = semanticScores.size ? Math.max(...semanticScores.values()) : bestSemanticScore;
+  candidate.matchedInterestIds = assignmentMatches.map(([interest]) => interest);
+  candidate.matchedInterestScores = assignmentMatches.map(([interest]) => semanticScores.get(interest) ?? 0);
+  candidate.bestMatchedInterest = assignmentMatches[0]?.[0] ?? null;
+  candidate.bestSemanticScore = finalBestSemanticScore;
+  candidate.rawMetadata.assignmentScore = assignmentMatches[0]?.[1] ?? 0;
+  const targetCenter = targetInterest ? (semanticCenters[targetInterest] ?? targetCenterOverride) : undefined;
+  const targetSemanticScore = targetInterest
+    ? (semanticScores.get(targetInterest) ?? (targetCenter ? cosineRecommendationVector(semanticEmbedding, targetCenter) : 0))
+    : candidate.bestSemanticScore;
+  candidate.qualified = targetInterest ? targetSemanticScore >= 0.24 : candidate.bestSemanticScore >= 0.18;
   candidate.rejectionReason = candidate.qualified ? null : 'SEMANTIC_BELOW_THRESHOLD';
   if (targetInterest) {
     candidate.rawMetadata.targetInterest = targetInterest;
-    candidate.rawMetadata.TARGET_INTEREST_SCORE = matches.find(([interest]) => interest === targetInterest)?.[1] ?? candidate.bestSemanticScore;
+    candidate.rawMetadata.TARGET_INTEREST_SCORE = targetSemanticScore;
   }
 }
 
@@ -310,8 +362,125 @@ function rankActive(memory: RuntimeMemory): { records: ProductV1CandidateRecord[
   return { records: ordered.map((candidate) => memory.records.get(candidate.duplicateKey)!), scores };
 }
 
-function seedFamily(seed: { text: string; parentText?: string | null }) {
-  return (seed.parentText ?? seed.text).trim().toLocaleLowerCase();
+function activeSupplyCandidates(memory: RuntimeMemory, highQualityEnabled: boolean) {
+  return [...memory.inventory.active.values()].filter((candidate) => (
+    !memory.inventory.used.has(candidate.duplicateKey)
+    && candidate.qualified
+    && (!highQualityEnabled || highQualityEligibleV2(candidate))
+  ));
+}
+
+function selectTargetSearchSeedUnit(
+  seeds: Iterable<SearchSeedCompact>,
+  targetInterest: string,
+  history: SearchUnitHistoryEntry[],
+  usedFamiliesThisCycle: ReadonlySet<string>,
+) {
+  const rows = [...seeds];
+  const targetRows = rows.filter((seed) => seed.broadCategory === targetInterest);
+  return selectSearchSeedUnit(targetRows, history, usedFamiliesThisCycle)
+    ?? selectSearchSeedUnit(rows, history, usedFamiliesThisCycle);
+}
+
+async function routeSearchUnitForTarget(
+  memory: RuntimeMemory,
+  targetInterest: string,
+  center: ArrayLike<number>,
+  seedBank: Awaited<ReturnType<RecommendationBackend['loadSeedBank']>>,
+  seedEmbeddings: Int8Array,
+  topicGraph: Awaited<ReturnType<RecommendationBackend['loadTopicGraph']>>,
+  topicGraphEmbeddings: Int8Array | null,
+  usedFamiliesThisCycle: ReadonlySet<string>,
+) {
+  const seedById = new Map(seedBank.seeds.map((seed) => [seed.seedId, seed]));
+  if (topicGraph && topicGraphEmbeddings) {
+    const routedQueries = await routeTopicGraphV1Async(center, topicGraph, topicGraphEmbeddings, {
+      hintDomains: [targetInterest],
+      topKQueries: 60,
+    });
+    const routedSeeds = routedQueries
+      .map((route) => route.seedId ? seedById.get(route.seedId) ?? null : null)
+      .filter((seed): seed is SearchSeedCompact => Boolean(seed));
+    const selected = selectTargetSearchSeedUnit(
+      routedSeeds,
+      targetInterest,
+      memory.searchUnitHistory,
+      usedFamiliesThisCycle,
+    );
+    if (selected) return { ...selected, routingArchitecture: 'HIERARCHICAL_TOPIC_GRAPH_V1' };
+  }
+
+  const routedSeeds = await routeSearchSeedsV2Async(center, seedBank, seedEmbeddings, {
+    primaryDomains: [targetInterest],
+    variant: ROUTING_DOMAIN_SOFT_GATE,
+    topK: 60,
+  });
+  const selected = selectTargetSearchSeedUnit(
+    routedSeeds.map((row) => row.seed),
+    targetInterest,
+    memory.searchUnitHistory,
+    usedFamiliesThisCycle,
+  );
+  return selected ? { ...selected, routingArchitecture: 'SEED_ROUTER_V2' } : null;
+}
+
+async function fetchSearchUnit(
+  memory: RuntimeMemory,
+  targetInterest: string,
+  center: ArrayLike<number>,
+  seed: SearchSeedCompact,
+  offset: SearchPageOffset,
+  routingArchitecture: string,
+  activeAcceptLimit: number,
+  displayDeficit: number,
+  trace: ProductV1Trace,
+  highQualityEnabled: boolean,
+) {
+  if (trace.searchRequestCount > 0) {
+    await new Promise((resolve) => setTimeout(resolve, 1200 + Math.random() * 300));
+  }
+  const feeds = await fetchProductSearch(seed.text, offset, highQualityEnabled);
+  memory.searchUnitHistory = recordSearchUnit(memory.searchUnitHistory, seed.seedId, offset);
+  trace.searchRequestCount += 1;
+  trace.searchSeedIds.push(seed.seedId);
+  trace.searchUnitKeys = [...(trace.searchUnitKeys ?? []), searchUnitKey(seed.seedId, offset)];
+
+  const records = new Map<string, ProductV1CandidateRecord>();
+  const candidates: CandidateArticle[] = [];
+  for (const [index, feed] of feeds.entries()) {
+    const candidate = toCandidate(feed, 'search', trace.cycleId, index);
+    if (memory.inventory.used.has(candidate.duplicateKey) || memory.records.has(candidate.duplicateKey) || records.has(candidate.duplicateKey)) continue;
+    candidate.sourceQuery = seed.text;
+    candidate.searchSeedId = seed.seedId;
+    candidate.queries = [seed.text];
+    candidate.seedIds = [seed.seedId];
+    candidate.rawMetadata.searchRouting = routingArchitecture;
+    candidate.rawMetadata.searchOffset = offset;
+    candidate.rawMetadata.searchUnitKey = searchUnitKey(seed.seedId, offset);
+    await enrichCandidate(candidate, memory, targetInterest, center);
+    const record = { candidate, feed };
+    records.set(candidate.duplicateKey, record);
+    candidates.push(candidate);
+  }
+
+  const eligibleCandidates = highQualityEnabled ? candidates.filter(highQualityEligibleV2) : candidates;
+  const accepted = memory.inventory.acceptSearchBatchV4(
+    eligibleCandidates,
+    targetInterest,
+    activeAcceptLimit,
+    SEARCH_CANDIDATES_RETAINED_PER_REQUEST,
+    'freshness_first',
+    Date.now(),
+    displayDeficit,
+  );
+  trace.reserveInserted += accepted.reserveInserted;
+  for (const candidate of eligibleCandidates) {
+    if (memory.inventory.active.has(candidate.duplicateKey) || memory.inventory.reserve.has(candidate.duplicateKey)) {
+      const record = records.get(candidate.duplicateKey);
+      if (record) memory.records.set(candidate.duplicateKey, record);
+    }
+  }
+  return accepted;
 }
 
 async function acquireSearch(
@@ -319,100 +488,149 @@ async function acquireSearch(
   desiredSupply: Record<string, number>,
   trace: ProductV1Trace,
   highQualityEnabled: boolean,
+  explicit: boolean,
 ) {
-  const seedBank = await loadProductV1SeedBankAsync();
-  const seedEmbeddings = await loadProductV1SeedEmbeddings();
-  const topicGraph = await loadProductV1TopicGraphAsync();
-  const topicGraphEmbeddings = topicGraph ? await loadProductV1TopicGraphEmbeddings() : null;
-  const seedById = new Map(seedBank.seeds.map((seed) => [seed.seedId, seed]));
-  const usedSeeds = new Set<string>();
-  const usedFamilies = new Set<string>();
-  for (const seedId of memory.recentSearchSeedIds) {
-    usedSeeds.add(seedId);
-    const seed = seedById.get(seedId);
-    if (seed) usedFamilies.add(seedFamily(seed));
+  const seedBank = await memory.backend.loadSeedBank();
+  const seedEmbeddings = await memory.backend.loadSeedEmbeddings();
+  const topicGraph = await memory.backend.loadTopicGraph();
+  const topicGraphEmbeddings = topicGraph ? await memory.backend.loadTopicGraphEmbeddings() : null;
+  const usedFamiliesThisCycle = new Set<string>();
+  const requestsByInterest = new Map<string, number>();
+  const exhaustedInterests = new Set<string>();
+  const tolerance = explicit ? 0 : 1;
+
+  for (const [interest, desired] of Object.entries(desiredSupply)) {
+    memory.inventory.setReserveCap(interest, reserveCapForDesiredSupply(desired));
   }
-  for (const record of memory.records.values()) {
-    const ids = [...record.candidate.seedIds, ...(record.candidate.searchSeedId ? [record.candidate.searchSeedId] : [])];
-    for (const seedId of ids) {
-      usedSeeds.add(seedId);
-      const seed = seedById.get(seedId);
-      if (seed) usedFamilies.add(seedFamily(seed));
-    }
-  }
-  let requestCount = 0;
-  while (requestCount < 6) {
-    const deficits = computeCandidateDeficits(desiredSupply, memory.inventory.activeCounts())
-      .filter((deficit) => deficit.deficit > 0)
-      .sort((a, b) => b.normalizedDeficit - a.normalizedDeficit);
+
+  while (trace.searchRequestCount < SEARCH_MAX_REQUESTS_PER_CYCLE) {
+    const snapshot = displayableSupplySnapshot(activeSupplyCandidates(memory, highQualityEnabled), desiredSupply, explicit);
+    const deficits = computeCandidateDeficits(desiredSupply, snapshot.counts, tolerance)
+      .filter((deficit) => deficit.deficit > 0 && !exhaustedInterests.has(deficit.interestId))
+      .sort((a, b) => b.normalizedDeficit - a.normalizedDeficit || b.deficit - a.deficit);
     const target = deficits[0];
     if (!target) break;
-    const moved = memory.inventory.activateReserve(target.interestId, target.desiredSupply);
+
+    const quota = searchDisplayQuota(target.deficit, explicit);
+    const moved = memory.inventory.activateReserveDisplaySlots(target.interestId, target.deficit, quota);
     trace.reserveActivated += moved;
     if (moved > 0) continue;
-    const center = interestVectors(memory)[target.interestId];
-    if (!center) break;
-    let nextSeed = null as (typeof seedBank.seeds)[number] | null;
-    let routingArchitecture = 'SEED_ROUTER_V2';
 
-    if (topicGraph && topicGraphEmbeddings) {
-      const routedQueries = await routeTopicGraphV1Async(center, topicGraph, topicGraphEmbeddings, {
-        hintDomains: [target.interestId],
-        topKQueries: 60,
-      });
-      for (const query of routedQueries) {
-        if (!query.seedId) continue;
-        const candidateSeed = seedById.get(query.seedId);
-        if (!candidateSeed) continue;
-        if (usedSeeds.has(candidateSeed.seedId) || usedFamilies.has(seedFamily(candidateSeed))) continue;
-        nextSeed = candidateSeed;
-        routingArchitecture = 'HIERARCHICAL_TOPIC_GRAPH_V1';
-        break;
+    const perInterestBudget = searchRequestBudget(target.deficit, quota);
+    const alreadyRequested = requestsByInterest.get(target.interestId) ?? 0;
+    if (alreadyRequested >= perInterestBudget) {
+      exhaustedInterests.add(target.interestId);
+      continue;
+    }
+
+    const center = interestVectors(memory, 'routing')[target.interestId]
+      ?? (topicGraph && topicGraphEmbeddings
+        ? topicGraphBroadDomainVector(topicGraph, topicGraphEmbeddings, target.interestId)
+        : null);
+    if (!center) {
+      exhaustedInterests.add(target.interestId);
+      continue;
+    }
+
+    const selected = await routeSearchUnitForTarget(
+      memory,
+      target.interestId,
+      center,
+      seedBank,
+      seedEmbeddings,
+      topicGraph,
+      topicGraphEmbeddings,
+      usedFamiliesThisCycle,
+    );
+    if (!selected) {
+      exhaustedInterests.add(target.interestId);
+      continue;
+    }
+
+    usedFamiliesThisCycle.add(searchSeedFamily(selected.seed));
+    requestsByInterest.set(target.interestId, alreadyRequested + 1);
+    const activeAcceptLimit = Math.min(target.deficit, quota);
+    await fetchSearchUnit(
+      memory,
+      target.interestId,
+      center,
+      selected.seed,
+      selected.offset,
+      selected.routingArchitecture,
+      activeAcceptLimit,
+      target.deficit,
+      trace,
+      highQualityEnabled,
+    );
+  }
+
+  // AUTO keeps Search as a small, quality-guarded source of incremental content
+  // even when Recommendation inventory already satisfies the interest ratios.
+  if (!explicit && trace.searchRequestCount === 0 && AUTO_SEARCH_MAX_PROACTIVE_REQUESTS > 0) {
+    let snapshot = displayableSupplySnapshot(activeSupplyCandidates(memory, highQualityEnabled), desiredSupply, false);
+    let missingSearchSlots = Math.max(0, AUTO_SEARCH_EXPLORATION_TARGET - snapshot.totalDisplayableSearch);
+    if (missingSearchSlots > 0) {
+      const interests = Object.entries(desiredSupply)
+        .filter(([, desired]) => desired > 0)
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+      for (const [interest] of interests) {
+        if (missingSearchSlots <= 0) break;
+        const quota = searchDisplayQuota(0, false);
+        const moved = memory.inventory.activateReserveDisplaySlots(interest, missingSearchSlots, quota);
+        trace.reserveActivated += moved;
+        if (moved > 0) {
+          snapshot = displayableSupplySnapshot(activeSupplyCandidates(memory, highQualityEnabled), desiredSupply, false);
+          missingSearchSlots = Math.max(0, AUTO_SEARCH_EXPLORATION_TARGET - snapshot.totalDisplayableSearch);
+        }
       }
     }
 
-    if (!nextSeed) {
-      const routedSeeds = await routeSearchSeedsV2Async(center, seedBank, seedEmbeddings, {
-        primaryDomains: [target.interestId],
-        variant: ROUTING_DOMAIN_SOFT_GATE,
-        topK: 60,
-      });
-      const seeds = selectDiverseSearchSeedsV2(routedSeeds, 20);
-      nextSeed = seeds.find((row) => !usedSeeds.has(row.seed.seedId) && !usedFamilies.has(seedFamily(row.seed)))?.seed ?? null;
+    if (missingSearchSlots > 0) {
+      const interestSearchCounts = snapshot.searchCounts;
+      const target = Object.entries(desiredSupply)
+        .filter(([, desired]) => desired > 0)
+        .sort((a, b) => {
+          const aCoverage = (interestSearchCounts[a[0]] ?? 0) / Math.max(1, a[1]);
+          const bCoverage = (interestSearchCounts[b[0]] ?? 0) / Math.max(1, b[1]);
+          return aCoverage - bCoverage || b[1] - a[1] || a[0].localeCompare(b[0]);
+        })[0];
+      if (target) {
+        const [targetInterest] = target;
+        const center = interestVectors(memory, 'routing')[targetInterest]
+          ?? (topicGraph && topicGraphEmbeddings
+            ? topicGraphBroadDomainVector(topicGraph, topicGraphEmbeddings, targetInterest)
+            : null);
+        if (center) {
+          const selected = await routeSearchUnitForTarget(
+            memory,
+            targetInterest,
+            center,
+            seedBank,
+            seedEmbeddings,
+            topicGraph,
+            topicGraphEmbeddings,
+            usedFamiliesThisCycle,
+          );
+          if (selected) {
+            usedFamiliesThisCycle.add(searchSeedFamily(selected.seed));
+            const quota = searchDisplayQuota(0, false);
+            await fetchSearchUnit(
+              memory,
+              targetInterest,
+              center,
+              selected.seed,
+              selected.offset,
+              selected.routingArchitecture,
+              Math.min(missingSearchSlots, quota),
+              missingSearchSlots,
+              trace,
+              highQualityEnabled,
+            );
+            trace.autoSearchProactiveRequestCount = (trace.autoSearchProactiveRequestCount ?? 0) + 1;
+          }
+        }
+      }
     }
-
-    if (!nextSeed) break;
-    usedSeeds.add(nextSeed.seedId);
-    usedFamilies.add(seedFamily(nextSeed));
-    memory.recentSearchSeedIds = [...memory.recentSearchSeedIds, nextSeed.seedId].slice(-60);
-    if (requestCount > 0) await new Promise((resolve) => setTimeout(resolve, 1200 + Math.random() * 300));
-    const feeds = await fetchProductSearch(nextSeed.text, 0, highQualityEnabled);
-    requestCount += 1;
-    trace.searchRequestCount = requestCount;
-    trace.searchSeedIds.push(nextSeed.seedId);
-    const candidates: CandidateArticle[] = [];
-    for (const [index, feed] of feeds.entries()) {
-      const candidate = toCandidate(feed, 'search', trace.cycleId, index);
-      if (memory.inventory.used.has(candidate.duplicateKey) || memory.records.has(candidate.duplicateKey)) continue;
-      candidate.sourceQuery = nextSeed.text;
-      candidate.searchSeedId = nextSeed.seedId;
-      candidate.queries = [nextSeed.text];
-      candidate.seedIds = [nextSeed.seedId];
-      candidate.rawMetadata.searchRouting = routingArchitecture;
-      await enrichCandidate(candidate, memory, target.interestId);
-      memory.records.set(candidate.duplicateKey, { candidate, feed });
-      candidates.push(candidate);
-    }
-    const eligibleCandidates = highQualityEnabled ? candidates.filter(highQualityEligibleV2) : candidates;
-    const accepted = memory.inventory.acceptSearchBatch(
-      eligibleCandidates.slice(0, MAX_SEARCH_CANDIDATES_PER_SEED),
-      target.interestId,
-      target.desiredSupply,
-      1,
-      'freshness_first',
-    );
-    trace.reserveInserted += accepted.reserveInserted;
-    if (accepted.targetQualifiedUnique < 2 && requestCount >= 2) break;
   }
 }
 
@@ -424,31 +642,28 @@ async function acquireBubble(
 ) {
   const required = bubbleSlotCount(20, enabled, 'low');
   if (required === 0) return [];
-  const seedBank = await loadProductV1SeedBankAsync();
+  const seedBank = await memory.backend.loadSeedBank();
+  const topicGraph = await memory.backend.loadTopicGraph();
+  const topicGraphEmbeddings = topicGraph ? await memory.backend.loadTopicGraphEmbeddings() : null;
   const profileDomains = new Set(topNamedInterests(memory.profile, 9).map(([interest]) => interest));
-  const blockedSeedIds = new Set(memory.recentSearchSeedIds);
-  const blockedFamilies = new Set<string>();
-  for (const seedId of blockedSeedIds) {
-    const seed = seedBank.seeds.find((row) => row.seedId === seedId);
-    if (seed) blockedFamilies.add(seedFamily(seed));
-  }
   const available = seedBank.seeds
     .filter((seed) => seed.enabled
       && Boolean(seed.broadCategory)
       && !profileDomains.has(seed.broadCategory!)
-      && !blockedSeedIds.has(seed.seedId)
-      && !blockedFamilies.has(seedFamily(seed)))
+      && nextSearchOffset(seed.seedId, memory.searchUnitHistory) != null)
     .map((seed) => ({ ...seed, broadDomain: seed.broadCategory! }));
   const sampled = sampleDomainSeed(available, trace.cycleId, 0);
   const selected = sampled ? seedBank.seeds.find((seed) => seed.seedId === sampled.seedId) : null;
-  if (!selected?.broadCategory) return [];
+  const offset = selected ? nextSearchOffset(selected.seedId, memory.searchUnitHistory) : null;
+  if (!selected?.broadCategory || offset == null) return [];
 
   if (trace.searchRequestCount > 0) await new Promise((resolve) => setTimeout(resolve, 1200 + Math.random() * 300));
-  const feeds = await fetchProductSearch(selected.text, 0, highQualityEnabled);
+  const feeds = await fetchProductSearch(selected.text, offset, highQualityEnabled);
+  memory.searchUnitHistory = recordSearchUnit(memory.searchUnitHistory, selected.seedId, offset);
   trace.searchRequestCount += 1;
   trace.bubbleSearchRequestCount = (trace.bubbleSearchRequestCount ?? 0) + 1;
   trace.bubbleSeedIds = [...(trace.bubbleSeedIds ?? []), selected.seedId];
-  memory.recentSearchSeedIds = [...memory.recentSearchSeedIds, selected.seedId].slice(-60);
+  trace.searchUnitKeys = [...(trace.searchUnitKeys ?? []), searchUnitKey(selected.seedId, offset)];
 
   const records: ProductV1CandidateRecord[] = [];
   for (const [index, feed] of feeds.entries()) {
@@ -458,12 +673,16 @@ async function acquireBubble(
     candidate.searchSeedId = selected.seedId;
     candidate.queries = [selected.text];
     candidate.seedIds = [selected.seedId];
+    candidate.rawMetadata.searchOffset = offset;
+    candidate.rawMetadata.searchUnitKey = searchUnitKey(selected.seedId, offset);
     candidate.rawMetadata.sourcePolicy = 'bubble_break';
     candidate.rawMetadata.wasSerendipity = true;
     candidate.rawMetadata.bubbleDomain = selected.broadCategory;
-    await enrichCandidate(candidate, memory);
-    const domainIndex = candidate.matchedInterestIds.indexOf(selected.broadCategory);
-    const domainScore = domainIndex >= 0 ? candidate.matchedInterestScores[domainIndex] : 0;
+    const bubbleCenter = topicGraph && topicGraphEmbeddings
+      ? topicGraphBroadDomainVector(topicGraph, topicGraphEmbeddings, selected.broadCategory)
+      : null;
+    await enrichCandidate(candidate, memory, selected.broadCategory, bubbleCenter ?? undefined);
+    const domainScore = Number(candidate.rawMetadata.TARGET_INTEREST_SCORE ?? 0);
     candidate.qualified = domainScore >= 0.18;
     candidate.rejectionReason = candidate.qualified ? null : 'BUBBLE_DOMAIN_BELOW_THRESHOLD';
     candidate.rawMetadata.bubbleDomainScore = domainScore;
@@ -483,11 +702,26 @@ function recordsFor(memory: RuntimeMemory, source: Map<string, CandidateArticle>
   return [...source.keys()].map((key) => memory.records.get(key)).filter((record): record is ProductV1CandidateRecord => Boolean(record));
 }
 
+function profileExemplarRecords(memory: RuntimeMemory) {
+  const exemplarArticleIds = new Set(memory.profile.centers.flatMap((center) => center.exemplars.map((exemplar) => exemplar.articleId)));
+  if (!exemplarArticleIds.size) return [];
+  return [...memory.records.values()].filter((record) => exemplarArticleIds.has(record.candidate.articleId));
+}
+
+function mergePersistenceRecords(...groups: ProductV1CandidateRecord[][]) {
+  const byDuplicateKey = new Map<string, ProductV1CandidateRecord>();
+  for (const group of groups) {
+    for (const record of group) byDuplicateKey.set(record.candidate.duplicateKey, record);
+  }
+  return [...byDuplicateKey.values()];
+}
+
 async function runCycle(items: FeedItemInfo[]) {
   const settings = await loadProductV1Settings();
   if (!settings.enabled) return items;
-  await initializeProductV1();
-  const cycleId = id('cycle');
+  const backend = backendFromSettings(settings);
+  await initializeProductV1(backend);
+  const cycleId = id(`cycle-${backend.id}`);
   const trace: ProductV1Trace = {
     cycleId,
     mode: settings.mode,
@@ -500,6 +734,9 @@ async function runCycle(items: FeedItemInfo[]) {
     bubbleSearchRequestCount: 0,
     bubbleSeedIds: [],
     bubbleDisplayedCount: 0,
+    recommendationBackend: backend.id,
+    native512GeometryMode: settings.native512GeometryMode,
+    embeddingDimension: backend.embeddingDimension,
     reserveActivated: 0,
     reserveInserted: 0,
     desiredSupply: {},
@@ -510,8 +747,13 @@ async function runCycle(items: FeedItemInfo[]) {
     ratioTarget: {},
     ratioAchieved: {},
   };
-  updateProductV1Health({ phase: 'running', lastCycleId: cycleId });
-  const memory = await loadMemory(settings.mode);
+  updateProductV1Health({
+    phase: 'running',
+    lastCycleId: cycleId,
+    recommendationBackend: backend.id,
+    embeddingDimension: backend.embeddingDimension,
+  });
+  const memory = await loadMemory(settings.mode, backend);
   memoryPromise = Promise.resolve(memory);
   try {
     for (const [index, feed] of items.entries()) {
@@ -531,14 +773,37 @@ async function runCycle(items: FeedItemInfo[]) {
       : capAutoDesiredSupply(desiredSupplyFromProfile(targets));
     trace.desiredSupply = desired;
     trace.ratioTarget = targets;
-    await acquireSearch(memory, desired, trace, settings.highQualityEnabled);
+    const explicit = memory.ratio.mode === 'EXPLICIT';
+    await acquireSearch(memory, desired, trace, settings.highQualityEnabled, explicit);
     const bubbleRecords = await acquireBubble(memory, trace, settings.bubbleBreakEnabled, settings.highQualityEnabled);
-    trace.deficits = Object.fromEntries(computeCandidateDeficits(desired, memory.inventory.activeCounts()).map((row) => [row.interestId, row.deficit]));
+    const supplySnapshot = displayableSupplySnapshot(
+      activeSupplyCandidates(memory, settings.highQualityEnabled),
+      desired,
+      explicit,
+    );
+    trace.rawActiveSupply = memory.inventory.activeCounts();
+    trace.displayableSupply = supplySnapshot.counts;
+    trace.searchDisplayQuota = supplySnapshot.searchQuotaByInterest;
+    trace.deficits = Object.fromEntries(computeCandidateDeficits(
+      desired,
+      supplySnapshot.counts,
+      explicit ? 0 : 1,
+    ).map((row) => [row.interestId, row.deficit]));
     const ranked = rankActive(memory);
     const qualityEligible = settings.highQualityEnabled
       ? ranked.records.filter((record) => highQualityEligibleV2(record.candidate))
       : ranked.records;
-    const knownOrder = selectDiverseDisplayRecords(qualityEligible).slice(0, 80);
+    const diverseOrder = selectDiverseDisplayRecords(qualityEligible, {
+      searchQuotaByInterest: supplySnapshot.searchQuotaByInterest,
+    }).slice(0, 80);
+    const knownOrder = explicit
+      ? diverseOrder
+      : promoteAutoSearchExploration(
+          diverseOrder,
+          ranked.scores,
+          AUTO_SEARCH_EXPLORATION_TARGET,
+          20,
+        ).slice(0, 80);
     const liveOrder = composeBubbleDisplayRecords(knownOrder, bubbleRecords, settings.bubbleBreakEnabled).slice(0, 80);
     trace.bubbleDisplayedCount = liveOrder.filter((record) => record.candidate.rawMetadata.sourcePolicy === 'bubble_break').length;
     const achieved: Record<string, number> = {};
@@ -549,6 +814,8 @@ async function runCycle(items: FeedItemInfo[]) {
       const interest = supplyInterestV3(record.candidate);
       if (interest) achieved[interest] = (achieved[interest] ?? 0) + 1;
     }
+    trace.searchDisplayedCount = knownHorizon.filter((record) => record.candidate.source === 'search').length;
+    trace.searchDisplayedShare = trace.searchDisplayedCount / Math.max(1, knownHorizon.length);
     trace.ratioAchieved = Object.fromEntries(Object.entries(achieved).map(([key, count]) => [key, count / Math.max(1, knownHorizon.length)]));
     trace.activeCount = memory.inventory.active.size;
     trace.reserveCount = memory.inventory.reserve.size;
@@ -558,20 +825,30 @@ async function runCycle(items: FeedItemInfo[]) {
     else trace.displayedOrder = liveOrder.map((record) => record.candidate.articleId);
     await commitProductCycle({
       trace,
-      active: recordsFor(memory, memory.inventory.active),
+      // Keep profile exemplars persisted even after they are marked used. loadMemory()
+      // restores their records/embeddings but the `used` set prevents them from
+      // re-entering the active feed. This keeps 512D profile centers reconstructible
+      // across cycles and app restarts without resurfacing consumed content.
+      active: mergePersistenceRecords(
+        recordsFor(memory, memory.inventory.active),
+        profileExemplarRecords(memory),
+      ),
       reserve: recordsFor(memory, memory.inventory.reserve),
       states: [
-        { component: 'profile', schemaVersion: PRODUCT_V1_SCHEMA.profile, payload: memory.profile },
-        { component: 'rewardStats', schemaVersion: PRODUCT_V1_SCHEMA.rewardStats, payload: memory.rewardStats },
-        { component: 'exposureHistory', schemaVersion: PRODUCT_V1_SCHEMA.exposureHistory, payload: memory.exposureHistory },
-        { component: 'ratio', schemaVersion: 2, payload: memory.ratio },
-        { component: 'used', schemaVersion: 1, payload: [...memory.inventory.used] },
-        { component: 'recentSearchSeedIds', schemaVersion: 1, payload: memory.recentSearchSeedIds },
+        { component: scopedRecommendationState(backend.stateScope, 'profile'), schemaVersion: PRODUCT_V1_SCHEMA.profile, payload: memory.profile },
+        { component: scopedRecommendationState(backend.stateScope, 'rewardStats'), schemaVersion: PRODUCT_V1_SCHEMA.rewardStats, payload: memory.rewardStats },
+        { component: scopedRecommendationState(backend.stateScope, 'exposureHistory'), schemaVersion: PRODUCT_V1_SCHEMA.exposureHistory, payload: memory.exposureHistory },
+        { component: scopedRecommendationState(backend.stateScope, 'ratio'), schemaVersion: 2, payload: memory.ratio },
+        { component: scopedRecommendationState(backend.stateScope, 'used'), schemaVersion: 1, payload: [...memory.inventory.used] },
+        { component: scopedRecommendationState(backend.stateScope, 'searchUnitHistory'), schemaVersion: 1, payload: pruneSearchUnitHistory(memory.searchUnitHistory) },
       ],
+      activeNamespace: scopedRecommendationCandidateNamespace(backend.stateScope, settings.mode, 'active'),
+      reserveNamespace: scopedRecommendationCandidateNamespace(backend.stateScope, settings.mode, 'reserve'),
     });
     updateProductV1Health({
       phase: 'ready', activeCount: trace.activeCount, reserveCount: trace.reserveCount,
       lastCycleId: cycleId, lastCycleAt: trace.completedAt, lastError: null,
+      recommendationBackend: backend.id, embeddingDimension: backend.embeddingDimension,
     });
     if (settings.mode === 'shadow') return items;
     return liveOrder.map((record) => {
@@ -604,8 +881,12 @@ export function getProductV1Memory() {
   return memoryPromise;
 }
 
-export function ensureProductV1Memory() {
-  if (!memoryPromise) memoryPromise = loadMemory('live');
+export async function ensureProductV1Memory() {
+  if (!memoryPromise) {
+    const settings = await loadProductV1Settings();
+    const backend = backendFromSettings(settings);
+    memoryPromise = loadMemory('live', backend);
+  }
   return memoryPromise;
 }
 

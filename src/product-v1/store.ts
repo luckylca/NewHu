@@ -5,6 +5,8 @@ const initialHealth: ProductV1Health = {
   phase: 'idle',
   encoderReady: false,
   encoderNorm: null,
+  recommendationBackend: 'native512',
+  embeddingDimension: 512,
   seedCount: 0,
   activeCount: 0,
   reserveCount: 0,

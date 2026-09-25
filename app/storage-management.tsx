@@ -4,11 +4,16 @@ import { listOfflineCacheItems, getCacheSummary } from '@/src/db/repositories/of
 import type { OfflineCacheListItem } from '@/src/db/repositories/offlineCacheRepository';
 import { cleanupTransientCache } from '@/src/services/cacheCleanupService';
 import { removeCachedContents } from '@/src/services/offlineCacheService';
+import { resetProductV1Runtime } from '@/src/product-v1';
 import {
     getProductV1RuntimeStorageStatus,
     removeProductV1RuntimeAssets,
-    resetProductV1Runtime,
-} from '@/src/product-v1';
+} from '@/src/product-v1/runtimeAssets';
+import {
+    getSemanticV2RuntimeStorageStatus,
+    removeSemanticV2RuntimeAssets,
+} from '@/src/semantic-v2/runtimeAssets';
+import { resetSemanticV2Runtime } from '@/src/semantic-v2/badgeSelector';
 import { notify } from '@/src/stores/useNotificationStore';
 import { Button, Card, Dialog, Divider, Icon, Pressable, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
@@ -22,6 +27,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-na
 
 type CacheSummary = Awaited<ReturnType<typeof getCacheSummary>>;
 type RuntimeAssetStatus = ReturnType<typeof getProductV1RuntimeStorageStatus>;
+type SemanticRuntimeAssetStatus = ReturnType<typeof getSemanticV2RuntimeStorageStatus>;
 
 const EMPTY_SUMMARY: CacheSummary = {
     transientBytes: 0,
@@ -37,6 +43,7 @@ const EMPTY_SUMMARY: CacheSummary = {
 };
 
 const EMPTY_RUNTIME_ASSETS: RuntimeAssetStatus = { bytes: 0, fileCount: 0, installed: false };
+const EMPTY_SEMANTIC_RUNTIME_ASSETS: SemanticRuntimeAssetStatus = { bytes: 0, fileCount: 0, installed: false };
 
 function formatBytes(bytes: number) {
     if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
@@ -50,6 +57,7 @@ export default function StorageManagementScreen() {
     const [items, setItems] = useState<OfflineCacheListItem[]>([]);
     const [summary, setSummary] = useState<CacheSummary>(EMPTY_SUMMARY);
     const [runtimeAssets, setRuntimeAssets] = useState<RuntimeAssetStatus>(EMPTY_RUNTIME_ASSETS);
+    const [semanticRuntimeAssets, setSemanticRuntimeAssets] = useState<SemanticRuntimeAssetStatus>(EMPTY_SEMANTIC_RUNTIME_ASSETS);
     const [loading, setLoading] = useState(true);
     const [cleaning, setCleaning] = useState(false);
     const [managing, setManaging] = useState(false);
@@ -70,6 +78,7 @@ export default function StorageManagementScreen() {
             setItems(nextItems);
             setSummary(nextSummary);
             setRuntimeAssets(getProductV1RuntimeStorageStatus());
+            setSemanticRuntimeAssets(getSemanticV2RuntimeStorageStatus());
             setSelected((current) => {
                 const available = new Set(nextItems.map((item) => `${item.contentType}:${item.contentId}`));
                 return new Set([...current].filter((key) => available.has(key)));
@@ -177,14 +186,16 @@ export default function StorageManagementScreen() {
     };
 
     const removeRuntimeAssets = async () => {
-        if (runtimeDeleting || runtimeAssets.bytes <= 0) return;
+        const removableBytes = runtimeAssets.bytes + semanticRuntimeAssets.bytes;
+        if (runtimeDeleting || removableBytes <= 0) return;
         setRuntimeDeleting(true);
         try {
             resetProductV1Runtime();
-            const deletedBytes = removeProductV1RuntimeAssets();
+            resetSemanticV2Runtime();
+            const deletedBytes = removeProductV1RuntimeAssets() + removeSemanticV2RuntimeAssets();
             setRuntimeDeleteVisible(false);
             await reload();
-            notify(`已释放 ${formatBytes(deletedBytes)}，推荐资源可随时重新下载`);
+            notify(`已释放 ${formatBytes(deletedBytes)} 推荐运行资源；Native512 会在下次使用时自动重新下载`);
         } catch (error) {
             notify(error instanceof Error ? error.message : '推荐资源删除失败');
         } finally {
@@ -195,15 +206,16 @@ export default function StorageManagementScreen() {
     const segments = useMemo(() => [
         { value: summary.transientBytes, color: '#FFB340' },
         { value: summary.pinnedBytes, color: theme.colors.primary },
-        { value: summary.modelBytes + runtimeAssets.bytes, color: '#9A6CFF' },
+        { value: summary.modelBytes + runtimeAssets.bytes + semanticRuntimeAssets.bytes, color: '#9A6CFF' },
         { value: summary.readingBytes, color: '#35B67A' },
-    ], [runtimeAssets.bytes, summary.modelBytes, summary.pinnedBytes, summary.readingBytes, summary.transientBytes, theme.colors.primary]);
+    ], [runtimeAssets.bytes, semanticRuntimeAssets.bytes, summary.modelBytes, summary.pinnedBytes, summary.readingBytes, summary.transientBytes, theme.colors.primary]);
 
     const listHeader = useMemo(() => (
         <>
             <StorageOverview
                 summary={summary}
                 runtimeAssets={runtimeAssets}
+                semanticRuntimeAssets={semanticRuntimeAssets}
                 segments={segments}
                 cleaning={cleaning}
                 runtimeDeleting={runtimeDeleting}
@@ -225,7 +237,7 @@ export default function StorageManagementScreen() {
                 </Animated.View>
             </View>
         </>
-    ), [allSelected, clean, cleaning, items.length, loading, managing, runtimeAssets, runtimeDeleting, segments, selectionHeaderStyle, summary, theme, toggleAll]);
+    ), [allSelected, clean, cleaning, items.length, loading, managing, runtimeAssets, semanticRuntimeAssets, runtimeDeleting, segments, selectionHeaderStyle, summary, theme, toggleAll]);
 
     const renderItem = useCallback(({ item, index }: { item: OfflineCacheListItem; index: number }) => {
         const key = `${item.contentType}:${item.contentId}`;
@@ -302,8 +314,8 @@ export default function StorageManagementScreen() {
 
             <Dialog
                 visible={runtimeDeleteVisible}
-                title="删除在线推荐资源？"
-                summary={`将释放 ${formatBytes(runtimeAssets.bytes)}。用户画像、reward、浏览记录和离线内容都会保留；再次使用本地推荐时可重新下载。`}
+                title="删除推荐运行资源？"
+                summary={`将释放 ${formatBytes(runtimeAssets.bytes + semanticRuntimeAssets.bytes)} 下载文件。Native512 下次使用时会从 Gitee 自动重新下载；用户画像、reward、浏览记录和离线内容都会保留。`}
                 closeOnClickModal={!runtimeDeleting}
                 onClose={() => { if (!runtimeDeleting) setRuntimeDeleteVisible(false); }}
             >
@@ -318,9 +330,10 @@ export default function StorageManagementScreen() {
     );
 }
 
-const StorageOverview = memo(function StorageOverview({ summary, runtimeAssets, segments, cleaning, runtimeDeleting, onClean, onRemoveRuntimeAssets }: {
+const StorageOverview = memo(function StorageOverview({ summary, runtimeAssets, semanticRuntimeAssets, segments, cleaning, runtimeDeleting, onClean, onRemoveRuntimeAssets }: {
     summary: CacheSummary;
     runtimeAssets: RuntimeAssetStatus;
+    semanticRuntimeAssets: SemanticRuntimeAssetStatus;
     segments: StorageSegment[];
     cleaning: boolean;
     runtimeDeleting: boolean;
@@ -328,10 +341,12 @@ const StorageOverview = memo(function StorageOverview({ summary, runtimeAssets, 
     onRemoveRuntimeAssets: () => void;
 }) {
     const theme = useTheme();
-    const modelBytes = summary.modelBytes + runtimeAssets.bytes;
-    const modelSummary = runtimeAssets.bytes > 0
-        ? `${runtimeAssets.installed ? '在线资源完整' : '在线资源不完整'} · ${runtimeAssets.fileCount} 个文件 · ${summary.modelCount} 条内容向量`
-        : summary.modelCount > 0 ? `${summary.modelCount} 条内容向量` : '暂无本地推荐数据';
+    const modelBytes = summary.modelBytes + runtimeAssets.bytes + semanticRuntimeAssets.bytes;
+    const modelSummary = semanticRuntimeAssets.bytes > 0
+        ? `Native512 v1 ${formatBytes(semanticRuntimeAssets.bytes)} · ${semanticRuntimeAssets.fileCount} 个运行文件`
+        : runtimeAssets.bytes > 0
+          ? `含 ${runtimeAssets.fileCount} 个旧 128D 下载文件`
+          : 'Native512 资源未下载';
     return (
         <Card feedback="none" contentStyle={{ padding: theme.spacing.lg }}>
             <View style={{ alignItems: 'center' }}>
@@ -359,7 +374,7 @@ const StorageOverview = memo(function StorageOverview({ summary, runtimeAssets, 
                     title="推荐数据"
                     summary={modelSummary}
                     value={formatBytes(modelBytes)}
-                    action={runtimeAssets.bytes > 0 ? (runtimeDeleting ? '删除中' : '删除资源') : undefined}
+                    action={(runtimeAssets.bytes + semanticRuntimeAssets.bytes) > 0 ? (runtimeDeleting ? '删除中' : '删除资源') : undefined}
                     onAction={onRemoveRuntimeAssets}
                 />
                 <Divider style={{ marginLeft: 48 }} />

@@ -4,6 +4,8 @@ import test from 'node:test';
 import {
   routeTopicGraphV1,
   routeTopicLeavesV1,
+  selectTargetDomainTopicGraphSeed,
+  topicGraphBroadDomainVector,
   type SearchTopicGraphCompactV1,
 } from '../../src/product-v1/core/searchTopicGraphV1';
 
@@ -70,6 +72,40 @@ test('topic graph broad-domain hint breaks an equal-semantic tie', () => {
   });
   assert.equal(routed[0].queryId, 'query-b');
   assert.ok(routed[0].finalScore > routed[1].finalScore);
+});
+
+test('topic graph exposes a normalized broad-domain centroid for explicit cold start', () => {
+  const a = topicGraphBroadDomainVector(graph, embeddings, 'A');
+  const b = topicGraphBroadDomainVector(graph, embeddings, 'B');
+  assert.ok(a);
+  assert.ok(b);
+  assert.deepEqual(Array.from(a), [1, 0]);
+  assert.deepEqual(Array.from(b), [0, 1]);
+  assert.equal(topicGraphBroadDomainVector(graph, embeddings, 'C'), null);
+});
+
+const seedById = new Map([
+  ['seed-a', { seedId: 'seed-a', text: 'alpha seed', broadCategory: 'A', enabled: true, parentText: null, rowIndex: 0 }],
+  ['seed-b', { seedId: 'seed-b', text: 'beta seed', broadCategory: 'B', enabled: true, parentText: null, rowIndex: 1 }],
+]);
+
+test('known-interest seed selection prefers target domain over a higher-ranked cross-domain route', () => {
+  const routed = routeTopicGraphV1([1, 0], graph, embeddings, { topKQueries: 2 });
+  assert.equal(routed[0].seedId, 'seed-a');
+  const selected = selectTargetDomainTopicGraphSeed(routed, seedById, 'B');
+  assert.equal(selected?.seedId, 'seed-b');
+});
+
+test('known-interest seed selection preserves first usable route when target domain is exhausted', () => {
+  const routed = routeTopicGraphV1([1, 0], graph, embeddings, { topKQueries: 2 });
+  const selected = selectTargetDomainTopicGraphSeed(routed, seedById, 'B', (seed) => seed.seedId === 'seed-b');
+  assert.equal(selected?.seedId, 'seed-a');
+});
+
+test('known-interest seed selection preserves historical first route when target domain is absent', () => {
+  const routed = routeTopicGraphV1([1, 0], graph, embeddings, { topKQueries: 2 });
+  const selected = selectTargetDomainTopicGraphSeed(routed, seedById, 'C');
+  assert.equal(selected?.seedId, 'seed-a');
 });
 
 test('topic leaf routing fuses leaf, query and branch evidence', () => {

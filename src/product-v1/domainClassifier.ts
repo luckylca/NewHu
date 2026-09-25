@@ -1,6 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { loadProductV1TopicGraphAsync } from './assets';
 import { PRODUCT_V1_VERSION } from './constants';
+import { loadProductV1TopicGraphAsync } from './assets';
+import { bundledBadgeGraph } from './bundledBadgeGraph';
+import {
+  fuseProductV1TopicBadges,
+  selectProductV1ContentBadges,
+  selectProductV1NativeTopicBadges,
+} from './topicBadgeSelection';
 import {
   createProductV1DomainFingerprint,
   parseProductV1DomainCache,
@@ -14,33 +20,27 @@ import {
   type ProductV1DomainClassificationPriority,
 } from './domainTaskQueue';
 import {
-  fuseProductV1TopicBadges,
-  selectProductV1ContentBadges,
-  selectProductV1NativeTopicBadges,
-} from './topicBadgeSelection';
-import {
   clearProductV1NativeTopicCache,
   getCachedProductV1NativeTopics,
   resolveProductV1NativeTopics,
 } from './nativeTopicResolver';
 import type { FeedType } from '@/src/types/zhihu';
 import {
-  getProductV1RuntimeAssetStatus,
-  PRODUCT_V1_ASSET_VERSION,
-  PRODUCT_V1_TOPIC_GRAPH_EMBEDDINGS_SPEC,
-  PRODUCT_V1_TOPIC_GRAPH_SPEC,
-} from './runtimeAssets';
+  getSemanticV2RuntimeAssetStatus,
+} from '@/src/semantic-v2/runtimeAssets';
+import {
+  isSemanticV2RuntimeAvailable,
+  resetSemanticV2Runtime,
+  selectSemanticV2BadgesSafely,
+} from '@/src/semantic-v2';
 
 const MAX_CACHE_ENTRIES = 500;
 const MAX_CLASSIFICATION_CODE_POINTS = 1200;
 const PERSIST_DELAY_MS = 250;
 const DOMAIN_CACHE_STORAGE_KEY = [
-  'product-v1-domain-cache-v1',
+  'semantic-v2-domain-cache-v2',
   PRODUCT_V1_VERSION,
-  PRODUCT_V1_ASSET_VERSION,
-  PRODUCT_V1_TOPIC_GRAPH_SPEC.sha256.slice(0, 12),
-  PRODUCT_V1_TOPIC_GRAPH_EMBEDDINGS_SPEC.sha256.slice(0, 12),
-  'topic-native-primary-v8',
+  'b64-512-native-topic-v43',
 ].join(':');
 
 const cache = new Map<string, ProductV1DomainCacheValue>();
@@ -83,10 +83,9 @@ function trimCache() {
 }
 
 export function isProductV1DomainClassificationAvailable() {
-  // Capsule quality depends on the frozen Topic Graph. Never fall back to the
-  // old article-vs-search embedding classifier: if the graph is unavailable,
-  // hiding the capsule is safer than showing a confident but unrelated label.
-  return getProductV1RuntimeAssetStatus().topicGraphReady;
+  // The app bundle includes capsule topic names and broad-domain mappings, so
+  // pills remain available even before optional runtime models are downloaded.
+  return true;
 }
 
 export async function classifyProductV1Domains(
@@ -143,18 +142,7 @@ export async function classifyProductV1Domains(
 
   const pendingKey = `${cacheKey}\u0000${fingerprint}\u0000${priority}`;
   return classificationQueue.enqueue(pendingKey, priority, async () => {
-    // Do not let the classifier itself trigger a Product V1 resource download.
     if (!isProductV1DomainClassificationAvailable()) return [];
-
-    const graph = await loadProductV1TopicGraphAsync();
-    if (!graph) return [];
-
-    const titleMatches = selectProductV1ContentBadges(
-      normalizedTitle,
-      normalizedExcerpt,
-      graph,
-      2,
-    );
 
     let nativeTopics = cachedNativeTopics;
     let cacheable = true;
@@ -172,16 +160,35 @@ export async function classifyProductV1Domains(
       else nativeTopics = resolved;
     }
 
-    const nativeMatches = selectProductV1NativeTopicBadges(
-      nativeTopics,
-      normalizedTitle,
-      normalizedExcerpt,
-      graph,
-      2,
-    );
-    const matches = fuseProductV1TopicBadges(titleMatches, nativeMatches, 2);
+    let matches: ProductV1DomainMatch[] | null = null;
+    const semanticAssetsInstalled = getSemanticV2RuntimeAssetStatus().installed;
+    if (semanticAssetsInstalled && isSemanticV2RuntimeAvailable() && !options.signal?.aborted) {
+      matches = await selectSemanticV2BadgesSafely(
+        normalizedTitle,
+        normalizedExcerpt,
+        nativeTopics,
+      );
+    }
 
-    if (cacheable) {
+    // If Semantic V2 has not been downloaded (or its runtime failed), reuse the
+    // local Topic Graph already used by capsule classification before Native512.
+    // This keeps labels available without starting a multi-file model download
+    // just because a recommendation card scrolled into view.
+    if (!matches?.length && !options.signal?.aborted) {
+      const graph = await loadProductV1TopicGraphAsync().catch(() => null) ?? bundledBadgeGraph;
+      const textMatches = selectProductV1ContentBadges(normalizedTitle, normalizedExcerpt, graph, 2);
+      const nativeMatches = selectProductV1NativeTopicBadges(
+        nativeTopics,
+        normalizedTitle,
+        normalizedExcerpt,
+        graph,
+        2,
+      );
+      matches = fuseProductV1TopicBadges(textMatches, nativeMatches, 2);
+    }
+
+    matches ??= [];
+    if (cacheable && !options.signal?.aborted) {
       const enrichedFingerprint = createProductV1DomainFingerprint(
         normalizedTitle,
         `${normalizedExcerpt}\u0000${nativeRequested ? questionId || contentId : ''}\u0000${nativeTopics
@@ -199,6 +206,7 @@ export async function classifyProductV1Domains(
 export function clearProductV1DomainClassificationCache() {
   cache.clear();
   clearProductV1NativeTopicCache();
+  resetSemanticV2Runtime();
   if (persistTimer) {
     clearTimeout(persistTimer);
     persistTimer = null;

@@ -4,13 +4,13 @@ import { evaluateReward } from './core/reward';
 import { observeExposure } from './core/exposureHistory';
 import { updateProfile } from './core/profile';
 import { updateRewardStats } from './core/rewardStats';
-import { cosineSimilarity } from './encoder';
+import { cosineRecommendationVector } from '@/src/semantic-v2/recommendationGeometry';
 import { ensureProductV1Memory } from './runtime';
 import { PRODUCT_V1_SCHEMA } from './constants';
 import { useProductV1HealthStore } from './store';
 import type { BehaviorEvent } from './core/types';
 import type { ProductV1FeedbackInput } from './types';
-import { sourceScopedV5Embedding } from './v5Geometry';
+import { scopedRecommendationState } from '@/src/semantic-v2/recommendationBackend';
 
 const exposureIds = new Map<string, string>();
 
@@ -26,6 +26,10 @@ function articleId(contentType: FeedType, contentId: string) {
   return `${contentType}:${contentId}`;
 }
 
+function exposureKey(memory: Awaited<ReturnType<typeof ensureProductV1Memory>>, id: string) {
+  return `${memory.backend.stateScope || 'product_v1'}|${id}`;
+}
+
 function findRecord(memory: Awaited<ReturnType<typeof ensureProductV1Memory>>, id: string) {
   return [...memory.records.values()].find((record) => record.candidate.articleId === id);
 }
@@ -36,9 +40,9 @@ function similarity(memory: Awaited<ReturnType<typeof ensureProductV1Memory>>, l
   const a = leftRecord?.candidate.encoderEmbedding;
   const b = rightRecord?.candidate.encoderEmbedding;
   if (!a || !b || !leftRecord || !rightRecord) return 0;
-  return cosineSimilarity(
-    sourceScopedV5Embedding(a, leftRecord.candidate.source),
-    sourceScopedV5Embedding(b, rightRecord.candidate.source),
+  return cosineRecommendationVector(
+    memory.backend.profileEmbedding(a, leftRecord.candidate.source),
+    memory.backend.profileEmbedding(b, rightRecord.candidate.source),
   );
 }
 
@@ -51,11 +55,18 @@ async function persistFeedback(
   const fullArticleId = articleId(input.contentType, input.contentId);
   const record = findRecord(memory, fullArticleId);
   if (!record) return;
-  const exposureId = exposureIds.get(fullArticleId) ?? eventId('exposure');
-  exposureIds.set(fullArticleId, exposureId);
+  const scopedExposureKey = exposureKey(memory, fullArticleId);
+  const exposureId = exposureIds.get(scopedExposureKey) ?? eventId('exposure');
+  exposureIds.set(scopedExposureKey, exposureId);
   const health = useProductV1HealthStore.getState();
   const feedSessionId = health.lastCycleId ?? 'restored-session';
-  const interestIds = record.candidate.matchedInterestIds.slice(0, 3);
+  const targetInterest = typeof record.candidate.rawMetadata.targetInterest === 'string'
+    ? record.candidate.rawMetadata.targetInterest
+    : null;
+  const interestIds = [...new Set([
+    ...(targetInterest && record.candidate.qualified ? [targetInterest] : []),
+    ...record.candidate.matchedInterestIds,
+  ])].slice(0, 3);
   const signal = evaluateReward(behavior);
   const sourcePolicy = record.candidate.rawMetadata.sourcePolicy === 'bubble_break' ? 'bubble_break' : 'normal';
   const wasSerendipity = sourcePolicy === 'bubble_break' || record.candidate.rawMetadata.wasSerendipity === true;
@@ -79,6 +90,9 @@ async function persistFeedback(
     interestIds,
     behavior,
     reward: signal,
+    recommendationBackend: memory.backend.id,
+    recommendationGeometry: memory.backend.geometryVersion,
+    embeddingDimension: memory.backend.embeddingDimension,
   };
   await commitProductFeedback({
     event: {
@@ -90,10 +104,10 @@ async function persistFeedback(
       payload: envelope,
     },
     states: [
-      { component: 'profile', schemaVersion: PRODUCT_V1_SCHEMA.profile, payload: memory.profile },
-      { component: 'rewardStats', schemaVersion: PRODUCT_V1_SCHEMA.rewardStats, payload: memory.rewardStats },
-      { component: 'exposureHistory', schemaVersion: PRODUCT_V1_SCHEMA.exposureHistory, payload: memory.exposureHistory },
-      { component: 'used', schemaVersion: 1, payload: memory.used },
+      { component: scopedRecommendationState(memory.backend.stateScope, 'profile'), schemaVersion: PRODUCT_V1_SCHEMA.profile, payload: memory.profile },
+      { component: scopedRecommendationState(memory.backend.stateScope, 'rewardStats'), schemaVersion: PRODUCT_V1_SCHEMA.rewardStats, payload: memory.rewardStats },
+      { component: scopedRecommendationState(memory.backend.stateScope, 'exposureHistory'), schemaVersion: PRODUCT_V1_SCHEMA.exposureHistory, payload: memory.exposureHistory },
+      { component: scopedRecommendationState(memory.backend.stateScope, 'used'), schemaVersion: 1, payload: memory.used },
     ],
   });
 }
@@ -102,8 +116,9 @@ export async function recordProductV1Exposure(contentId: string, contentType: Fe
   const memory = await ensureProductV1Memory();
   const fullArticleId = articleId(contentType, contentId);
   const record = findRecord(memory, fullArticleId);
-  if (!record || exposureIds.has(fullArticleId)) return;
-  exposureIds.set(fullArticleId, eventId('exposure'));
+  const scopedExposureKey = exposureKey(memory, fullArticleId);
+  if (!record || exposureIds.has(scopedExposureKey)) return;
+  exposureIds.set(scopedExposureKey, eventId('exposure'));
   observeExposure(memory.exposureHistory, fullArticleId, record.candidate.bestMatchedInterest ?? null);
   memory.inventory.markUsed([record.candidate.duplicateKey]);
   memory.used = [...memory.inventory.used];

@@ -93,10 +93,14 @@ export async function commitProductCycle(options: {
   active: ProductV1CandidateRecord[];
   reserve: ProductV1CandidateRecord[];
   states: { component: string; schemaVersion: number; payload: unknown }[];
+  activeNamespace?: string;
+  reserveNamespace?: string;
 }) {
   await withSerializedTransaction(async (db) => {
-    await replaceCandidates(db, options.trace.mode === 'shadow' ? 'shadow_active' : 'active', options.active);
-    await replaceCandidates(db, options.trace.mode === 'shadow' ? 'shadow_reserve' : 'reserve', options.reserve);
+    const activeNamespace = options.activeNamespace ?? (options.trace.mode === 'shadow' ? 'shadow_active' : 'active');
+    const reserveNamespace = options.reserveNamespace ?? (options.trace.mode === 'shadow' ? 'shadow_reserve' : 'reserve');
+    await replaceCandidates(db, activeNamespace, options.active);
+    await replaceCandidates(db, reserveNamespace, options.reserve);
     for (const state of options.states) {
       await saveStateInTransaction(db, state.component, state.schemaVersion, state.payload);
     }

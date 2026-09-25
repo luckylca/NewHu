@@ -2,6 +2,7 @@ export const PRODUCT_V1_DOMAIN_LABELS: Record<string, string> = {
   AI: '人工智能',
   Anime: '动漫',
   Architecture: '建筑',
+  'Beauty / Personal Care': '美妆个护',
   Biology: '生物',
   Books: '阅读',
   Business: '商业',
@@ -50,6 +51,7 @@ export const PRODUCT_V1_DOMAIN_LABELS: Record<string, string> = {
   Technology: '科技',
   Travel: '旅行',
   Video: '视频',
+  'Writing / Creative Writing': '写作',
 };
 
 export function productV1DomainLabel(domain: string) {

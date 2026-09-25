@@ -1,4 +1,5 @@
 import { drainCooperatively, drainSync } from './cooperative';
+import type { SearchSeedCompact } from './candidateAcquisition';
 export interface TopicGraphBroadDomainV1 {
   nodeId: string;
   canonicalName: string;
@@ -51,6 +52,32 @@ export interface TopicGraphRouteV1 {
   provenance: string;
 }
 
+/**
+ * Pick a usable Search seed for a known interest deficit.
+ *
+ * Topic Graph ranking intentionally remains soft-domain semantic ranking. The
+ * acquisition layer, however, already knows the exact interest it is trying to
+ * replenish. Prefer the highest-ranked usable seed in that target broad domain;
+ * if none remains (for example because every family was used), preserve the
+ * historical behavior by falling back to the first usable routed seed.
+ */
+export function selectTargetDomainTopicGraphSeed(
+  routes: TopicGraphRouteV1[],
+  seedById: ReadonlyMap<string, SearchSeedCompact>,
+  targetDomain: string,
+  isBlocked: (seed: SearchSeedCompact) => boolean = () => false,
+): SearchSeedCompact | null {
+  let firstUsable: SearchSeedCompact | null = null;
+  for (const route of routes) {
+    if (!route.seedId) continue;
+    const seed = seedById.get(route.seedId);
+    if (!seed || isBlocked(seed)) continue;
+    if (!firstUsable) firstUsable = seed;
+    if (seed.broadCategory === targetDomain) return seed;
+  }
+  return firstUsable;
+}
+
 export interface TopicGraphLeafRouteV1 {
   nodeId: string;
   canonicalName: string;
@@ -81,6 +108,22 @@ function dotRow(center: Float32Array, embeddings: Int8Array, row: number, dimens
   const base = row * dimension;
   for (let index = 0; index < dimension; index += 1) score += center[index] * embeddings[base + index] * scale;
   return score;
+}
+
+export function topicGraphBroadDomainVector(
+  graph: SearchTopicGraphCompactV1,
+  embeddings: Int8Array,
+  broadDomain: string,
+): Float32Array | null {
+  const node = graph.broadDomains.find((row) => row.canonicalName === broadDomain);
+  if (!node) return null;
+  const dimension = graph.embeddingDimension;
+  if (dimension <= 0 || embeddings.length % dimension !== 0) throw new Error('graph embedding dimension mismatch');
+  const base = node.centroidRowIndex * dimension;
+  if (base < 0 || base + dimension > embeddings.length) throw new Error('graph broad-domain centroid row out of range');
+  const vector = new Float32Array(dimension);
+  for (let index = 0; index < dimension; index += 1) vector[index] = embeddings[base + index] * graph.dequantScale;
+  return unit(vector);
 }
 
 function domainTerm(primary: string, crossLinks: string[], hints: Set<string>) {

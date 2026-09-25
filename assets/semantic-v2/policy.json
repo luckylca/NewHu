@@ -1,0 +1,84 @@
+{
+  "version": "native-topic-badge-v7-mobile-b64-final-leaf-rescue-v1",
+  "status": "BLOCK64_SINGLE_FILE_DEPLOY_CANDIDATE_LEAF_RESCUE_V1",
+  "nativeTopicPath": {
+    "priority": "native-first",
+    "answer": "question.topics",
+    "article": "article.topics",
+    "fallbackOnlyWhenNoUsableNativeTopic": true
+  },
+  "selector": {
+    "model": "selector.int4.onnx",
+    "quantization": "Gather INT8 + Transformer MatMul INT4 block64 symmetric",
+    "maxLength": 64,
+    "pooling": "CLS",
+    "embeddingDim": 512,
+    "l2Normalize": true,
+    "nativeTopicRanking": "cosine",
+    "metaTopicFilterNormalization": "NFKC+trim+whitespace-collapse",
+    "metaTopicBlocklist": [
+      "如何看待/评价TA",
+      "热点话题",
+      "知乎宇宙",
+      "知乎许愿池",
+      "脑洞类问题",
+      "调查类问题"
+    ],
+    "secondCapsule": {
+      "enabled": true,
+      "maxCapsules": 2,
+      "scoreGapLt": 0.04,
+      "secondCosineGte": 0.5
+    }
+  },
+  "broadFallback": {
+    "titleOnly": {
+      "head": "title",
+      "graphFusion": false,
+      "strict2528Accuracy": 0.7250791139240507
+    },
+    "titlePlusExcerpt": {
+      "head": "excerpt",
+      "graphFusion": false,
+      "strict500Accuracy": 0.878,
+      "reason": "Grouped OOF Graph/BGE fusion was 0.880, below raw head."
+    },
+    "careerTravelRecovery": {
+      "requireProductGraphAndBgeBroadAgree": true,
+      "bgeScoreGte": 0.44,
+      "strict2528FalsePositives": 0,
+      "careerRecovered": "46/48",
+      "travelRecovered": "50/54"
+    }
+  },
+  "leafRefinement": {
+    "enabled": true,
+    "requireLeafBroadEqualsFallbackBroad": true,
+    "leafCosineGte": 0.6,
+    "leafMarginGte": 0.02,
+    "strict500Coverage": 0.488,
+    "strict500BroadAccuracyWithinGate": 0.9795081967213115,
+    "crossBroadRescue": {
+      "enabled": true,
+      "leafCosineGte": 0.6,
+      "leafMarginGte": 0.05,
+      "historical426ReferenceAgreementBefore": 0.7910798122065728,
+      "historical426ReferenceAgreementAfter": 0.8873239436619719,
+      "historical426HarmfulFlips": 0,
+      "strictExactTarget716AgreementBefore": 0.7332402234636871,
+      "strictExactTarget716AgreementAfter": 0.8896648044692738,
+      "strictExactTarget716HarmfulFlips": 1,
+      "evidence": "reports/semantic_v2_leaf_rescue_final_v43.json"
+    }
+  },
+  "runtime": {
+    "productSearchTopicGraph": "reuse existing app asset; not duplicated",
+    "articleTopicDetail": "fetch only for post-ranked display candidates; cache by articleId",
+    "questionTopicDetail": "cache by questionId"
+  },
+  "notes": [
+    "Deploy selector is a single-file ONNX derived losslessly from the block64 external-data candidate.",
+    "Native Zhihu topics are semantic-ranked first; broad/leaf fallback is used only when no usable native topic remains.",
+    "Do not NFKC-normalize text before selector embedding; normalization is only for meta-topic filtering/dedup."
+  ]
+}

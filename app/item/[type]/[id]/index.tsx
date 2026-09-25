@@ -33,7 +33,8 @@ import { normalizeContent } from "@/src/db/mappers";
 import { setContentVote } from "@/src/services/offlineActions";
 import { normalizeRemoteUrl, resolveImageUri } from "@/src/services/resourceService";
 import { useConsentStore } from '@/src/stores/useConsentStore';
-import { getProductV1RuntimeAssetStatus, recordProductV1Feedback } from '@/src/product-v1';
+import { recordProductV1Feedback } from '@/src/product-v1';
+import { isProductV1DomainClassificationAvailable } from '@/src/product-v1/domainClassifier';
 import { semanticExcerpt } from '@/src/product-v1/semanticInput';
 import { useReadingProgress } from '@/src/hooks/useReadingProgress';
 import { extractZhihuMp4Url, normalizeZhihuVideoEmbeds } from '@/src/services/zhihuVideo';
@@ -395,7 +396,7 @@ export default function Item() {
     const [videoSelection, setVideoSelection] = useState<VideoSelection | null>(null);
     const [imageExporting, setImageExporting] = useState(false);
     const [documentExporting, setDocumentExporting] = useState(false);
-    const [domainLabelsEnabled, setDomainLabelsEnabled] = useState(() => getProductV1RuntimeAssetStatus().installed);
+    const [domainLabelsEnabled, setDomainLabelsEnabled] = useState(() => isProductV1DomainClassificationAvailable());
     const { width } = useWindowDimensions();
 
     const [readData, setReadData] = useState<FeedDetail | null>(null);
@@ -468,7 +469,7 @@ export default function Item() {
     }, [contentType, id, videoModalVisible, videoSelection?.loading, videoSelection?.videoId]);
 
     useFocusEffect(React.useCallback(() => {
-        setDomainLabelsEnabled(getProductV1RuntimeAssetStatus().installed);
+        setDomainLabelsEnabled(isProductV1DomainClassificationAvailable());
     }, []));
 
     useEffect(() => {
