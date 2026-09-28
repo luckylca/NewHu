@@ -1,10 +1,11 @@
 import { Text } from '../primitives';
+import { GlassOverlay, GlassSurface } from '@newhu/react-native-liquid-glass';
 import { dialogContentExit, dialogDimEnter, dialogDimExit, dialogLargeEnter, dialogMobileEnter } from '../motion';
 import { useReducedMotionPreference } from '../motion/MotionProvider';
 import { useTheme } from '../theme';
 import React, { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { BackHandler, Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 
 /**
@@ -39,7 +40,7 @@ const LARGE_MIN_HEIGHT = 480;
 export const Dialog = React.memo(function Dialog({ visible = false, onClose, title, summary, closeOnClickModal = true, children }: AppDialogProps) {
     const theme = useTheme();
     const reducedMotion = useReducedMotionPreference();
-    const dialogBackground = theme.dark ? '#242424' : '#FFFFFF';
+    const dialogBackground = theme.colors.surfaceContainer;
     const c = theme.components.dialog;
     const { width: windowW, height: windowH } = useWindowDimensions();
 
@@ -102,6 +103,64 @@ export const Dialog = React.memo(function Dialog({ visible = false, onClose, tit
         if (closeOnClickModal) handleClose();
     }, [closeOnClickModal, handleClose]);
 
+    useEffect(() => {
+        if (!theme.glass.enabled || !rendered) return;
+        const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+            handleClose();
+            return true;
+        });
+        return () => subscription.remove();
+    }, [theme.glass.enabled, rendered, handleClose]);
+
+    const content = (
+                <Animated.View
+                    style={[{ flex: 1, padding: c.outsideMargin, justifyContent: isLarge ? 'center' : 'flex-end' }, dimStyle]}
+                >
+                    <Pressable style={StyleSheet.absoluteFill} onPress={handleBackdrop} />
+                    <Animated.View style={isLarge ? largeStyle : mobileStyle}>
+                        <GlassSurface
+                            variant="dialog"
+                            renderMode="backdrop"
+                            placement={isLarge ? 'center' : 'bottom'}
+                            bottomInset={c.outsideMargin}
+                            animatedStyle={isLarge ? largeStyle : mobileStyle}
+                            zIndex={101}
+                            style={{
+                                alignSelf: 'center',
+                                width: '100%',
+                                maxWidth: c.maxWidth,
+                                maxHeight: isLarge ? (windowH * 2) / 3 : windowH - c.outsideMargin * 2,
+                                borderRadius: c.radius,
+                                backgroundColor: dialogBackground,
+                                overflow: 'hidden',
+                            }}
+                            contentStyle={{
+                                width: '100%',
+                                maxHeight: isLarge ? (windowH * 2) / 3 : windowH - c.outsideMargin * 2,
+                                padding: c.padding,
+                                overflow: 'hidden',
+                            }}
+                            placeholderChildren={null}
+                        >
+                            {title != null && (
+                                <Text type="title4" weight="medium" color={theme.colors.onBackground} style={{ marginBottom: theme.spacing.md, textAlign: 'center' }}>
+                                    {title}
+                                </Text>
+                            )}
+                            {summary != null && (
+                                <Text type="body1" color={theme.colors.onSurfaceSecondary} style={{ marginBottom: theme.spacing.md, textAlign: 'center' }}>
+                                    {summary}
+                                </Text>
+                            )}
+                            <View>
+                                {typeof children === 'function' ? (children as (close: () => void) => ReactNode)(handleClose) : children}
+                            </View>
+                        </GlassSurface>
+                    </Animated.View>
+                </Animated.View>
+    );
+
+    if (theme.glass.enabled) return rendered ? <GlassOverlay>{content}</GlassOverlay> : null;
     return (
         <Modal
             transparent
@@ -110,41 +169,7 @@ export const Dialog = React.memo(function Dialog({ visible = false, onClose, tit
             visible={rendered}
             onRequestClose={handleClose}
         >
-            <Animated.View
-                style={[{ flex: 1, padding: c.outsideMargin, justifyContent: isLarge ? 'center' : 'flex-end' }, dimStyle]}
-            >
-                <Pressable style={StyleSheet.absoluteFill} onPress={handleBackdrop} />
-                <Animated.View
-                    accessibilityViewIsModal
-                    style={[
-                        {
-                            alignSelf: 'center',
-                            width: '100%',
-                            maxWidth: c.maxWidth,
-                            maxHeight: isLarge ? (windowH * 2) / 3 : windowH - c.outsideMargin * 2,
-                            borderRadius: c.radius,
-                            padding: c.padding,
-                            backgroundColor: dialogBackground,
-                            overflow: 'hidden',
-                        },
-                        isLarge ? largeStyle : mobileStyle,
-                    ]}
-                >
-                    {title != null && (
-                        <Text type="title4" weight="medium" color={theme.colors.onBackground} style={{ marginBottom: theme.spacing.md, textAlign: 'center' }}>
-                            {title}
-                        </Text>
-                    )}
-                    {summary != null && (
-                        <Text type="body1" color={theme.colors.onSurfaceSecondary} style={{ marginBottom: theme.spacing.md, textAlign: 'center' }}>
-                            {summary}
-                        </Text>
-                    )}
-                    <View>
-                        {typeof children === 'function' ? (children as (close: () => void) => ReactNode)(handleClose) : children}
-                    </View>
-                </Animated.View>
-            </Animated.View>
+            {content}
         </Modal>
     );
 });

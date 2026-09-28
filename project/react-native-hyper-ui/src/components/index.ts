@@ -2,6 +2,8 @@ export { Button } from './Button';
 export type { AppButtonProps, ButtonType } from './Button';
 export { Card } from './Card';
 export type { AppCardProps, CardFeedback } from './Card';
+export { GlassMaterialProvider, GlassOverlay, GlassSurface } from '@newhu/react-native-liquid-glass';
+export type { GlassMaterialProviderProps, GlassSurfaceProps } from '@newhu/react-native-liquid-glass';
 export { Switch } from './Switch';
 export type { AppSwitchProps } from './Switch';
 export { Checkbox } from './Checkbox';

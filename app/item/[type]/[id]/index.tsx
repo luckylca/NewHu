@@ -30,9 +30,11 @@ import { DomUtils, parseDocument } from 'htmlparser2';
 import { getContent, upsertContent } from "@/src/db/repositories/contentRepository";
 import { setContentLibrarySource } from '@/src/db/repositories/localSearchRepository';
 import { normalizeContent } from "@/src/db/mappers";
+import { fetchGuestWebContent } from '@/src/services/guestWebContentService';
 import { setContentVote } from "@/src/services/offlineActions";
 import { normalizeRemoteUrl, resolveImageUri } from "@/src/services/resourceService";
 import { useConsentStore } from '@/src/stores/useConsentStore';
+import { useUserStore } from '@/src/stores/useUserStore';
 import { recordProductV1Feedback } from '@/src/product-v1';
 import { isProductV1DomainClassificationAvailable } from '@/src/product-v1/domainClassifier';
 import { semanticExcerpt } from '@/src/product-v1/semanticInput';
@@ -383,6 +385,7 @@ export default function Item() {
     const fallbackContent = useContentStore((state) => (
         state.feedList.find((item) => String(item.item.id) === String(id))?.item
     ));
+    const cookies = useUserStore((state) => state.cookies);
     const networkStatus = useNetworkStore((state) => state.status);
     const router = useRouter();
     const theme = useTheme();
@@ -473,13 +476,13 @@ export default function Item() {
     }, []));
 
     useEffect(() => {
-        if (networkStatus === 'online') {
+        if (networkStatus === 'online' && cookies) {
             void addReadHistory(String(id), type === 'answer' ? 'answer' : 'article').catch((error) => {
                 console.warn('阅读历史同步失败', error);
             });
         }
         console.log('添加阅读历史：', { id, type });
-    }, [id, networkStatus, type]);
+    }, [cookies, id, networkStatus, type]);
 
     useEffect(() => {
         let active = true;
@@ -504,7 +507,25 @@ export default function Item() {
                 // start. Keep the detail spinner visible until NetInfo tells us
                 // whether a remote request can be attempted.
                 if (networkStatus !== 'online') return;
+                if (!cookies) {
+                    try {
+                        // Public answer/article details use anonymous first-party Web pages.
+                        // This deliberately sends no Cookie and never calls Android detail APIs.
+                        const fresh = await fetchGuestWebContent(contentType, String(id), fallbackContent ?? undefined);
+                        if (active) {
+                            setReadData((current) => ({
+                                ...fresh,
+                                recommendationReason: current?.recommendationReason ?? fallbackContent?.recommendationReason,
+                            }));
+                        }
+                    } catch (error) {
+                        console.info('知乎游客正文不可用，继续显示推荐卡摘要', error instanceof Error ? error.message : 'unknown error');
+                    }
+                    return;
+                }
                 try {
+                    // Signed-in answer/article details use the existing Web API.
+                    // Android transport is intentionally limited to recommendation retrieval.
                     const raw = contentType === 'answer' ? await getAnswer(String(id)) : await getArticle(String(id));
                     const fresh = normalizeContent(raw, contentType);
                     // 文章接口通常返回顶层 is_favorited，但回答接口可能完全不返回
@@ -546,7 +567,7 @@ export default function Item() {
         };
         void load();
         return () => { active = false; };
-    }, [id, type, needToGet, initialFavorited, fallbackContent, networkStatus]);
+    }, [cookies, id, type, needToGet, initialFavorited, fallbackContent, networkStatus]);
 
     useEffect(() => {
         if (!readData) return;
@@ -638,6 +659,10 @@ export default function Item() {
     };
 
     const handleVoteUp = () => {
+        if (!cookies) {
+            notify('游客模式下只能阅读公开摘要');
+            return;
+        }
         if (voted) {
             notify(`已经点赞过了，当前已有 ${voteCount} 个赞`);
             console.log('重复点赞，已忽略');
@@ -648,11 +673,19 @@ export default function Item() {
     };
 
     const pressVoteUp = () => {
+        if (!cookies) {
+            notify('游客模式下只能阅读公开摘要');
+            return;
+        }
         commitVote(!voted);
         notify(voted ? '已取消点赞' : `点赞成功，当前已有 ${voteCount + 1} 个赞`);
     };
 
     const pressFavorite = async () => {
+        if (!cookies) {
+            notify('游客模式下不能收藏');
+            return;
+        }
         if (!readData || favoritePendingRef.current) return;
 
         const nextFavorited = !favorited;
@@ -853,7 +886,10 @@ export default function Item() {
         ),
     }), [openVideo, width]);
 
-    const htmlContent = readData?.content || "<p>暂无正文内容</p>";
+    const excerptHtml = readData?.excerpt
+        ? `<p>${String(readData.excerpt).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')}</p>`
+        : '';
+    const htmlContent = readData?.content || excerptHtml || "<p>暂无正文内容</p>";
     const articleChunks = useMemo(
         () => splitArticleHtml(normalizeZhihuVideoEmbeds(htmlContent)),
         [htmlContent],
@@ -909,7 +945,7 @@ export default function Item() {
             <TopAppBar
                 title={type === 'answer' ? '回答详情' : '文章详情'}
                 back={() => router.back()}
-                actions={
+                actions={cookies ? (
                     <View ref={menuBtnRef} collapsable={false}>
                         <Pressable
                             accessibilityRole="button"
@@ -920,10 +956,10 @@ export default function Item() {
                             <Icon name="dots-vertical" size={24} color={theme.colors.onBackground} />
                         </Pressable>
                     </View>
-                }
+                ) : undefined}
             />
             <Menu
-                visible={menuVisible}
+                visible={Boolean(cookies && menuVisible)}
                 onClose={() => setMenuVisible(false)}
                 anchor={menuAnchor}
                 items={[
@@ -1024,13 +1060,20 @@ export default function Item() {
                             summary={readData.updatedTime ? new Date(readData.updatedTime * 1000).toLocaleDateString() : '最近更新'}
                             titleColor={primaryText}
                             summaryColor={secondaryText}
-                            onPress={() => router.push({ pathname: '/people', params: { urlToken: readData.authorUrlToken } })}
+                            onPress={cookies ? () => router.push({ pathname: '/people', params: { urlToken: readData.authorUrlToken } }) : undefined}
                             style={{ paddingHorizontal: 0, marginBottom: 4 }}
                         />
+                        {!cookies && !readData.content ? (
+                            <View style={{ padding: 14, borderRadius: theme.radius.component, backgroundColor: theme.colors.surfaceContainer, marginBottom: 12 }}>
+                                <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
+                                    回答和文章详情统一走知乎 Web 端。若游客访问的公开页面不提供完整正文，这里会保留推荐卡片摘要。
+                                </Text>
+                            </View>
+                        ) : null}
                         <Divider style={{ marginVertical: 16 }} />
                     </>
                 )}
-                ListFooterComponent={(
+                ListFooterComponent={cookies ? (
                     <>
                         <Divider style={{ marginVertical: 16 }} />
                         <View style={{ paddingLeft: 24, paddingRight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1045,6 +1088,12 @@ export default function Item() {
                         </View>
                         <View style={{ height: 40 }} />
                     </>
+                ) : (
+                    <View style={{ marginTop: 16, marginBottom: 24, padding: 14, borderRadius: theme.radius.component, backgroundColor: theme.colors.surfaceContainer }}>
+                        <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
+                            游客模式显示 Android 推荐卡片提供的公开摘要。知乎会对部分回答和文章限制匿名全文阅读。
+                        </Text>
+                    </View>
                 )}
                 />
             </GestureDetector>

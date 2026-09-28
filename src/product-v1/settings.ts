@@ -15,6 +15,7 @@ export function createProductV1Settings(): ProductV1Settings {
     mode: 'live',
     highQualityEnabled: false,
     bubbleBreakEnabled: false,
+    recommendationSourceMode: 'web',
     recommendationBackend: ACTIVE_RECOMMENDATION_BACKEND_ID,
     native512GeometryMode: ACTIVE_NATIVE512_GEOMETRY_MODE,
   };
@@ -27,12 +28,19 @@ export async function loadProductV1Settings(): Promise<ProductV1Settings> {
   const migrated: ProductV1Settings = {
     ...createProductV1Settings(),
     ...saved,
+    recommendationSourceMode: saved.recommendationSourceMode === 'android' || saved.recommendationSourceMode === 'mixed'
+      ? saved.recommendationSourceMode
+      : 'web',
     // Semantic V2 Native512/RelevanceMax is now the only production recommendation path.
     recommendationBackend: ACTIVE_RECOMMENDATION_BACKEND_ID,
     native512GeometryMode: ACTIVE_NATIVE512_GEOMETRY_MODE,
   };
+  const isRecommendationSourceModeValid = saved.recommendationSourceMode === 'web'
+    || saved.recommendationSourceMode === 'android'
+    || saved.recommendationSourceMode === 'mixed';
   const needsMigration = saved.recommendationBackend !== ACTIVE_RECOMMENDATION_BACKEND_ID
-    || saved.native512GeometryMode !== ACTIVE_NATIVE512_GEOMETRY_MODE;
+    || saved.native512GeometryMode !== ACTIVE_NATIVE512_GEOMETRY_MODE
+    || !isRecommendationSourceModeValid;
   if (needsMigration) {
     migrated.updatedAt = Date.now();
     await saveProductState('settings', 1, migrated);
@@ -51,4 +59,3 @@ export async function updateProductV1Settings(patch: Partial<ProductV1Settings>)
   await saveProductState('settings', 1, settings);
   return settings;
 }
-

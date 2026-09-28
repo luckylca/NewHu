@@ -38,9 +38,11 @@ function responseErrorMessage(code: number, content: string) {
 interface ZhihuClient {
     cookie: string;
     canLoad: boolean;
+    lastResponseStatus: number;
     setCookie(cookie: string): void;
     setTransferListener(listener?: TransferListener): void;
     get(url: string): Promise<any>;
+    getPublic(url: string): Promise<any>;
     post(url: string, data?: any, isJson?: boolean, extraHeaders?: Record<string, string>): Promise<any>;
     postStream(url: string, data: any, onChunk: (chunk: string) => void): Promise<void>;
     put(url: string, data?: any): Promise<any>;
@@ -51,13 +53,17 @@ interface ZhihuClient {
 class ZhihuClient {
     private useSignedGet = true;
     private transferListener?: TransferListener;
+    lastResponseStatus = 0;
 
     constructor(cookie: string) {
-        if (!cookie) {
-            throw new Error('请提供知乎 Cookie');
-        }
         this.cookie = cookie;
         this.canLoad = true;
+    }
+
+    private requireCookie() {
+        if (!this.cookie) {
+            throw new Error('此接口需要知乎登录；游客模式只能访问公开内容接口');
+        }
     }
 
     /**
@@ -103,6 +109,7 @@ class ZhihuClient {
         if (!this.canLoad) {
             throw new Error('请求已被阻止');
         }
+        this.requireCookie();
 
         const startedAt = Date.now();
 
@@ -119,6 +126,7 @@ class ZhihuClient {
                 headers: this.useSignedGet ? headers : browserHeaders,
                 credentials: 'omit',
             });
+            this.lastResponseStatus = response.status;
 
             // 知乎会拒绝过期的本地 x-zse 算法，但同一 Cookie 仍可正常访问
             // Web GET 接口。仅在签名请求返回 401 时回退一次，保留原请求行为。
@@ -129,6 +137,7 @@ class ZhihuClient {
                     headers: browserHeaders,
                     credentials: 'omit',
                 });
+                this.lastResponseStatus = response.status;
             }
 
             const content = await response.text();
@@ -145,6 +154,42 @@ class ZhihuClient {
         }
     }
 
+    /**
+     * 读取经实测可匿名访问的知乎公开接口。限制 host/path，避免无 Cookie
+     * 的共享客户端被误用于需要登录的内容接口。
+     */
+    async getPublic(url: string) {
+        if (!this.canLoad) {
+            throw new Error('请求已被阻止');
+        }
+
+        const parsed = new URL(url);
+        const allowed = parsed.protocol === 'https:' && ((parsed.hostname === 'api.zhihu.com'
+            && parsed.pathname === '/topstory/hot-lists/total')
+            || (parsed.hostname === 'www.zhihu.com'
+                && parsed.pathname === '/api/v4/search/hot_search'));
+        if (!allowed) {
+            throw new Error('此地址不在知乎公开接口白名单中');
+        }
+
+        const startedAt = Date.now();
+        const response = await fetch(parsed.toString(), {
+            method: 'GET',
+            headers: {
+                accept: 'application/json',
+                referer: 'https://www.zhihu.com/',
+                'user-agent': 'zhihu/10.33.0 (iPhone; iOS 18.0; Scale/3.00)',
+            },
+            credentials: 'omit',
+        });
+        const content = await response.text();
+        this.transferListener?.(content.length, Math.max(1, Date.now() - startedAt));
+        if (!response.ok) {
+            throw new HttpError(response.status, responseErrorMessage(response.status, content), content);
+        }
+        return JSON.parse(content);
+    }
+
 /**
      * POST 请求 (已支持 JSON)
      * @param {string} url 
@@ -155,6 +200,7 @@ class ZhihuClient {
         if (!this.canLoad) {
             throw new Error('请求已被阻止');
         }
+        this.requireCookie();
 
         const { url: finalUrl, headers } = generateSignature(url, this.cookie);
         Object.assign(headers, extraHeaders);
@@ -212,6 +258,7 @@ class ZhihuClient {
         if (!this.canLoad) {
             throw new Error('请求已被阻止');
         }
+        this.requireCookie();
 
         const { url: finalUrl, headers } = generateSignature(url, this.cookie);
         headers['content-type'] = 'application/json';
@@ -340,6 +387,7 @@ class ZhihuClient {
         if (!this.canLoad) {
             throw new Error('请求已被阻止');
         }
+        this.requireCookie();
 
         const { url: finalUrl, headers } = generateSignature(url, this.cookie);
         headers['content-type'] = 'application/x-www-form-urlencoded';
@@ -372,6 +420,7 @@ class ZhihuClient {
         if (!this.canLoad) {
             throw new Error('请求已被阻止');
         }
+        this.requireCookie();
 
         const { url: finalUrl, headers } = generateSignature(url, this.cookie);
 

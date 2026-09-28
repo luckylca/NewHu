@@ -1,4 +1,5 @@
 import { Icon, Text } from '../primitives';
+import { GlassSurface } from '@newhu/react-native-liquid-glass';
 import { topAppBarHide, topAppBarShow } from '../motion';
 import { useReducedMotionPreference } from '../motion/MotionProvider';
 import { useTheme } from '../theme';
@@ -59,6 +60,7 @@ export const TopAppBar = React.memo(function TopAppBar({ title = '', largeTitle,
     const titleColor = theme.colors.onBackground;
     const subtitleColor = theme.colors.onSurfaceVariantSummary;
     const insets = useSafeAreaInsets();
+    const barHeight = insets.top + theme.components.navigationBar.topBarCollapsedHeight + (large ? 42 + (subtitle != null ? 20 : 0) : 0);
 
     const hasBack = back !== undefined && back !== false && back !== null;
 
@@ -85,7 +87,12 @@ export const TopAppBar = React.memo(function TopAppBar({ title = '', largeTitle,
     });
 
     return (
-        <View style={{ backgroundColor: theme.colors.surface, paddingTop: insets.top }}>
+        <GlassSurface
+            variant="bar"
+            style={{ width: '100%', height: theme.glass.enabled ? barHeight : undefined, backgroundColor: theme.colors.surface }}
+            placeholderChildren={theme.glass.enabled ? <View style={{ width: '100%', height: barHeight }} /> : undefined}
+        >
+            <View style={{ backgroundColor: 'transparent', paddingTop: insets.top }}>
             {/* Collapsed 52-bar */}
             <View style={{ minHeight: theme.components.navigationBar.topBarCollapsedHeight, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
                 <View style={{ position: 'absolute', left: 0, paddingLeft: theme.spacing.lg, minWidth: 0 }}>
@@ -114,7 +121,8 @@ export const TopAppBar = React.memo(function TopAppBar({ title = '', largeTitle,
                     {subtitle != null && <Text type="body2" color={subtitleColor} numberOfLines={1} ellipsizeMode="tail">{subtitle}</Text>}
                 </Animated.View>
             )}
-        </View>
+            </View>
+        </GlassSurface>
     );
 });
 TopAppBar.displayName = 'HyperTopAppBar';

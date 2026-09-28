@@ -1,4 +1,4 @@
-export const DATABASE_VERSION = 7;
+export const DATABASE_VERSION = 8;
 
 export const MIGRATION_1 = `
 CREATE TABLE IF NOT EXISTS contents (
@@ -329,4 +329,8 @@ CREATE TABLE IF NOT EXISTS content_library_sources (
 
 CREATE INDEX IF NOT EXISTS idx_content_library_sources_source
   ON content_library_sources(source, updated_at DESC);
+`;
+
+export const MIGRATION_8 = `
+ALTER TABLE feed_entries ADD COLUMN candidate_sources_json TEXT;
 `;

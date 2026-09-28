@@ -1,4 +1,5 @@
 import { Icon, Text } from '../primitives';
+import { GlassSurface } from '@newhu/react-native-liquid-glass';
 import { searchBarReveal } from '../motion';
 import { useTheme } from '../theme';
 import React, { useCallback, useEffect, useRef } from 'react';
@@ -121,17 +122,24 @@ export const SearchBar = React.memo(function SearchBar({
     return (
         <View style={[{ width: '100%' }, style]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: barPadding }}>
-                <View
+                <GlassSurface
+                    variant="control"
+                    // Stay in the page tree so this search field follows its
+                    // PagerView page and cannot remain floating over both tabs.
+                    renderMode="local"
+                    interactive={Boolean(onPress)}
                     style={{
                         flex: 1,
                         minWidth: 0,
                         minHeight: c.minHeight,
                         borderRadius: c.radius,
                         backgroundColor: theme.colors.surfaceContainerHigh,
-                        flexDirection: 'row',
-                        alignItems: 'center',
+                        borderColor: theme.colors.outline,
+                        borderWidth: theme.glass.enabled ? 0.5 : 0,
                     }}
+                    placeholderChildren={theme.glass.enabled ? <View style={{ flex: 1, minHeight: c.minHeight }} /> : undefined}
                 >
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
                     <View style={{ paddingLeft: theme.spacing.lg, paddingRight: theme.spacing.sm }}>
                         <Icon name="magnify" size={22} color={theme.colors.onSurfaceContainerHigh} />
                     </View>
@@ -219,7 +227,8 @@ export const SearchBar = React.memo(function SearchBar({
                             style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: c.radius }}
                         />
                     ) : null}
-                </View>
+                    </View>
+                </GlassSurface>
 
                 {/* Trailing action — springs in from the right when expanded */}
                 <Animated.View

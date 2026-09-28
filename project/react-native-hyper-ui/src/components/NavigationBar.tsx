@@ -1,4 +1,4 @@
-import { Divider, Text } from '../primitives';
+import { Divider } from '../primitives';
 import { useTheme } from '../theme';
 import React from 'react';
 import type { ReactNode } from 'react';
@@ -11,9 +11,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
  * Visual reference:
  *   miuix-vue/src/components/navigation-bar/NavigationBar.vue (NavigationBar.kt)
  *
- * Item height 64, icon 26, label 12. Selected = opacity 1 + bold label;
- * unselected = opacity 0.4; pressed dims further (selected 0.5 / unselected
- * 0.6). A top Divider; bg surface. No Material 3 selected pill.
+ * Item height 64 with a centered icon. Selected = full opacity; unselected =
+ * opacity 0.4; pressed dims further (selected 0.5 / unselected 0.6). A top
+ * Divider; bg surface. No Material 3 selected pill or visible tab labels.
  */
 
 export interface NavigationBarItem {
@@ -72,22 +72,15 @@ const NavigationItem = React.memo(function NavigationItem({
     return (
         <Pressable
             accessibilityRole="tab"
+            accessibilityLabel={item.label}
             accessibilityState={{ selected }}
             onPress={() => onSelect?.(index)}
             style={({ pressed }) => ({ flex: 1, opacity: selected ? pressed ? theme.opacity.navPressedSelected : theme.opacity.navSelected : pressed ? theme.opacity.navPressedUnselected : theme.opacity.navUnselected })}
         >
-            <View style={{ height: c.itemHeight, alignItems: 'center', justifyContent: 'flex-start' }}>
-                <View style={{ width: c.iconSize, height: c.iconSize, marginTop: theme.spacing.sm, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ height: c.itemHeight, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: c.iconSize, height: c.iconSize, alignItems: 'center', justifyContent: 'center' }}>
                     {renderIcon?.(item, index, selected)}
                 </View>
-                <Text
-                    size={c.labelSize}
-                    weight={selected ? 'bold' : 'normal'}
-                    color={theme.colors.onSurfaceContainer}
-                    style={{ marginBottom: theme.spacing.sm, lineHeight: 12 }}
-                >
-                    {item.label}
-                </Text>
             </View>
         </Pressable>
     );

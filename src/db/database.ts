@@ -1,5 +1,5 @@
 import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
-import { DATABASE_VERSION, MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4, MIGRATION_5, MIGRATION_6, MIGRATION_7 } from './schema';
+import { DATABASE_VERSION, MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4, MIGRATION_5, MIGRATION_6, MIGRATION_7, MIGRATION_8 } from './schema';
 
 const DATABASE_NAME = 'newhu.db';
 let databasePromise: Promise<SQLiteDatabase> | null = null;
@@ -32,6 +32,9 @@ async function migrate(db: SQLiteDatabase) {
         }
         if (currentVersion < 7) {
             await db.execAsync(MIGRATION_7);
+        }
+        if (currentVersion < 8) {
+            await db.execAsync(MIGRATION_8);
         }
         await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
     });

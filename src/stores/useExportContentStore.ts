@@ -1,9 +1,8 @@
 import { create } from 'zustand';
-import type { FeedType } from '@/src/types/zhihu';
 
 export interface ExportContent {
     id: string;
-    type: FeedType;
+    type: 'answer' | 'article';
     title: string;
     authorName: string;
     questionId?: string;

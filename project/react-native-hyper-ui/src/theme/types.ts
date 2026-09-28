@@ -1,4 +1,6 @@
 import type { TextStyle } from 'react-native';
+import type { GlassTokens as GlassTokenConfig } from '@newhu/react-native-liquid-glass';
+export type { GlassMaterialTokens, GlassQuality, GlassTokens, GlassVariant } from '@newhu/react-native-liquid-glass';
 
 /**
  * Design System theme types.
@@ -269,5 +271,6 @@ export interface AppTheme {
     radius: ThemeRadius;
     opacity: ThemeOpacity;
     components: ComponentTokens;
+    glass: GlassTokenConfig;
     fonts: ThemeFonts;
 }

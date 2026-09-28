@@ -21,6 +21,7 @@
     "prepack": "npm run build"
   },
   "peerDependencies": {
+    "@newhu/react-native-liquid-glass": "0.1.0",
     "react": ">=19 <20",
     "react-native": ">=0.81 <0.82",
     "@expo/vector-icons": "^15.0.3",

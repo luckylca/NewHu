@@ -5,7 +5,7 @@ import { getWallpaperBlurRadius, getWallpaperScrim, type WallpaperBlurLevel, use
 import { File, Paths } from 'expo-file-system';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { launchImageLibrary } from 'react-native-image-picker';
 
@@ -17,6 +17,8 @@ const ThemeSetScreen = () => {
 
     const followSystemTheme = useSettingStore((state) => state.followSystemTheme);
     const setFollowSystemTheme = useSettingStore((state) => state.setFollowSystemTheme);
+    const themeName = useSettingStore((state) => state.themeName);
+    const setThemeName = useSettingStore((state) => state.setThemeName);
     const isDarkMode = useSettingStore((state) => state.isDarkMode);
     const setDarkMode = useSettingStore((state) => state.setDarkMode);
     const wallpaperUri = useSettingStore((state) => state.wallpaperUri);
@@ -77,6 +79,26 @@ const ThemeSetScreen = () => {
             <TopAppBar title="主题设置" back={() => router.back()} />
 
             <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+                <View style={styles.section}>
+                    <Text type="title4" weight="medium" color={theme.colors.onBackground} style={styles.sectionHeading}>主题风格</Text>
+                    <View style={styles.themeChoices}>
+                        <ThemeStyleCard
+                            name="hyperos"
+                            title="HyperOS"
+                            summary="轻快、清晰的系统表面"
+                            selected={themeName === 'hyperos'}
+                            onPress={() => setThemeName('hyperos')}
+                        />
+                        <ThemeStyleCard
+                            name="liquidGlass"
+                            title="Liquid Glass"
+                            summary="折射、柔焦与边缘高光"
+                            selected={themeName === 'liquidGlass'}
+                            onPress={() => setThemeName('liquidGlass')}
+                        />
+                    </View>
+                </View>
+
                 <View style={styles.section}>
                     <Card contentStyle={styles.groupCard}>
                         <CardSectionTitle>外观</CardSectionTitle>
@@ -182,6 +204,67 @@ const ThemeSetScreen = () => {
     );
 };
 
+function ThemeStyleCard({
+    name,
+    title,
+    summary,
+    selected,
+    onPress,
+}: {
+    name: 'hyperos' | 'liquidGlass';
+    title: string;
+    summary: string;
+    selected: boolean;
+    onPress: () => void;
+}) {
+    const theme = useTheme();
+    const glass = name === 'liquidGlass';
+    const previewBase = glass ? (theme.dark ? '#202A39' : '#DDE8F5') : (theme.dark ? '#303030' : '#E9EDF3');
+    const sample = glass ? (theme.dark ? 'rgba(125,158,205,0.48)' : 'rgba(255,255,255,0.78)') : theme.colors.surfaceContainer;
+
+    return (
+        <Pressable
+            accessibilityRole="radio"
+            accessibilityState={{ selected }}
+            onPress={onPress}
+            style={[
+                styles.themeChoice,
+                {
+                    borderColor: selected ? theme.colors.primary : theme.colors.outline,
+                    backgroundColor: theme.colors.surfaceContainer,
+                },
+            ]}
+        >
+            <View style={[styles.themePreview, { backgroundColor: previewBase }]}>
+                <View style={[styles.previewHeader, { backgroundColor: glass ? (theme.dark ? 'rgba(227,238,255,0.18)' : 'rgba(255,255,255,0.56)') : sample }]}>
+                    <View style={[styles.previewDot, { backgroundColor: theme.colors.primary }]} />
+                    <View style={[styles.previewLine, { width: '45%', backgroundColor: theme.colors.onSurface }]} />
+                    <View style={[styles.previewLine, { width: '20%', backgroundColor: theme.colors.onSurfaceVariantSummary }]} />
+                </View>
+                <View style={styles.previewContent}>
+                    <View style={[styles.previewCard, { backgroundColor: sample, borderColor: glass ? 'rgba(255,255,255,0.62)' : theme.colors.outline }]}>
+                        <View style={[styles.previewLine, { width: '72%', backgroundColor: theme.colors.onSurface }]} />
+                        <View style={[styles.previewLine, { width: '48%', backgroundColor: theme.colors.onSurfaceVariantSummary }]} />
+                    </View>
+                </View>
+                <View style={[styles.previewBar, { backgroundColor: glass ? 'rgba(245,249,255,0.34)' : sample, borderColor: glass ? 'rgba(255,255,255,0.78)' : theme.colors.outline }]}>
+                    <View style={[styles.previewLine, { width: '40%', backgroundColor: theme.colors.onSurface }]} />
+                    <View style={[styles.previewLine, { width: '18%', backgroundColor: theme.colors.onSurfaceVariantSummary }]} />
+                </View>
+            </View>
+            <View style={styles.themeChoiceText}>
+                <View style={{ flex: 1 }}>
+                    <Text type="headline2" weight="medium" color={theme.colors.onSurface}>{title}</Text>
+                    <Text type="footnote2" color={theme.colors.onSurfaceVariantSummary} numberOfLines={2}>{summary}</Text>
+                </View>
+                <View style={[styles.selectionMark, { backgroundColor: selected ? theme.colors.primary : 'transparent', borderColor: selected ? theme.colors.primary : theme.colors.outline }]}>
+                    {selected ? <Text type="footnote2" weight="bold" color={theme.colors.onPrimary}>✓</Text> : null}
+                </View>
+            </View>
+        </Pressable>
+    );
+}
+
 function CardSectionTitle({ children }: { children: React.ReactNode }) {
     const theme = useTheme();
     return (
@@ -201,6 +284,80 @@ const styles = StyleSheet.create({
     },
     section: {
         marginTop: 18,
+    },
+    sectionHeading: {
+        marginBottom: 10,
+        marginHorizontal: 2,
+    },
+    themeChoices: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    themeChoice: {
+        flex: 1,
+        borderWidth: 1.5,
+        borderRadius: 18,
+        padding: 9,
+        gap: 10,
+    },
+    themePreview: {
+        height: 116,
+        borderRadius: 13,
+        overflow: 'hidden',
+        padding: 8,
+        justifyContent: 'space-between',
+    },
+    previewHeader: {
+        height: 22,
+        borderRadius: 9,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 6,
+        gap: 5,
+    },
+    previewDot: {
+        width: 7,
+        height: 7,
+        borderRadius: 4,
+    },
+    previewLine: {
+        height: 4,
+        borderRadius: 4,
+        opacity: 0.72,
+    },
+    previewContent: {
+        flex: 1,
+        justifyContent: 'center',
+    },
+    previewCard: {
+        height: 42,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderRadius: 10,
+        paddingHorizontal: 7,
+        justifyContent: 'center',
+        gap: 5,
+    },
+    previewBar: {
+        height: 21,
+        borderRadius: 9,
+        borderWidth: StyleSheet.hairlineWidth,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-around',
+    },
+    themeChoiceText: {
+        minHeight: 44,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    selectionMark: {
+        width: 20,
+        height: 20,
+        borderWidth: 1,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     groupCard: {
         paddingVertical: 2,

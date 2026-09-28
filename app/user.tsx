@@ -3,7 +3,7 @@ import { useSettingStore } from "@/src/stores/useSettingStore";
 import { getApiInstance } from '@/src/api/ZhihuApi';
 import { notify } from '@/src/stores/useNotificationStore';
 import { router } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback } from "react";
 import { Image, ScrollView, View } from 'react-native';
 import { Card, Divider, Icon, ListRow, SegmentedControl } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
@@ -11,10 +11,12 @@ import { useTheme } from '@/src/ui/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDraftStore } from '@/src/stores/useDraftStore';
 import { useLaterReadStore } from '@/src/stores/useLaterReadStore';
+import { MAIN_PAGE_TOP_SPACING, useMainTabBottomContentInset } from '@/src/components/MainTabLayout';
 
 const UserScreen = ({ navigation }: any) => {
     const theme = useTheme();
     const insets = useSafeAreaInsets();
+    const bottomContentInset = useMainTabBottomContentInset();
     const userStore = useUserStore();
     const mode = useSettingStore((state) => state.mode);
     const setMode = useSettingStore((state) => state.setMode);
@@ -23,26 +25,11 @@ const UserScreen = ({ navigation }: any) => {
 
     const metaColor = theme.colors.onSurfaceSecondary;
 
-    const modeUpdateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const modeToIndex = (value: 'normal' | 'card' | 'waterfall') => value === 'normal' ? 0 : value === 'card' ? 1 : 2;
-    const [selectedMode, setSelectedMode] = useState(() => modeToIndex(mode));
-
-    useEffect(() => {
-        setSelectedMode(modeToIndex(mode));
-    }, [mode]);
-
-    useEffect(() => () => {
-        if (modeUpdateTimerRef.current) clearTimeout(modeUpdateTimerRef.current);
-    }, []);
 
     const handleModeSelect = useCallback((index: number) => {
-        setSelectedMode(index);
-        if (modeUpdateTimerRef.current) clearTimeout(modeUpdateTimerRef.current);
         const nextMode = index === 0 ? 'normal' : index === 1 ? 'card' : 'waterfall';
-        modeUpdateTimerRef.current = setTimeout(() => {
-            setMode(nextMode);
-            modeUpdateTimerRef.current = null;
-        }, 220);
+        setMode(nextMode);
     }, [setMode]);
 
     const handlePress = async () => {
@@ -70,12 +57,12 @@ const UserScreen = ({ navigation }: any) => {
     }
 
     return (
-        <ScrollView contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + theme.spacing.sm, paddingBottom: theme.spacing.xxl, backgroundColor: theme.colors.surface }}>
+        <ScrollView contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + MAIN_PAGE_TOP_SPACING, paddingBottom: theme.spacing.xxl + bottomContentInset, backgroundColor: theme.colors.surface }}>
             <Card
                 feedback="none"
                 showIndication
                 onPress={handlePress}
-                style={{ margin: theme.spacing.lg }}
+                style={{ marginHorizontal: theme.spacing.lg, marginTop: 0, marginBottom: theme.spacing.lg }}
                 contentStyle={{ padding: theme.spacing.lg, flexDirection: 'row', alignItems: 'center' }}
             >
                 <Image
@@ -94,7 +81,7 @@ const UserScreen = ({ navigation }: any) => {
             <View style={{ marginBottom: theme.spacing.lg, marginHorizontal: theme.spacing.lg }}>
                 <SegmentedControl
                     tabs={['普通模式', '滑动模式', '瀑布流']}
-                    selected={selectedMode}
+                    selected={modeToIndex(mode)}
                     onSelect={handleModeSelect}
                 />
             </View>

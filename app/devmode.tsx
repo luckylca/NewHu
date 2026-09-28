@@ -31,6 +31,14 @@ export default function AdvancedSettingsScreen() {
                     />
                     <Divider style={{ marginLeft: 56 }} />
                     <ListRow
+                        title="Liquid Glass 光学调试"
+                        summary="用文字、网格与直线验证真实背景位移"
+                        icon={<Icon name="eyedropper-variant" size={24} color={theme.colors.primary} />}
+                        trailing={<Icon name="chevron-right" size={22} color={theme.colors.onSurfaceVariantActions} />}
+                        onPress={() => router.push('/dev/glass-lens')}
+                    />
+                    <Divider style={{ marginLeft: 56 }} />
+                    <ListRow
                         title="设计系统预览"
                         summary="查看当前主题下的所有基础组件"
                         icon={<Icon name="view-dashboard-outline" size={24} color={theme.colors.primary} />}

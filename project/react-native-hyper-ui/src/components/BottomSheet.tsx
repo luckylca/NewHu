@@ -1,10 +1,11 @@
 import { Text } from '../primitives';
+import { GlassOverlay, GlassSurface } from '@newhu/react-native-liquid-glass';
 import { bottomSheetEnter, bottomSheetSettle, linearEasing, sheetHandlePress, sheetHandleRelease } from '../motion';
 import { useReducedMotionPreference } from '../motion/MotionProvider';
 import { useTheme } from '../theme';
 import React, { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { BackHandler, Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -55,7 +56,7 @@ export const BottomSheet = React.memo(function BottomSheet({
     const c = theme.components.bottomSheet;
     const { height: windowH } = useWindowDimensions();
     const insets = useSafeAreaInsets();
-    const sheetBackground = theme.dark ? '#242424' : '#FFFFFF';
+    const sheetBackground = theme.colors.surfaceContainer;
 
     const [rendered, setRendered] = useState(visible);
 
@@ -86,6 +87,15 @@ export const BottomSheet = React.memo(function BottomSheet({
     const handleClose = useCallback(() => {
         onClose?.();
     }, [onClose]);
+
+    useEffect(() => {
+        if (!theme.glass.enabled || !rendered) return;
+        const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+            handleClose();
+            return true;
+        });
+        return () => subscription.remove();
+    }, [theme.glass.enabled, rendered, handleClose]);
 
     const pan = Gesture.Pan()
         .enabled(visible && rendered)
@@ -137,27 +147,35 @@ export const BottomSheet = React.memo(function BottomSheet({
         height: Math.max(0, -dragY.value) + 1,
     }));
 
-    return (
-        <Modal transparent statusBarTranslucent animationType="none" visible={rendered} onRequestClose={handleClose}>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-                <Animated.View style={[{ flex: 1, justifyContent: 'flex-end', alignItems: 'center' }, dimStyle]}>
-                    <Pressable style={StyleSheet.absoluteFill} onPress={closeOnClickModal && allowDismiss ? handleClose : undefined} />
-                    <Animated.View
-                        style={[
-                            {
-                                width: '100%',
-                                maxWidth: c.maxWidth,
-                                maxHeight: windowH - insets.top - 24,
-                                borderTopLeftRadius: c.radius,
-                                borderTopRightRadius: c.radius,
-                                backgroundColor: sheetBackground,
-                                paddingHorizontal: c.horizontalPadding,
-                                paddingBottom: insets.bottom,
-                                overflow: 'hidden',
-                            },
-                            sheetStyle,
-                        ]}
-                    >
+    const content = (
+        <GestureHandlerRootView style={{ flex: 1 }}>
+                    <Animated.View style={[{ flex: 1, justifyContent: 'flex-end', alignItems: 'center' }, dimStyle]}>
+                        <Pressable style={StyleSheet.absoluteFill} onPress={closeOnClickModal && allowDismiss ? handleClose : undefined} />
+                        <Animated.View style={[{ width: '100%', maxWidth: c.maxWidth }, sheetStyle]}>
+                            <GlassSurface
+                                variant="sheet"
+                                renderMode="backdrop"
+                                placement="bottom"
+                                animatedStyle={sheetStyle}
+                                zIndex={101}
+                                style={{
+                                    width: '100%',
+                                    maxWidth: c.maxWidth,
+                                    maxHeight: windowH - insets.top - 24,
+                                    borderTopLeftRadius: c.radius,
+                                    borderTopRightRadius: c.radius,
+                                    backgroundColor: sheetBackground,
+                                    overflow: 'hidden',
+                                }}
+                                contentStyle={{
+                                    width: '100%',
+                                    maxHeight: windowH - insets.top - 24,
+                                    paddingHorizontal: c.horizontalPadding,
+                                    paddingBottom: insets.bottom,
+                                    overflow: 'hidden',
+                                }}
+                                placeholderChildren={null}
+                            >
                         {/* Overscroll strip — fills the gap when dragged up */}
                         <Animated.View
                             pointerEvents="none"
@@ -187,9 +205,16 @@ export const BottomSheet = React.memo(function BottomSheet({
                         <View style={{ width: '100%', minHeight: 0, flexGrow: 0, flexShrink: 1 }}>
                             {typeof children === 'function' ? (children as (close: () => void) => ReactNode)(handleClose) : children}
                         </View>
+                            </GlassSurface>
+                        </Animated.View>
                     </Animated.View>
-                </Animated.View>
-            </GestureHandlerRootView>
+        </GestureHandlerRootView>
+    );
+
+    if (theme.glass.enabled) return rendered ? <GlassOverlay>{content}</GlassOverlay> : null;
+    return (
+        <Modal transparent statusBarTranslucent animationType="none" visible={rendered} onRequestClose={handleClose}>
+            {content}
         </Modal>
     );
 });

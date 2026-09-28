@@ -1,10 +1,13 @@
-import { BottomSheet, Button, Card, Checkbox, Dialog, Input, ListRow, Menu, NavigationBar, NumberWheel, ProgressIndicator, SearchBar, SegmentedControl, Slider, Snackbar, Switch, TopAppBar } from '@/src/ui';
+import { BottomSheet, Button, Card, Checkbox, Dialog, GlassSurface, Icon, Input, ListRow, Menu, NavigationBar, NumberWheel, ProgressIndicator, SearchBar, SegmentedControl, Slider, Snackbar, Switch, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
-import { useTheme } from '@/src/ui/theme';
+import { ThemeProvider, liquidGlassDarkTheme, liquidGlassLightTheme, useTheme } from '@/src/ui/theme';
+import { GlassMaterialProvider, GlassTabBar } from '@newhu/react-native-liquid-glass';
+import type { GlassQuality } from '@newhu/react-native-liquid-glass';
+import { MotionProvider } from '@/src/ui/motion';
 import { router } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 
 /**
  * UI Showcase — the single page where every Design System component is
@@ -37,7 +40,82 @@ function Swatch({ name, value }: { name: string; value: string }) {
     );
 }
 
+function PreviewOptionButton({
+    label,
+    selected,
+    onPress,
+}: {
+    label: string;
+    selected: boolean;
+    onPress: () => void;
+}) {
+    const theme = useTheme();
+    return (
+        <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+            onPress={onPress}
+            style={{
+                minHeight: 42,
+                justifyContent: 'center',
+                paddingHorizontal: 14,
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: selected ? theme.colors.primary : theme.colors.outline,
+                backgroundColor: selected ? theme.colors.primaryContainer : theme.colors.surfaceContainer,
+            }}
+        >
+            <Text type="body2" weight="medium" color={selected ? theme.colors.onPrimaryContainer : theme.colors.onSurface}>
+                {label}
+            </Text>
+        </Pressable>
+    );
+}
+
 export default function DesignSystemShowcase() {
+    const appTheme = useTheme();
+    const [dark, setDark] = useState(appTheme.dark);
+    const [quality, setQuality] = useState<GlassQuality>('balanced');
+    const [reducedMotion, setReducedMotion] = useState(false);
+    const previewTheme = dark ? liquidGlassDarkTheme : liquidGlassLightTheme;
+
+    return (
+        <ThemeProvider value={previewTheme}>
+            <GlassMaterialProvider
+                tokens={{ ...previewTheme.glass, quality }}
+                dark={dark}
+                reducedMotion={reducedMotion}
+            >
+                <MotionProvider reduced={reducedMotion}>
+                    <DesignSystemShowcaseContent
+                        dark={dark}
+                        quality={quality}
+                        reducedMotion={reducedMotion}
+                        onDarkChange={setDark}
+                        onQualityChange={setQuality}
+                        onReducedMotionChange={setReducedMotion}
+                    />
+                </MotionProvider>
+            </GlassMaterialProvider>
+        </ThemeProvider>
+    );
+}
+
+function DesignSystemShowcaseContent({
+    dark,
+    quality,
+    reducedMotion,
+    onDarkChange,
+    onQualityChange,
+    onReducedMotionChange,
+}: {
+    dark: boolean;
+    quality: GlassQuality;
+    reducedMotion: boolean;
+    onDarkChange: (dark: boolean) => void;
+    onQualityChange: (quality: GlassQuality) => void;
+    onReducedMotionChange: (reduced: boolean) => void;
+}) {
     const theme = useTheme();
 
     // component states
@@ -60,6 +138,8 @@ export default function DesignSystemShowcase() {
     const menuRef = useRef<View>(null);
     const [menuVisible, setMenuVisible] = useState(false);
     const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number; width: number; height: number } | undefined>();
+    const [glassShifted, setGlassShifted] = useState(false);
+    const [glassRenderMode, setGlassRenderMode] = useState<'local' | 'backdrop'>('local');
 
     const openMenu = () => {
         menuRef.current?.measureInWindow((x, y, width, height) => {
@@ -72,6 +152,129 @@ export default function DesignSystemShowcase() {
         <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
             <TopAppBar title="UI Showcase" back={() => router.back()} />
             <ScrollView contentContainerStyle={{ paddingBottom: 48, backgroundColor: theme.colors.surface }}>
+                <Section title="Liquid Glass Preview Settings">
+                    <View style={{ paddingHorizontal: 16, gap: 10 }}>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                            <PreviewOptionButton label="Light" selected={!dark} onPress={() => onDarkChange(false)} />
+                            <PreviewOptionButton label="Dark" selected={dark} onPress={() => onDarkChange(true)} />
+                            <PreviewOptionButton
+                                label={reducedMotion ? 'Reduce Motion On' : 'Reduce Motion Off'}
+                                selected={reducedMotion}
+                                onPress={() => onReducedMotionChange(!reducedMotion)}
+                            />
+                        </View>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                            {(['balanced', 'high', 'fallback'] as const).map((mode) => (
+                                <PreviewOptionButton
+                                    key={mode}
+                                    label={mode}
+                                    selected={quality === mode}
+                                    onPress={() => onQualityChange(mode)}
+                                />
+                            ))}
+                        </View>
+                        <Text type="footnote2" color={theme.colors.onSurfaceVariantSummary}>
+                            {dark ? 'Dark' : 'Light'} · {quality} · Reduce Motion {reducedMotion ? 'On' : 'Off'}
+                        </Text>
+                    </View>
+                </Section>
+
+                <Section title="Liquid Glass · local / live backdrop renderer">
+                    <View style={{ marginHorizontal: 16, height: 232, borderRadius: 24, overflow: 'hidden', backgroundColor: theme.colors.surfaceContainerHighest }}>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ alignItems: 'stretch' }}>
+                            {['#E95858', '#E99538', '#E0C33C', '#3DAB80', '#319BB7', '#526DD1', '#9162C9', '#D45F9C'].map((color, index) => (
+                                <View key={index} style={{ width: 76, padding: 6, gap: 8, justifyContent: 'space-between', backgroundColor: color }}>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <Text type="headline2" weight="bold" color="#FFFFFF">{index + 1}</Text>
+                                        <Text type="footnote2" color="#FFFFFF">GLASS</Text>
+                                    </View>
+                                    <View style={{ flexDirection: 'row', height: 32, alignItems: 'stretch' }}>
+                                        {Array.from({ length: 12 }, (_, cell) => (
+                                            <View key={cell} style={{ flex: 1, backgroundColor: cell % 2 ? '#FFFFFF' : '#102030' }} />
+                                        ))}
+                                    </View>
+                                    <View style={{ flexDirection: 'row', gap: 2, alignItems: 'center' }}>
+                                        {Array.from({ length: 9 }, (_, cell) => (
+                                            <View key={cell} style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: cell % 2 ? '#FFFFFF' : '#102030' }} />
+                                        ))}
+                                        <Text type="footnote2" color="#FFFFFF">R{index + 1}</Text>
+                                    </View>
+                                </View>
+                            ))}
+                        </ScrollView>
+                        <GlassSurface
+                            variant="floating"
+                            renderMode={glassRenderMode}
+                            interactive
+                            style={{ position: 'absolute', left: glassShifted ? 132 : 18, top: 18, width: 196, height: 126, borderRadius: 24 }}
+                            placeholderChildren={<View style={{ width: 196, height: 126 }} />}
+                        >
+                            <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel="Liquid Glass material preview"
+                                style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 16 }}
+                            >
+                                <Text type="headline1" weight="medium" color={theme.colors.onBackground}>Liquid Glass</Text>
+                                <Text type="footnote1" color={theme.colors.onSurface}>Skia shader · 局部光学 · 边缘高光</Text>
+                            </Pressable>
+                        </GlassSurface>
+                        <GlassSurface
+                            variant="floating"
+                            style={{ position: 'absolute', right: 12, bottom: 12, width: 80, height: 64, borderRadius: 20 }}
+                            placeholderChildren={<View style={{ width: 80, height: 64 }} />}
+                        >
+                            <View pointerEvents="none" style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                                <Text type="footnote2" weight="medium" color={theme.colors.onBackground}>LIVE</Text>
+                            </View>
+                        </GlassSurface>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 10 }}>
+                        <Button onPress={() => setGlassShifted((shifted) => !shifted)}>移动玻璃</Button>
+                        <Button onPress={() => setGlassRenderMode((mode) => mode === 'local' ? 'backdrop' : 'local')}>
+                            {glassRenderMode === 'local' ? '切到 Backdrop' : '切到 Local'}
+                        </Button>
+                    </View>
+                </Section>
+
+                <Section title="Liquid Glass SearchBar · SegmentedControl">
+                    <View style={{ paddingHorizontal: 16, gap: 12 }}>
+                        <SearchBar
+                            label="搜索知乎内容"
+                            onPress={() => {}}
+                            inputProps={{ editable: false, showSoftInputOnFocus: false }}
+                        />
+                        <SegmentedControl
+                            tabs={['普通模式', '滑动模式', '瀑布流']}
+                            selected={seg}
+                            onSelect={setSeg}
+                        />
+                    </View>
+                </Section>
+
+                <Section title="Apple-style Liquid Glass TabBar · selection / preview lens">
+                    <View style={{ height: 180, marginHorizontal: 16, borderRadius: 24, overflow: 'visible', backgroundColor: theme.colors.surfaceContainerHighest }}>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ alignItems: 'stretch' }}>
+                            {['#D44D4D', '#E3A433', '#3A9D79', '#426CCB', '#995FBA'].map((color, index) => (
+                                <View key={index} style={{ width: 88, backgroundColor: color }} />
+                            ))}
+                        </ScrollView>
+                        <GlassTabBar
+                            items={[{ label: '首页' }, { label: '我的' }]}
+                            selected={navIndex}
+                            bottomInset={0}
+                            shellBackgroundColor={theme.colors.surfaceContainerHigh}
+                            onSelect={setNavIndex}
+                            renderIcon={(_, index, selected) => (
+                                <Icon
+                                    name={index === 0 ? 'home' : 'account'}
+                                    size={24}
+                                    color={selected ? theme.colors.primary : theme.colors.onSurfaceContainer}
+                                />
+                            )}
+                        />
+                    </View>
+                </Section>
+
                 {/* Colors */}
                 <Section title="Colors">
                     <View style={{ paddingHorizontal: 16 }}>

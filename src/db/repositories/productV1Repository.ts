@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { getDatabase, withSerializedTransaction } from '../database';
-import type { CandidateArticle } from '@/src/product-v1/core/candidateAcquisition';
+import { normalizeCandidateSourceOrigins, type CandidateArticle } from '@/src/product-v1/core/candidateAcquisition';
 import { supplyInterestV3 } from '@/src/product-v1/core/candidateInventoryV3';
 import { PRODUCT_V1_VERSION } from '@/src/product-v1/constants';
 import type { ProductV1CandidateRecord, ProductV1Trace } from '@/src/product-v1/types';
@@ -60,6 +60,10 @@ export async function loadProductCandidates(namespaces: string[]): Promise<Recor
   for (const row of rows) {
     try {
       const record = JSON.parse(row.candidate_json) as ProductV1CandidateRecord;
+      record.candidate.sourceOrigins = normalizeCandidateSourceOrigins(record.candidate);
+      record.candidate.rawMetadata ??= {};
+      record.candidate.queries ??= [];
+      record.candidate.seedIds ??= [];
       record.candidate.encoderEmbedding = blobToEmbedding(row.embedding);
       output[row.namespace]?.push(record);
     } catch {

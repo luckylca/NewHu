@@ -5,11 +5,18 @@ import PagerView from 'react-native-pager-view';
 import HomeScreen from '../home';
 import UserScreen from '../user';
 import { useContentStore } from '@/src/stores/useContentStore';
+import { MainTabLayoutProvider } from '@/src/components/MainTabLayout';
+import { GLASS_TAB_BAR_CONTENT_INSET } from '@newhu/react-native-liquid-glass';
+import { useTheme } from '@/src/ui/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const MainScreens = () => {
 
     const [activeIndex, setActiveIndex] = React.useState(0);
     const pageViewRef = React.useRef<PagerView>(null);
+    const theme = useTheme();
+    const insets = useSafeAreaInsets();
+    const bottomContentInset = theme.glass.enabled ? insets.bottom + GLASS_TAB_BAR_CONTENT_INSET : 0;
     const requestFeedRefresh = useContentStore((state) => state.requestFeedRefresh);
     const requestHomeScrollTop = useContentStore((state) => state.requestHomeScrollTop);
 
@@ -25,17 +32,18 @@ const MainScreens = () => {
     const handleTabPress = (index: number) => {
         if (index === 0) requestHomeScrollTop();
         setActiveIndex(index);
-        pageViewRef.current?.setPage(index);
+        pageViewRef.current?.setPageWithoutAnimation(index);
     }
 
     return (
+        <MainTabLayoutProvider value={bottomContentInset}>
         <View style={styles.container}>
             {/* 8. 身体部分：PagerView */}
             <PagerView
                 ref={pageViewRef}           // 挂上钩子
                 style={styles.pagerView} // 样式
                 initialPage={0}          // 初始在第 0 页
-                scrollEnabled={false}    // 暂时关闭左右滑动，只保留点击 tab 切页
+                scrollEnabled={true}     // 主页面支持横向手势切页，选中态由 onPageSelected 同步
                 onPageSelected={handlePageSelected} // 监听滑动结束事件
             >
                 {/* 第 0 页：首页 */}
@@ -58,12 +66,14 @@ const MainScreens = () => {
                 routes={routes}                // 告诉它：有哪些按钮要渲染
             />
         </View>
+        </MainTabLayoutProvider>
     )
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
+        position: 'relative',
         backgroundColor: 'transparent',
     },
     pagerView: {

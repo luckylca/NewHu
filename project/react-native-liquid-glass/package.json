@@ -1,0 +1,38 @@
+{
+  "name": "@newhu/react-native-liquid-glass",
+  "version": "0.1.0",
+  "description": "NewHu Liquid Glass material and Android backdrop integration.",
+  "license": "UNLICENSED",
+  "main": "./lib/commonjs/index.js",
+  "module": "./lib/module/index.js",
+  "types": "./lib/types/index.d.ts",
+  "react-native": "./src/index.ts",
+  "sideEffects": false,
+  "files": ["src", "lib", "README.md"],
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "build": "npm run clean && tsc -p tsconfig.build.json && tsc -p tsconfig.module.json"
+  },
+  "peerDependencies": {
+    "@shopify/react-native-skia": ">=2.2 <3",
+    "liquid-glass-kit": "1.0.0",
+    "react": ">=19 <20",
+    "react-native": ">=0.81 <0.82",
+    "react-native-reanimated": "^4.1.1",
+    "react-native-worklets": "^0.5.1"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.2",
+    "@types/react": "~19.1.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "react-native": "./src/index.ts",
+      "import": "./lib/module/index.js",
+      "require": "./lib/commonjs/index.js",
+      "default": "./lib/module/index.js"
+    }
+  },
+  "private": true
+}

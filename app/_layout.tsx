@@ -2,7 +2,7 @@
 import { AppBackground } from '@/src/components/background/AppBackground';
 import { GlobalNotificationHost } from '@/src/components/GlobalNotificationHost';
 import { LaterReadFloatingBubble } from '@/src/components/LaterReadFloatingBubble';
-import { useHyperosTheme } from '@/src/hooks/useHyperosTheme';
+import { useAppTheme } from '@/src/hooks/useAppTheme';
 import { ThemeProvider as UiThemeProvider } from '@/src/ui/theme';
 import { MotionProvider } from '@/src/ui/motion';
 import { hasCurrentRequiredConsent, useConsentStore } from '@/src/stores/useConsentStore';
@@ -30,7 +30,7 @@ void SplashScreen.preventAutoHideAsync();
 SplashScreen.setOptions({ duration: 180, fade: true });
 
 export default function RootLayout() {
-	const uiTheme = useHyperosTheme();
+	const uiTheme = useAppTheme();
 	const networkStatus = useNetworkStore((state) => state.status);
 	const consentHydrated = useStoreHydrated(useConsentStore);
 	const userHydrated = useStoreHydrated(useUserStore);
@@ -45,10 +45,10 @@ export default function RootLayout() {
 	const splashHidden = React.useRef(false);
 	const routeBaseColor = getWallpaperBase(uiTheme.dark);
 	const renderRouteScene = React.useCallback(({ children }: { children: React.ReactNode }) => (
-		// Every native route owns an opaque wallpaper layer. A single wallpaper
-		// behind a transparent stack lets the previous screen show through while
-		// Android composes push/pop frames, which looks like a frozen afterimage.
-		<AppBackground>{children}</AppBackground>
+		// Routes own a scoped host for explicit dialog/sheet backdrop surfaces.
+		// Local controls never register there, so the native recorder stays idle
+		// unless a backdrop-mode surface is mounted on this route.
+		<AppBackground glassBackdrop>{children}</AppBackground>
 	), []);
 
 	useEffect(() => {
@@ -143,13 +143,14 @@ export default function RootLayout() {
 								<Stack.Screen name="question" options={{ title: '问题详情' }} />
 								<Stack.Screen name="dev/design-system" options={{ title: 'UI Showcase' }} />
 								<Stack.Screen name="dev/performance-benchmark" options={{ title: 'Hyper UI Performance Benchmark' }} />
+								<Stack.Screen name="dev/glass-lens" options={{ title: 'Glass Lens Debug' }} />
 								<Stack.Screen name="dev/hyper-glow" options={{ title: '动态柔光预览' }} />
 								</Stack.Protected>
 							</Stack>
 						</NavigationThemeProvider>
 						<GlobalNotificationHost />
 						<LaterReadFloatingBubble />
-					</AppBackground>
+						</AppBackground>
 					</MotionProvider>
 				</UiThemeProvider>
 			</SafeAreaProvider>

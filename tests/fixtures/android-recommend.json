@@ -1,0 +1,71 @@
+{
+  "feed_request_id": "fixture-request",
+  "data": [
+    {
+      "id": "fixture-answer-card",
+      "type": "ComponentCard",
+      "action": {
+        "type": "OpenUrl",
+        "parameter": "route_url=https%3A%2F%2Fwww.zhihu.com%2Fquestion%2F201%2Fanswer%2F101"
+      },
+      "children": [
+        { "type": "Text", "test_id": "answer.101.title", "text": "Sanitized answer title" },
+        { "type": "Text", "test_id": "answer.101.description", "text": "Sanitized answer excerpt" },
+        {
+          "type": "Line",
+          "elements": [
+            { "type": "Avatar", "image": { "url": "https://pic1.zhimg.com/fixture.jpg" } },
+            { "type": "Text", "text": "Fixture author" }
+          ]
+        },
+        {
+          "type": "Line",
+          "elements": [
+            { "type": "Reaction", "test_id": "answer.101.vote", "count": 12 },
+            { "type": "Reaction", "test_id": "answer.101.collect", "count": 3 },
+            { "type": "Reaction", "test_id": "answer.101.comment", "count": 2 }
+          ]
+        }
+      ],
+      "extra": {}
+    },
+    {
+      "id": "fixture-article-card",
+      "type": "ComponentCard",
+      "action": {
+        "type": "OpenUrl",
+        "parameter": "route_url=https%3A%2F%2Fzhuanlan.zhihu.com%2Fp%2Fp-301"
+      },
+      "children": [
+        { "type": "Text", "test_id": "article.p-301.title", "text": "Sanitized article title" },
+        { "type": "Text", "test_id": "article.p-301.description", "text": "Sanitized article excerpt" }
+      ]
+    },
+    {
+      "id": "fixture-question-card",
+      "type": "ComponentCard",
+      "action": {
+        "type": "OpenUrl",
+        "parameter": "route_url=https%3A%2F%2Fwww.zhihu.com%2Fquestion%2F401"
+      },
+      "children": [
+        { "type": "Text", "test_id": "question.401.title", "text": "Sanitized question title" },
+        { "type": "Text", "test_id": "question.401.description", "text": "Sanitized question excerpt" }
+      ]
+    },
+    {
+      "id": "fixture-unsupported-card",
+      "type": "ComponentCard",
+      "action": {
+        "type": "OpenUrl",
+        "parameter": "route_url=https%3A%2F%2Fwww.zhihu.com%2Fpin%2F501"
+      },
+      "children": []
+    },
+    { "id": "fixture-unknown-type", "type": "UnknownCard", "children": [] }
+  ],
+  "paging": {
+    "is_end": false,
+    "next": "https://api.zhihu.com/topstory/recommend?offset=fixture-next"
+  }
+}

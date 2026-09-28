@@ -5,6 +5,7 @@ import type { RatioControllerStateV2 } from './core/explicitInterestRatioV2';
 import type { Native512GeometryMode, RecommendationBackendId } from '@/src/semantic-v2/recommendationBackend';
 
 export type ProductV1Mode = 'live' | 'shadow';
+export type RecommendationSourceMode = 'web' | 'android' | 'mixed';
 
 export type ProductV1Settings = {
   schemaVersion: 1;
@@ -14,6 +15,7 @@ export type ProductV1Settings = {
   mode: ProductV1Mode;
   highQualityEnabled: boolean;
   bubbleBreakEnabled: boolean;
+  recommendationSourceMode: RecommendationSourceMode;
   recommendationBackend: RecommendationBackendId;
   native512GeometryMode: Native512GeometryMode;
 };
@@ -43,6 +45,10 @@ export type ProductV1Trace = {
   searchUnitKeys?: string[];
   searchDisplayedCount?: number;
   searchDisplayedShare?: number;
+  candidateSourceCounts?: Record<string, number>;
+  sourceScoreDistribution?: Record<string, { count: number; mean: number; min: number; max: number }>;
+  selectedSourceCounts?: Record<string, number>;
+  sourceDedupCount?: number;
   autoSearchProactiveRequestCount?: number;
   bubbleBreakEnabled?: boolean;
   bubbleSearchRequestCount?: number;

@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { componentTokens, darkColors, lightColors, opacity, radius, spacing, typography } from './tokens';
+import { componentTokens, darkColors, lightColors, noGlassTokens, opacity, radius, spacing, typography } from './tokens';
 import type { AppTheme, ThemeFonts } from './types';
 
 /**
@@ -28,6 +28,7 @@ const hyperosTheme = (dark: boolean): AppTheme => ({
     radius,
     opacity,
     components: componentTokens,
+    glass: noGlassTokens,
     fonts,
 });
 

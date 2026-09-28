@@ -9,7 +9,7 @@
 
 import type { ProductV1RecommendationReason } from './recommendation';
 
-export type FeedType = 'answer' | 'article';
+export type FeedType = 'answer' | 'article' | 'question';
 
 /** 归一化后的单条 feed 内容（回答与文章统一形状） */
 export interface FeedItem {
@@ -50,6 +50,8 @@ export interface FeedItemInfo {
     isAds: boolean;
     isPaid: boolean;
     item: FeedItem;
+    /** Ephemeral acquisition provenance; also copied into Native512 recommendation metadata. */
+    candidateSources?: Array<'web_recommend' | 'android_recommend' | 'search' | 'bubble_break' | 'follow' | 'topic'>;
 }
 
 /** 详情页读取的数据：在 FeedItem 基础上额外携带当前用户的点赞关系 */

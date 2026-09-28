@@ -1,5 +1,7 @@
 import { getApiInstance, getRecommend, dislikeAnswer, dislikeArticle } from '@/src/api/ZhihuApi'; // 注入对应的不喜欢 API
-import { getRecommendNextCursor, getRecommendSessionToken, normalizeRecommendItem } from '@/src/services/recommendFeedService';
+import { getRecommendSessionToken, normalizeRecommendItem } from '@/src/services/recommendFeedService';
+import { fetchAndroidRecommendPage } from '@/src/services/androidRecommendService';
+import { fetchRecommendationSourcePage } from '@/src/services/candidateSourceService';
 import { useContentStore } from '@/src/stores/useContentStore';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { router } from 'expo-router';
@@ -7,7 +9,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent, RefreshControl, ScrollView, View, StyleSheet, Share } from 'react-native';
 import type { GestureResponderEvent, LayoutChangeEvent } from 'react-native';
-import { Button, Card, Icon, Menu, SearchBar, Text } from '@/src/ui';
+import { Card, Icon, Menu, SearchBar, Text } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { useSettingStore } from '../src/stores/useSettingStore';
 import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
@@ -20,12 +22,14 @@ import { getRecentFeed, saveFeedEntries, trimTransientFeedEntries } from '@/src/
 import { fetchAndSaveRecommendationPage } from '@/src/services/browseAndSaveService';
 import { recordUserEvent } from '@/src/db/repositories/userEventRepository';
 import { useConsentStore } from '@/src/stores/useConsentStore';
-import { processProductV1Feed, recordProductV1Exposure, recordProductV1Feedback } from '@/src/product-v1';
+import { loadProductV1Settings, processProductV1Feed, recordProductV1Exposure, recordProductV1Feedback } from '@/src/product-v1';
 import { isProductV1DomainClassificationAvailable } from '@/src/product-v1/domainClassifier';
 import { AiSuspicionBadge } from '@/src/components/AiSuspicionBadge';
 import { ProductDomainBadges } from '@/src/components/ProductDomainBadges';
 import { semanticExcerpt } from '@/src/product-v1/semanticInput';
 import { ProductRecommendationReason } from '@/src/components/ProductRecommendationReason';
+import GuestHomeFeed from '@/src/components/GuestHomeFeed';
+import { MAIN_PAGE_TOP_SPACING, useMainTabBottomContentInset } from '@/src/components/MainTabLayout';
 import type { ProductV1DomainClassificationPriority } from '@/src/product-v1/domainTaskQueue';
 
 const { width: WindowWidth } = Dimensions.get('window');
@@ -61,6 +65,27 @@ function sameStringSet(a: Set<string>, b: Set<string>) {
     return true;
 }
 
+function openFeedContent(item: FeedItem, type: FeedType, needToGet: boolean) {
+    if (type === 'question') {
+        router.push({
+            pathname: '/question',
+            params: {
+                id: item.questionId || item.id,
+                title: item.title,
+                excerpt: item.excerpt,
+                authorName: item.authorName,
+                authorAvatar: item.authorAvatar,
+                answerCount: String(item.questionAnswerCount || 0),
+            },
+        });
+        return;
+    }
+    router.push({
+        pathname: `/item/[type]/[id]`,
+        params: { id: item.id, type, needToGet: needToGet.toString(), initialFavorited: item.favorited ? 'true' : 'false' },
+    });
+}
+
 // ==================== 普通模式 Item ====================
 export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetection, showDomainLabels, domainPriority, onOpenMenu }: {
     item: FeedItem;
@@ -81,10 +106,7 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetect
         if (useConsentStore.getState().aiInterestAnalysisEnabled) {
             void recordUserEvent({ contentId: item.id, contentType: type, eventType: 'content_open' });
         }
-        router.push({
-            pathname: `/item/[type]/[id]`,
-            params: { id: item.id, type, needToGet: needToGet.toString(), initialFavorited: item.favorited ? 'true' : 'false' }
-        });
+        openFeedContent(item, type, needToGet);
     }, [item.favorited, item.id, type, needToGet]);
     const openActionMenu = useCallback((event: GestureResponderEvent) => {
         onOpenMenu?.(item, type, event);
@@ -95,7 +117,7 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetect
             feedback="none"
             showIndication
             onPress={openItem}
-            onLongPress={openActionMenu}
+            onLongPress={type === 'question' ? undefined : openActionMenu}
             style={{ width: WindowWidth * 0.9, marginBottom: 10 }}
             contentStyle={{ backgroundColor: cardBgColor, paddingHorizontal: 16, paddingVertical: 14 }}
         >
@@ -206,15 +228,7 @@ const WaterfallItem = memo(({ item, type, needToGet, measurementKey, showDomainL
         if (useConsentStore.getState().aiInterestAnalysisEnabled) {
             void recordUserEvent({ contentId: item.id, contentType: type, eventType: 'content_open' });
         }
-        router.push({
-            pathname: `/item/[type]/[id]`,
-            params: {
-                id: item.id,
-                type,
-                needToGet: needToGet.toString(),
-                initialFavorited: item.favorited ? 'true' : 'false'
-            }
-        });
+        openFeedContent(item, type, needToGet);
     }, [item.favorited, item.id, type, needToGet]);
 
     const openActionMenu = useCallback((event: GestureResponderEvent) => {
@@ -232,7 +246,7 @@ const WaterfallItem = memo(({ item, type, needToGet, measurementKey, showDomainL
                 feedback="none"
                 showIndication
                 onPress={openItem}
-                onLongPress={openActionMenu}
+                onLongPress={type === 'question' ? undefined : openActionMenu}
                 style={{ width: '100%' }}
                 contentStyle={{ paddingHorizontal: 13, paddingVertical: 14 }}
             >
@@ -311,10 +325,7 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
         if (useConsentStore.getState().aiInterestAnalysisEnabled) {
             void recordUserEvent({ contentId: item.id, contentType: type, eventType: 'content_open' });
         }
-        router.push({
-            pathname: `/item/[type]/[id]`,
-            params: { id: item.id, type, needToGet: needToGet.toString(), initialFavorited: item.favorited ? 'true' : 'false' }
-        });
+        openFeedContent(item, type, needToGet);
     }, [item.favorited, item.id, type, needToGet]);
 
     const openActionMenu = useCallback((event: GestureResponderEvent) => {
@@ -335,7 +346,7 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                     feedback={disableAnimations ? 'none' : 'sink'}
                     showIndication
                     onPress={openItem}
-                    onLongPress={openActionMenu}
+                    onLongPress={type === 'question' ? undefined : openActionMenu}
                     style={{ flex: 1 }}
                     contentStyle={{ backgroundColor: cardBgColor, borderRadius: 24, padding: 20, flex: 1 }}
                 >
@@ -430,6 +441,7 @@ RenderCardModeItem.displayName = 'RenderCardModeItem';
 const HomeScreen = () => {
     const theme = useTheme();
     const insets = useSafeAreaInsets();
+    const bottomContentInset = useMainTabBottomContentInset();
     
     // 从 store 中通过精细选择器拉取所需的状态和方法
     const feedList = useContentStore((state) => state.feedList);
@@ -477,20 +489,6 @@ const HomeScreen = () => {
     )), [feedList, filterAds, filterPaid]);
     const feedEmptyState = useMemo(() => {
         if (!userHydrated) return null;
-        if (!cookies && networkStatus !== 'offline') {
-            return (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.spacing.xl }}>
-                    <Icon name="account-circle-outline" size={44} color={theme.colors.onSurfaceVariantActions} />
-                    <Text type="headline1" weight="medium" style={{ marginTop: theme.spacing.md }}>登录后浏览推荐内容</Text>
-                    <Text type="body2" color={theme.colors.onSurfaceVariantSummary} align="center" style={{ marginTop: theme.spacing.xs }}>
-                        登录凭据只保存在本机，用于访问知乎内容服务。
-                    </Text>
-                    <Button type="primary" onPress={() => router.push('/webview')} style={{ marginTop: theme.spacing.lg }}>
-                        登录知乎
-                    </Button>
-                </View>
-            );
-        }
         if (networkStatus === 'offline') {
             return (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.spacing.xl }}>
@@ -502,6 +500,7 @@ const HomeScreen = () => {
     }, [cookies, networkStatus, theme, userHydrated]);
 
     const sessionTokenRef = useRef("");
+    const androidRecommendCursorRef = useRef('');
     const feedListRef = useRef(feedList);
     feedListRef.current = feedList;
     const seenFeedKeysRef = useRef(seenFeedKeys);
@@ -560,6 +559,7 @@ const HomeScreen = () => {
         feedListRef.current = cached;
         setFeedList(cached);
         sessionTokenRef.current = '';
+        androidRecommendCursorRef.current = '';
     };
 
     loadOfflineFeedRef.current = loadOfflineFeed;
@@ -572,6 +572,7 @@ const HomeScreen = () => {
             productMergeGenerationRef.current += 1;
             setIsRefreshing(true);
             sessionTokenRef.current = ""; 
+            androidRecommendCursorRef.current = '';
         }
         const productMergeGeneration = productMergeGenerationRef.current;
 
@@ -581,6 +582,8 @@ const HomeScreen = () => {
                 return;
             }
             if (networkStatus !== 'online') return;
+            const sourceSettings = await loadProductV1Settings().catch(() => null);
+            const sourceMode = sourceSettings?.recommendationSourceMode ?? 'web';
             // 推荐接口的一页不一定都是回答/文章，也可能是视频、问题或推广项。
             // 首屏至少补够一批可展示内容，避免过滤/去重后只剩一条。
             const targetVisibleCount = isRefresh ? 8 : 4;
@@ -588,18 +591,33 @@ const HomeScreen = () => {
             // 寻找未推送过的内容，因此刷新通常一页即可凑满目标数量。
             const maxPages = isRefresh ? 12 : 5;
             let nextToken = isRefresh ? '' : sessionTokenRef.current;
+            let nextAndroidCursor = isRefresh ? '' : androidRecommendCursorRef.current;
+            let activeSourceMode = sourceMode;
             const batchKeys = new Set<string>();
             let visibleItemCount = 0;
             let hasRenderedRefreshPage = false;
 
             for (let page = 0; page < maxPages; page += 1) {
                 const requestCursor = nextToken;
-                const res = await getRecommend(requestCursor);
-                const data: any[] = Array.isArray(res?.data) ? res.data : [];
-                const processedItems = data
-                    .filter((item: any) => item?.target && (item.target.type === 'answer' || item.target.type === 'article'))
-                    .map(normalizeRecommendItem)
-                    .filter((item: FeedItemInfo | null): item is FeedItemInfo => item !== null);
+                const requestAndroidCursor = nextAndroidCursor;
+                const acquired = await fetchRecommendationSourcePage({
+                    mode: activeSourceMode,
+                    webCursor: requestCursor,
+                    androidCursor: requestAndroidCursor,
+                    fetchWeb: getRecommend,
+                    fetchAndroid: fetchAndroidRecommendPage,
+                    normalizeWebItem: normalizeRecommendItem,
+                });
+                const { webResponse, androidPage, items: processedItems } = acquired;
+                if (acquired.webError) {
+                    const status = typeof acquired.webError?.status === 'number' ? `http_${acquired.webError.status}` : 'request';
+                    console.warn(`[CandidateSource] web unavailable category=${status}`);
+                }
+                if (acquired.androidError) {
+                    const status = typeof acquired.androidError?.status === 'number' ? `http_${acquired.androidError.status}` : 'request';
+                    console.warn(`[CandidateSource] android unavailable category=${status} fallback=${activeSourceMode === 'android' ? 'web' : 'continue'}`);
+                }
+                console.info(`[CandidateSource] mode=${activeSourceMode} webRaw=${acquired.webRawCount} web=${acquired.webNormalizedCount} androidRaw=${androidPage?.rawCount ?? 0} android=${androidPage?.items.length ?? 0} merged=${processedItems.length} dedup=${acquired.duplicateCount}`);
 
                 const existingKeys = new Set([
                     ...seenFeedKeysRef.current,
@@ -626,10 +644,15 @@ const HomeScreen = () => {
                 // Cursor 分页必须等待上一页返回 next 游标，不能安全地把
                 // 第 2/3 页同时发出；但每页拿到后立即落库并更新 UI，
                 // 避免首页为了凑满 8 条而长时间白屏。
+                const sessionParts = [
+                    webResponse ? getRecommendSessionToken(requestCursor) : '',
+                    androidPage?.feedRequestId ?? '',
+                ].filter(Boolean);
+                const pageSession = sessionParts.join('|') || `source-page-${page}`;
                 const persistedPage = await saveFeedEntries(
                     acceptedItems,
                     'recommend',
-                    getRecommendSessionToken(requestCursor),
+                    pageSession,
                     deduplicateFeed && !isRefresh,
                 );
                 if (persistedPage.length > 0) {
@@ -651,7 +674,7 @@ const HomeScreen = () => {
                     // results into the list when it finishes without blocking scroll.
                     if (useConsentStore.getState().aiInterestAnalysisEnabled) {
                         const productInput = [...persistedPage];
-                        const productSession = getRecommendSessionToken(requestCursor);
+                        const productSession = pageSession;
                         void processProductV1Feed(productInput)
                             .then((rankedPage) => saveFeedEntries(rankedPage, 'product-v1', productSession, false))
                             .then((rankedPage) => {
@@ -674,10 +697,25 @@ const HomeScreen = () => {
                     }
                 }
 
-                nextToken = getRecommendNextCursor(res?.paging?.next);
-                if (visibleItemCount >= targetVisibleCount || !nextToken || res?.paging?.is_end === true) break;
+                nextToken = acquired.nextWebCursor;
+                nextAndroidCursor = acquired.nextAndroidCursor;
+                const webHasMore = Boolean(webResponse && nextToken && webResponse?.paging?.is_end !== true);
+                const androidHasMore = Boolean(androidPage && nextAndroidCursor && !androidPage.isEnd);
+                // Once a source fails or reaches its terminal page, stop asking it for
+                // page one again while the other source continues paging.
+                if (acquired.androidError && webResponse) activeSourceMode = 'web';
+                else if (acquired.webError && androidPage) activeSourceMode = 'android';
+                else if (activeSourceMode === 'mixed' && webResponse && !webHasMore && androidHasMore) activeSourceMode = 'android';
+                else if (activeSourceMode === 'mixed' && androidPage && !androidHasMore && webHasMore) activeSourceMode = 'web';
+                const hasMore = activeSourceMode === 'web'
+                    ? webHasMore
+                    : activeSourceMode === 'android'
+                        ? androidHasMore
+                        : webHasMore || androidHasMore;
+                if (visibleItemCount >= targetVisibleCount || !hasMore) break;
             }
             sessionTokenRef.current = nextToken;
+            androidRecommendCursorRef.current = nextAndroidCursor;
             void trimTransientFeedEntries();
         } catch (error) {
             console.error('获取数据失败:', error);
@@ -870,7 +908,9 @@ const HomeScreen = () => {
     const handleShareItem = useCallback((item: FeedItem, feedType: FeedType) => {
         const url = feedType === 'article'
             ? `https://zhuanlan.zhihu.com/p/${item.id}`
-            : `https://www.zhihu.com/question/${item.questionId}/answer/${item.id}`;
+            : feedType === 'question'
+                ? `https://www.zhihu.com/question/${item.questionId || item.id}`
+                : `https://www.zhihu.com/question/${item.questionId}/answer/${item.id}`;
         void Share.share({ title: item.questionTitle || item.title, message: `${item.questionTitle || item.title}\n${url}` });
     }, []);
 
@@ -1045,8 +1085,12 @@ const HomeScreen = () => {
         index,
     }), []);
 
+    if (userHydrated && !cookies && networkStatus !== 'offline') {
+        return <GuestHomeFeed />;
+    }
+
     return (
-        <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: theme.colors.surface }}>
+        <View style={{ flex: 1, paddingTop: insets.top + MAIN_PAGE_TOP_SPACING, backgroundColor: theme.colors.surface }}>
             <SearchBar
                 label="搜索知乎内容"
                 onPress={() => router.push('/search')}
@@ -1067,7 +1111,8 @@ const HomeScreen = () => {
                         style={{ width: '100%', flex: 1 }}
                         contentContainerStyle={{
                             alignItems: 'center',
-                            paddingVertical: Math.max(0, (cardListHeight - CARD_ITEM_HEIGHT) / 2),
+                            paddingTop: Math.max(0, (cardListHeight - CARD_ITEM_HEIGHT) / 2),
+                            paddingBottom: Math.max(0, (cardListHeight - CARD_ITEM_HEIGHT) / 2) + bottomContentInset,
                         }}
                         data={visibleFeedList}
                         renderItem={renderCardListItem}
@@ -1096,7 +1141,7 @@ const HomeScreen = () => {
                 <ScrollView
                     ref={waterfallScrollRef}
                     style={{ flex: 1 }}
-                    contentContainerStyle={{ flexGrow: 1 }}
+                    contentContainerStyle={{ flexGrow: 1, paddingBottom: bottomContentInset }}
                     showsVerticalScrollIndicator={false}
                     onScrollEndDrag={handleWaterfallScrollSettled}
                     onMomentumScrollEnd={handleWaterfallScrollSettled}
@@ -1138,7 +1183,7 @@ const HomeScreen = () => {
             ) : (
                 <FlatList
                     style={{ flex: 1 }}
-                    contentContainerStyle={{ alignItems: 'center', paddingTop: 0, paddingBottom: theme.spacing.md }}
+                    contentContainerStyle={{ alignItems: 'center', paddingTop: 0, paddingBottom: theme.spacing.md + bottomContentInset }}
                     data={visibleFeedList}
                     renderItem={renderListItem}
                     ListEmptyComponent={feedEmptyState}

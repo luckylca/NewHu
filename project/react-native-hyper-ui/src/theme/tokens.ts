@@ -5,6 +5,7 @@ import type {
     ThemeRadius,
     ThemeSpacing,
     ThemeTypography,
+    GlassTokens,
 } from './types';
 
 /**
@@ -298,6 +299,41 @@ export const componentTokens: ComponentTokens = {
         padding: 24,
         outsideMargin: 12,
     },
+};
+
+/** Disabled for legacy theme families; kept here so every AppTheme is complete. */
+export const noGlassTokens: GlassTokens = {
+    enabled: false,
+    quality: 'balanced',
+    wallpaperScrim: { light: 'rgba(250,250,252,0.55)', dark: 'rgba(10,10,12,0.55)' },
+    tint: { light: 'rgba(244,248,255,0.2)', dark: 'rgba(30,38,52,0.28)' },
+    fallbackTint: { light: 'rgba(244,248,255,0.92)', dark: 'rgba(30,38,52,0.94)' },
+    fallbackBorder: { light: 'rgba(255,255,255,0.72)', dark: 'rgba(255,255,255,0.18)' },
+    procedural: {
+        baseTint: { light: 'rgba(246,250,255,0.22)', dark: 'rgba(24,37,54,0.32)' },
+        accentTint: { light: 'rgba(210,229,255,0.11)', dark: 'rgba(98,151,224,0.12)' },
+        highlightTint: { light: 'rgba(255,255,255,0.88)', dark: 'rgba(201,222,255,0.54)' },
+        innerShade: { light: 'rgba(30,55,88,0.2)', dark: 'rgba(0,5,14,0.62)' },
+        outerShadow: { light: 'rgba(53,73,100,0.22)', dark: 'rgba(0,0,0,0.48)' },
+        noiseStrength: 0.012,
+    },
+    materials: {
+        surface: { radius: 18, blurRadius: 6, refractionHeight: 8, refractionAmount: 10, saturation: 1.1, chromaticAberration: 0.08, highlightAlpha: 0.36, highlightWidth: 1.2 },
+        card: { radius: 20, blurRadius: 8, refractionHeight: 10, refractionAmount: 12, saturation: 1.12, chromaticAberration: 0.08, highlightAlpha: 0.4, highlightWidth: 1.3 },
+        bar: { radius: 0, blurRadius: 10, refractionHeight: 12, refractionAmount: 14, saturation: 1.12, chromaticAberration: 0.1, highlightAlpha: 0.46, highlightWidth: 1.3 },
+        tabBar: { radius: 32, blurRadius: 8, refractionHeight: 12, refractionAmount: 14, saturation: 1.12, chromaticAberration: 0.1, highlightAlpha: 0.5, highlightWidth: 1.5 },
+        tabBarShell: { radius: 32, opacity: 0.7, blurRadius: 7, refractionHeight: 11, refractionAmount: 13, saturation: 1.12, chromaticAberration: 0.1, highlightAlpha: 0.5, highlightWidth: 1.5 },
+        tabSelectionIdle: { radius: 24, opacity: 0.7, blurRadius: 4, refractionHeight: 9, refractionAmount: 12, saturation: 1.12, chromaticAberration: 0.12, highlightAlpha: 0.58, highlightWidth: 1.8 },
+        tabSelectionInteractive: { radius: 27, opacity: 0.9, blurRadius: 2, refractionHeight: 12, refractionAmount: 12.5, saturation: 1.16, chromaticAberration: 0.22, highlightAlpha: 0.9, highlightWidth: 2.2 },
+        tabSelectionLens: { radius: 24, blurRadius: 0.35, refractionHeight: 18, refractionAmount: 13, refractionBodyAmount: 5.5, saturation: 1.02, chromaticAberration: 0.2, highlightAlpha: 0.78, highlightWidth: 1.7, tintAlpha: 0.24, specularStrength: 0.9, fresnelStrength: 1.12, innerShadowStrength: 0.3 },
+        tabPreview: { radius: 22, opacity: 0.84, blurRadius: 4, refractionHeight: 13, refractionAmount: 18, saturation: 1.16, chromaticAberration: 0.22, highlightAlpha: 0.88, highlightWidth: 2.2 },
+        floating: { radius: 24, blurRadius: 10, refractionHeight: 12, refractionAmount: 14, saturation: 1.15, chromaticAberration: 0.1, highlightAlpha: 0.48, highlightWidth: 1.5 },
+        sheet: { radius: 30, blurRadius: 12, refractionHeight: 14, refractionAmount: 16, saturation: 1.12, chromaticAberration: 0.08, highlightAlpha: 0.42, highlightWidth: 1.5 },
+        dialog: { radius: 28, blurRadius: 12, refractionHeight: 14, refractionAmount: 16, saturation: 1.14, chromaticAberration: 0.08, highlightAlpha: 0.46, highlightWidth: 1.5 },
+        control: { radius: 9999, blurRadius: 8, refractionHeight: 9, refractionAmount: 10, saturation: 1.1, chromaticAberration: 0.06, highlightAlpha: 0.4, highlightWidth: 1.2 },
+        lens: { radius: 22, blurRadius: 4, refractionHeight: 13, refractionAmount: 18, saturation: 1.16, chromaticAberration: 0.22, highlightAlpha: 0.9, highlightWidth: 2.4 },
+    },
+    interaction: { enabled: false },
 };
 
 export { lightColors, darkColors };

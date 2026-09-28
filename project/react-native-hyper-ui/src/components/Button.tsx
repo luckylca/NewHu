@@ -1,4 +1,5 @@
 import { PressIndication, Text } from '../primitives';
+import { GlassSurface } from '@newhu/react-native-liquid-glass';
 import { useTheme } from '../theme';
 import { memo } from 'react';
 import type { ReactNode } from 'react';
@@ -55,8 +56,20 @@ export const Button = memo(function Button({ type = 'default', onPress, disabled
             : theme.colors.onSecondaryVariant;
 
     const isString = typeof children === 'string';
+    const placeholderChildren = (
+        <View style={{
+            minWidth: c.minWidth,
+            minHeight: c.minHeight,
+            paddingHorizontal: c.paddingHorizontal,
+            paddingVertical: c.paddingVertical,
+            alignItems: 'center',
+            justifyContent: 'center',
+        }}>
+            {isString ? <Text type="button" color="transparent">{children}</Text> : null}
+        </View>
+    );
 
-    return (
+    const button = (
         <Pressable
             accessibilityRole="button"
             accessibilityState={{ disabled: !!disabled }}
@@ -71,12 +84,13 @@ export const Button = memo(function Button({ type = 'default', onPress, disabled
                     paddingHorizontal: c.paddingHorizontal,
                     paddingVertical: c.paddingVertical,
                     borderRadius: c.radius,
-                    backgroundColor,
+                    backgroundColor: theme.glass.enabled ? 'transparent' : backgroundColor,
+                    flex: theme.glass.enabled ? 1 : undefined,
                     alignItems: 'center',
                     justifyContent: 'center',
                     overflow: 'hidden',
                 },
-                style,
+                theme.glass.enabled ? undefined : style,
             ]}
         >
             <PressIndication pressed={pressed} color={theme.colors.onBackground} radius={c.radius} />
@@ -91,5 +105,15 @@ export const Button = memo(function Button({ type = 'default', onPress, disabled
             </View>
         </Pressable>
     );
+
+    if (theme.glass.enabled) {
+        return (
+            <GlassSurface variant="surface" interactive={!disabled} style={style} placeholderChildren={placeholderChildren}>
+                {button}
+            </GlassSurface>
+        );
+    }
+
+    return button;
 });
 Button.displayName = 'HyperButton';

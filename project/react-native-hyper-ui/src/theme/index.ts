@@ -9,6 +9,7 @@ export type { WallpaperBlurLevel } from './wallpaper';
 export type {
     AppTheme,
     ThemeName,
+    GlassTokens,
     ThemeColors,
     ThemeTypography,
     ThemeSpacing,

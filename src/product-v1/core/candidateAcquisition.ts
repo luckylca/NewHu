@@ -2,6 +2,7 @@ export const CANDIDATE_SOURCE_BASELINE = "RECOMMENDATION_30_SEARCH_70" as const;
 export const CANDIDATE_SOURCE_BASELINE_STATUS = "RESEARCH_BASELINE" as const;
 
 export type CandidateSource = "recommendation" | "search";
+export type CandidateSourceOrigin = "web_recommend" | "android_recommend" | "search" | "bubble_break" | "follow" | "topic";
 
 export interface CandidateArticle {
   articleId: string;
@@ -29,7 +30,7 @@ export interface CandidateArticle {
   qualified: boolean;
   rejectionReason?: string | null;
   seenBefore: boolean;
-  sourceOrigins: CandidateSource[];
+  sourceOrigins: Array<CandidateSourceOrigin | CandidateSource>;
   queries: string[];
   seedIds: string[];
 }
@@ -89,6 +90,20 @@ export function candidateDuplicateKey(articleId: string | null | undefined, url:
   return `title:${normalizeTitle(title)}`;
 }
 
+/** Old persisted candidates used the broad source names as their only provenance. */
+export function normalizeCandidateSourceOrigins(candidate: Partial<CandidateArticle> & Pick<CandidateArticle, "source">): CandidateSourceOrigin[] {
+  const known = new Set<CandidateSourceOrigin>(["web_recommend", "android_recommend", "search", "bubble_break", "follow", "topic"]);
+  const stored = Array.isArray(candidate.sourceOrigins) ? candidate.sourceOrigins : [];
+  const origins = stored.flatMap((origin) => {
+    if (known.has(origin as CandidateSourceOrigin)) return [origin as CandidateSourceOrigin];
+    if (origin === "recommendation") return ["web_recommend" as const];
+    if (origin === "search") return ["search" as const];
+    return [];
+  });
+  if (!origins.length) origins.push(candidate.source === "search" ? "search" : "web_recommend");
+  return [...new Set(origins)];
+}
+
 export function mergeCandidateSources(candidates: CandidateArticle[]): { candidates: CandidateArticle[]; duplicateCount: number } {
   const merged = new Map<string, CandidateArticle>(); let duplicateCount = 0;
   for (const candidate of candidates) {
@@ -96,13 +111,13 @@ export function mergeCandidateSources(candidates: CandidateArticle[]): { candida
     const current = merged.get(key);
     if (!current) {
       merged.set(key, { ...candidate, duplicateKey: key,
-        sourceOrigins: [...new Set(candidate.sourceOrigins.length ? candidate.sourceOrigins : [candidate.source])],
+        sourceOrigins: normalizeCandidateSourceOrigins(candidate),
         queries: [...new Set([...candidate.queries, ...(candidate.sourceQuery ? [candidate.sourceQuery] : [])])],
         seedIds: [...new Set([...candidate.seedIds, ...(candidate.searchSeedId ? [candidate.searchSeedId] : [])])] });
       continue;
     }
     duplicateCount += 1;
-    current.sourceOrigins = [...new Set([...current.sourceOrigins, candidate.source])];
+    current.sourceOrigins = [...new Set([...normalizeCandidateSourceOrigins(current), ...normalizeCandidateSourceOrigins(candidate)])];
     current.queries = [...new Set([...current.queries, ...candidate.queries, ...(candidate.sourceQuery ? [candidate.sourceQuery] : [])])];
     current.seedIds = [...new Set([...current.seedIds, ...candidate.seedIds, ...(candidate.searchSeedId ? [candidate.searchSeedId] : [])])];
     current.seenBefore ||= candidate.seenBefore;

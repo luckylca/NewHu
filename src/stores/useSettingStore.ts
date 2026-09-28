@@ -3,6 +3,7 @@
 import { createSecureZustandStorage } from '@/src/services/secureZustandStorage';
 import type { AiTextDetectionSensitivity } from '@/src/services/aiTextDetectorCore';
 import type { WallpaperBlurLevel } from '@/src/ui/theme/wallpaper';
+import type { ThemeName } from '@/src/ui/theme';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
@@ -15,6 +16,8 @@ function migrateWallpaperBlurLevel(saved: unknown, legacy: unknown): WallpaperBl
 }
 
 interface SettingState {
+    themeName: ThemeName;
+    setThemeName: (themeName: ThemeName) => void;
     followSystemTheme: boolean;
     setFollowSystemTheme: (follow: boolean) => void;
     isDarkMode: boolean;
@@ -57,6 +60,8 @@ export const useSettingStore = create<SettingState>()(
         (set) => ({
 
             // 主题设置
+            themeName: 'hyperos',
+            setThemeName: (themeName) => set({ themeName }),
             followSystemTheme: false,
             setFollowSystemTheme: (follow) => set({ followSystemTheme: follow }),
             isDarkMode: false, // 默认不是暗黑模式
@@ -97,7 +102,7 @@ export const useSettingStore = create<SettingState>()(
         {
             name: 'setting-store',
             storage: createJSONStorage(() => createSecureZustandStorage('setting-store', 'cookie', 'newhu.zhihu.debug-cookie')),
-            version: 5,
+            version: 6,
             migrate: (persistedState) => {
                 const stored = (persistedState ?? {}) as Record<string, unknown>;
                 const wallpaperBlurLevel = migrateWallpaperBlurLevel(stored.wallpaperBlurLevel, stored.wallpaperBlur);
@@ -108,6 +113,9 @@ export const useSettingStore = create<SettingState>()(
                 delete migrated.useMonetText;
                 delete migrated.downloadDirectoryUri;
                 migrated.aiTextDetectionEnabled = stored.aiTextDetectionEnabled === true;
+                migrated.themeName = stored.themeName === 'liquidGlass' || stored.themeName === 'coloros'
+                    ? stored.themeName
+                    : 'hyperos';
                 migrated.aiTextDetectionSensitivity =
                     stored.aiTextDetectionSensitivity === 'balanced' || stored.aiTextDetectionSensitivity === 'sensitive'
                         ? stored.aiTextDetectionSensitivity

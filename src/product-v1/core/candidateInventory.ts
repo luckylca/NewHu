@@ -1,4 +1,4 @@
-import type { CandidateArticle } from "./candidateAcquisition";
+import { normalizeCandidateSourceOrigins, type CandidateArticle } from "./candidateAcquisition";
 
 export interface CandidateInventoryConfig {
   retrievalTtlHours: number;
@@ -42,7 +42,7 @@ export class CandidateInventory {
       const current = this.byKey.get(key);
       if (!current) { this.byKey.set(key, { ...candidate }); added += 1; }
       else {
-        current.sourceOrigins = [...new Set([...current.sourceOrigins, ...candidate.sourceOrigins, candidate.source])];
+        current.sourceOrigins = [...new Set([...normalizeCandidateSourceOrigins(current), ...normalizeCandidateSourceOrigins(candidate)])];
         current.queries = [...new Set([...current.queries, ...candidate.queries, ...(candidate.sourceQuery ? [candidate.sourceQuery] : [])])];
         current.seedIds = [...new Set([...current.seedIds, ...candidate.seedIds, ...(candidate.searchSeedId ? [candidate.searchSeedId] : [])])];
         if ((candidate.bestSemanticScore ?? Number.NEGATIVE_INFINITY) > (current.bestSemanticScore ?? Number.NEGATIVE_INFINITY)) this.byKey.set(key, { ...candidate });
@@ -70,7 +70,7 @@ export class CandidateInventory {
     for (const [key, candidate] of this.byKey) {
       const interest = candidateSupplyInterest(candidate);
       if (this.used.has(key) || !candidate.qualified || interest !== interestId || isInventoryEntryExpired(candidate, config, nowMs)) continue;
-      for (const source of candidate.sourceOrigins.length ? candidate.sourceOrigins : [candidate.source]) out[source] = (out[source] ?? 0) + 1;
+      for (const source of normalizeCandidateSourceOrigins(candidate)) out[source] = (out[source] ?? 0) + 1;
     }
     return out;
   }

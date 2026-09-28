@@ -70,6 +70,7 @@ export function normalizeRecommendItem(item: any): FeedItemInfo | null {
         feedType: type,
         isAds,
         isPaid,
+        candidateSources: ['web_recommend'],
         item: {
             id: String(target.id),
             title,

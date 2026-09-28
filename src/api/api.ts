@@ -4,9 +4,11 @@
  */
 
 import ZhihuClient from './client';
+import { AndroidZhihuClient, type AndroidRequestOptions } from './android/androidClient';
 
 interface ZhihuAPI {
     client: ZhihuClient;
+    androidClient: AndroidZhihuClient;
     setCookie(cookie: string): void;
     setTransferListener(listener?: (bytes: number, durationMs: number) => void): void;
     getMe(): Promise<any>;
@@ -16,6 +18,9 @@ interface ZhihuAPI {
     getUserCollections(username: string, offset?: number, limit?: number): Promise<any>;
     getCollectionItems(collectionId: string, offset?: number, limit?: number): Promise<any>;
     getRecommend(cursor?: string): Promise<any>;
+    getAndroidRecommend(cursor?: string, options?: AndroidRequestOptions): Promise<any>;
+    getPublicHotList(limit?: number): Promise<any>;
+    getPublicHotSearch(): Promise<any>;
     getFollowingFeed(offset?: number): Promise<any>;
     getAnswer(answerId: string): Promise<any>;
     getVideoPlayInfo(videoId: string, contentId: string, contentType: 'answer' | 'article'): Promise<any>;
@@ -90,8 +95,12 @@ function escapeHtml(text:string) {
 
 
 class ZhihuAPI {
+    client: ZhihuClient;
+    androidClient: AndroidZhihuClient;
+
     constructor(cookie: string) {
         this.client = new ZhihuClient(cookie);
+        this.androidClient = new AndroidZhihuClient(cookie);
     }
 
     /**
@@ -99,6 +108,7 @@ class ZhihuAPI {
      */
     setCookie(cookie: string) {
         this.client.setCookie(cookie);
+        this.androidClient.setCookie(cookie);
     }
 
     setTransferListener(listener?: (bytes: number, durationMs: number) => void) {
@@ -175,6 +185,22 @@ class ZhihuAPI {
         }
 
         return this.client.get(`${firstPageUrl}&session_token=${encodeURIComponent(cursor)}`);
+    }
+
+    /** Android transport uses api.zhihu.com and never passes through the Web signer. */
+    async getAndroidRecommend(cursor = '', options: AndroidRequestOptions = {}) {
+        return this.androidClient.getRecommend(cursor, options);
+    }
+
+    /** 游客可访问的知乎热榜；这是独立于个性化推荐流的公开接口。 */
+    async getPublicHotList(limit = 30) {
+        const safeLimit = Math.max(1, Math.min(50, Math.trunc(limit)));
+        return this.client.getPublic(`https://api.zhihu.com/topstory/hot-lists/total?limit=${safeLimit}`);
+    }
+
+    /** 游客可访问的热搜词列表。 */
+    async getPublicHotSearch() {
+        return this.client.getPublic('https://www.zhihu.com/api/v4/search/hot_search');
     }
 
     /**

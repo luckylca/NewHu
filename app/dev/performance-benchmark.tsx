@@ -1,5 +1,6 @@
-import { Card, Checkbox, ListRow, NavigationBar, NumberWheel, ProgressIndicator, SegmentedControl, Slider, Text, useTheme } from '@/src/ui';
+import { Card, Checkbox, GlassSurface, ListRow, NavigationBar, NumberWheel, ProgressIndicator, SegmentedControl, Slider, Text, useTheme } from '@/src/ui';
 import { useLocalSearchParams } from 'expo-router';
+import { useSettingStore } from '@/src/stores/useSettingStore';
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
@@ -48,9 +49,12 @@ function UnmemoizedReferenceRow({ id, renderCount }: MeasuredRowProps) {
 /** Temporary, deterministic Hyper UI stress screen for device frame profiling. */
 export default function HyperPerformanceBenchmark() {
     'use no memo';
-    const { case: requestedCase, variant: requestedVariant } = useLocalSearchParams<{ case?: string; variant?: string }>();
-    const testCase = requestedCase ?? 'updates';
+    const { case: requestedCase, variant: requestedVariant, run: requestedRun, scene: requestedScene } = useLocalSearchParams<{ case?: string; variant?: string; run?: string; scene?: string }>();
+    const testCase = requestedCase ?? 'scroll';
     const variant = requestedVariant === 'plain' ? 'plain' : 'memo';
+    const scene = requestedScene === 'A' || requestedScene === 'C' ? requestedScene : 'B';
+    const runId = requestedRun ?? '0';
+    const setThemeName = useSettingStore((state) => state.setThemeName);
     const theme = useTheme();
     const scrollRef = useRef<ScrollView>(null);
     const rowRenderCount = useRef(0);
@@ -63,6 +67,15 @@ export default function HyperPerformanceBenchmark() {
     const [progressAnimating, setProgressAnimating] = useState(false);
     const [runStatus, setRunStatus] = useState('warmup');
 
+    useEffect(() => {
+        const previousTheme = useSettingStore.getState().themeName;
+        const nextTheme = scene === 'A' ? 'hyperos' : 'liquidGlass';
+        if (previousTheme !== nextTheme) setThemeName(nextTheme);
+        return () => {
+            if (previousTheme !== nextTheme) setThemeName(previousTheme);
+        };
+    }, [scene, setThemeName]);
+
     const onSliderChange = useCallback((value: number) => setSliderValue(value), []);
     const onWheelChange = useCallback((value: number) => setWheelValue(value), []);
     const onCheckboxChange = useCallback((value: boolean) => setCheckboxValue(value), []);
@@ -74,6 +87,7 @@ export default function HyperPerformanceBenchmark() {
         : <MemoMeasuredHyperRow key={id} id={id} renderCount={rowRenderCount} />);
 
     useEffect(() => {
+        setRunStatus('warmup');
         let interval: ReturnType<typeof setInterval> | undefined;
         const warmup = setTimeout(() => {
             setRunStatus('running');
@@ -105,8 +119,8 @@ export default function HyperPerformanceBenchmark() {
                     if (interval) clearInterval(interval);
                     setProgressAnimating(false);
                     const elapsedMs = Date.now() - startedAt;
-                    setRunStatus(`complete · ${variant} · rows ${rowRenderCount.current} · ${elapsedMs}ms`);
-                    console.log(`[HYPER_PERF] case=${testCase} variant=${variant} ticks=${tick} rows=${rowRenderCount.current} elapsedMs=${elapsedMs}`);
+                    setRunStatus(`scene ${scene} · ${variant} · rows ${rowRenderCount.current} · ${elapsedMs}ms`);
+                    console.log(`[HYPER_PERF] scene=${scene} case=${testCase} variant=${variant} ticks=${tick} rows=${rowRenderCount.current} elapsedMs=${elapsedMs}`);
                 }
             }, intervalMs);
         }, 5000);
@@ -115,16 +129,33 @@ export default function HyperPerformanceBenchmark() {
             clearTimeout(warmup);
             if (interval) clearInterval(interval);
         };
-    }, [testCase, variant]);
+    }, [testCase, variant, scene, runId]);
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
             <View style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 12 }}>
                 <Text type="title3" weight="medium">Hyper UI 性能测试</Text>
                 <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>
-                    case={testCase} · {runStatus} · parent revision {revision}
+                    scene {scene} · case={testCase} · {runStatus} · parent revision {revision}
                 </Text>
             </View>
+            {scene === 'C' ? (
+                <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingBottom: 12 }}>
+                    {[1, 2, 3].map((index) => (
+                        <GlassSurface
+                            key={index}
+                            variant="card"
+                            style={{ flex: 1, height: 68, borderRadius: 18 }}
+                            placeholderChildren={<View style={{ flex: 1, minHeight: 68 }} />}
+                        >
+                            <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 10 }}>
+                                <Text type="footnote1" weight="medium">Glass {index}</Text>
+                                <Text type="footnote2" color={theme.colors.onSurfaceVariantSummary}>shared backdrop</Text>
+                            </View>
+                        </GlassSurface>
+                    ))}
+                </View>
+            ) : null}
             <ScrollView ref={scrollRef} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 48, gap: 16 }}>
                 <Card>
                     <View style={{ padding: 16, gap: 12 }}>
@@ -134,11 +165,13 @@ export default function HyperPerformanceBenchmark() {
                         <Checkbox value={checkboxValue} onValueChange={onCheckboxChange} accessibilityLabel="测试复选框" />
                         <ProgressIndicator progress={sliderValue / 100} indeterminate={progressAnimating} />
                         <SegmentedControl tabs={SEGMENT_TABS} selected={segment} onSelect={onSegmentSelect} />
-                        <NavigationBar items={NAV_ITEMS} selected={navIndex} onSelect={onNavigationSelect} />
                     </View>
                 </Card>
                 {benchmarkRows}
             </ScrollView>
+            <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 10 }}>
+                <NavigationBar items={NAV_ITEMS} selected={navIndex} onSelect={onNavigationSelect} />
+            </View>
         </View>
     );
 }

@@ -18,6 +18,7 @@ export type ProductV1RecommendationReason = {
   bubbleDomain: string | null;
   bubbleDomainLabel: string | null;
   source: 'recommendation' | 'search';
+  sourceOrigins?: CandidateSourceOrigin[];
   summary: string;
 };
 
@@ -27,6 +28,7 @@ const QUALITY_SIGNALS = new Set<ProductV1RecommendationQualitySignal>([
   'popular_and_save_dominant',
   'ultra_high',
 ]);
+const SOURCE_ORIGINS = new Set(['web_recommend', 'android_recommend', 'search', 'bubble_break', 'follow', 'topic']);
 
 function finiteNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -61,6 +63,9 @@ export function parseProductV1RecommendationReason(raw: unknown): ProductV1Recom
       ? row.qualitySignal as ProductV1RecommendationQualitySignal
       : undefined;
   if (qualitySignal === undefined) return undefined;
+  const sourceOrigins = Array.isArray(row.sourceOrigins)
+    ? row.sourceOrigins.filter((origin): origin is CandidateSourceOrigin => SOURCE_ORIGINS.has(String(origin)))
+    : [];
 
   return {
     version: 1,
@@ -76,6 +81,8 @@ export function parseProductV1RecommendationReason(raw: unknown): ProductV1Recom
     bubbleDomain: nullableString(row.bubbleDomain),
     bubbleDomainLabel: nullableString(row.bubbleDomainLabel),
     source: row.source,
+    ...(sourceOrigins.length ? { sourceOrigins: [...new Set(sourceOrigins)] } : {}),
     summary: row.summary.trim(),
   };
 }
+export type CandidateSourceOrigin = 'web_recommend' | 'android_recommend' | 'search' | 'bubble_break' | 'follow' | 'topic';

@@ -98,10 +98,11 @@ export async function saveFeedEntries(items: FeedItemInfo[], source = 'recommend
                 );
             }
             await transaction.runAsync(
-                `INSERT INTO feed_entries (content_id, content_type, source, position, session_id, batch_id, fetched_at, last_accessed_at, recommendation_reason_json)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                `INSERT INTO feed_entries (content_id, content_type, source, position, session_id, batch_id, fetched_at, last_accessed_at, recommendation_reason_json, candidate_sources_json)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 content.id, item.feedType, source, index, sessionId || null, batchId, timestamp, timestamp,
                 content.recommendationReason ? JSON.stringify(content.recommendationReason) : null,
+                item.candidateSources?.length ? JSON.stringify([...new Set(item.candidateSources)]) : null,
             );
         }
     });
@@ -118,7 +119,12 @@ export async function getRecentFeed(limit = 80, pinnedOnly = false): Promise<Fee
                        FROM feed_entries f
                        WHERE f.content_id = c.id AND f.content_type = c.type
                          AND f.recommendation_reason_json IS NOT NULL
-                       ORDER BY f.fetched_at DESC, f.id DESC LIMIT 1) AS recommendation_reason_json
+                       ORDER BY f.fetched_at DESC, f.id DESC LIMIT 1) AS recommendation_reason_json,
+                      (SELECT f.candidate_sources_json
+                       FROM feed_entries f
+                       WHERE f.content_id = c.id AND f.content_type = c.type
+                         AND f.candidate_sources_json IS NOT NULL
+                       ORDER BY f.fetched_at DESC, f.id DESC LIMIT 1) AS candidate_sources_json
                FROM offline_pins p
                JOIN contents c ON c.id = p.content_id AND c.type = p.content_type
                LEFT JOIN content_bodies b ON b.content_id = c.id AND b.content_type = c.type
@@ -126,7 +132,7 @@ export async function getRecentFeed(limit = 80, pinnedOnly = false): Promise<Fee
                ORDER BY p.updated_at DESC
                LIMIT ?`
             : `SELECT c.*, b.html AS body_html, b.cache_state AS body_cache_state,
-                      f.source, f.position, f.fetched_at, f.recommendation_reason_json
+                      f.source, f.position, f.fetched_at, f.recommendation_reason_json, f.candidate_sources_json
                FROM feed_entries f
                JOIN contents c ON c.id = f.content_id AND c.type = f.content_type
                LEFT JOIN content_bodies b ON b.content_id = c.id AND b.content_type = c.type
@@ -165,11 +171,24 @@ export async function getRecentFeed(limit = 80, pinnedOnly = false): Promise<Fee
         });
         const recommendationReason = parseProductV1RecommendationReason(row.recommendation_reason_json);
         if (recommendationReason) item.recommendationReason = recommendationReason;
+        let candidateSources: FeedItemInfo['candidateSources'];
+        if (typeof row.candidate_sources_json === 'string') {
+            try {
+                const stored = JSON.parse(row.candidate_sources_json);
+                if (Array.isArray(stored)) {
+                    const allowed = new Set(['web_recommend', 'android_recommend', 'search', 'bubble_break', 'follow', 'topic']);
+                    candidateSources = [...new Set(stored.filter((value): value is NonNullable<FeedItemInfo['candidateSources']>[number] => allowed.has(value)))];
+                }
+            } catch {
+                candidateSources = undefined;
+            }
+        }
         return [{
             feedType: row.type,
             isAds: false,
             isPaid: false,
             item,
+            ...(candidateSources?.length ? { candidateSources } : {}),
         } as FeedItemInfo];
     });
 }

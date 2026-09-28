@@ -1,4 +1,5 @@
 import ZhihuAPI from "./api";
+import type { AndroidRequestOptions } from './android/androidClient';
 import type { SearchOptions } from './api';
 
 let apiInstance: ZhihuAPI | null = null;
@@ -71,6 +72,21 @@ export async function getCollectionItems(collectionId: string, offset: number = 
 export async function getRecommend(cursor: string = "") {
     const data = await requireApiInstance().getRecommend(cursor);
     return data;
+}
+
+/** 获取 Android 官方推荐流；分页地址来自 Android 响应的 paging.next。 */
+export async function getAndroidRecommend(cursor: string = "", options: AndroidRequestOptions = {}) {
+    const api = options.anonymous ? getApiInstance() : requireApiInstance();
+    return api.getAndroidRecommend(cursor, options);
+}
+
+// 获取无需登录的公开热榜与热搜词。
+export async function getPublicHotList(limit = 30) {
+    return getApiInstance().getPublicHotList(limit);
+}
+
+export async function getPublicHotSearch() {
+    return getApiInstance().getPublicHotSearch();
 }
 
 // 获取关注动态。

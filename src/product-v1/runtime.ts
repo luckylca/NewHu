@@ -2,7 +2,7 @@ import { yieldToUI } from './core/cooperative';
 import type { FeedItemInfo } from '@/src/types/zhihu';
 import { commitProductCycle, loadProductCandidates, loadProductState } from '@/src/db/repositories/productV1Repository';
 import { CandidateInventoryV3, supplyInterestV3 } from './core/candidateInventoryV3';
-import { candidateDuplicateKey, type CandidateArticle, type SearchSeedCompact } from './core/candidateAcquisition';
+import { candidateDuplicateKey, normalizeCandidateSourceOrigins, type CandidateArticle, type CandidateSourceOrigin, type SearchSeedCompact } from './core/candidateAcquisition';
 import { computeCandidateDeficits, desiredSupplyFromExplicit, desiredSupplyFromProfile } from './core/candidateDeficit';
 import { createExposureHistory, repetitionRate } from './core/exposureHistory';
 import { createProfileState, topNamedInterests } from './core/profile';
@@ -45,6 +45,7 @@ import { updateProductV1Health } from './store';
 import type { ProductV1CandidateRecord, ProductV1RuntimeState, ProductV1Trace } from './types';
 import { buildProductV1RecommendationReason } from './recommendationReason';
 import { semanticExcerpt, semanticTitle } from './semanticInput';
+import { candidateSourcesForItem, mergeRecommendationSourceItems, sourceCountsForItems } from '@/src/services/candidateSourceService';
 import {
   capAutoDesiredSupply,
   composeBubbleDisplayRecords,
@@ -163,11 +164,14 @@ export function runProductV1Maintenance<T>(task: () => Promise<T>) {
   return enqueue(task);
 }
 
-function toCandidate(feed: FeedItemInfo, source: 'recommendation' | 'search', cycleId: string, rank: number): CandidateArticle {
+function toCandidate(feed: FeedItemInfo, source: 'recommendation' | 'search', cycleId: string, rank: number, origins?: CandidateSourceOrigin[]): CandidateArticle {
   const articleId = `${feed.feedType}:${feed.item.id}`;
   const url = feed.feedType === 'article'
     ? `https://zhuanlan.zhihu.com/p/${feed.item.id}`
-    : `https://www.zhihu.com/question/${feed.item.questionId}/answer/${feed.item.id}`;
+    : feed.feedType === 'question'
+      ? `https://www.zhihu.com/question/${feed.item.id}`
+      : `https://www.zhihu.com/question/${feed.item.questionId}/answer/${feed.item.id}`;
+  const sourceOrigins = origins ?? (source === 'recommendation' ? candidateSourcesForItem(feed) : ['search']);
   return {
     articleId,
     url,
@@ -189,6 +193,7 @@ function toCandidate(feed: FeedItemInfo, source: 'recommendation' | 'search', cy
       favoriteCount: feed.item.favoriteCount || undefined,
       commentCount: feed.item.commentCount,
       feedType: feed.feedType,
+      sourceOrigins,
     },
     duplicateKey: candidateDuplicateKey(articleId, url, feed.item.title),
     encoderEmbedding: null,
@@ -199,7 +204,7 @@ function toCandidate(feed: FeedItemInfo, source: 'recommendation' | 'search', cy
     qualified: false,
     rejectionReason: null,
     seenBefore: false,
-    sourceOrigins: [source],
+    sourceOrigins,
     queries: [],
     seedIds: [],
   };
@@ -448,7 +453,8 @@ async function fetchSearchUnit(
   const records = new Map<string, ProductV1CandidateRecord>();
   const candidates: CandidateArticle[] = [];
   for (const [index, feed] of feeds.entries()) {
-    const candidate = toCandidate(feed, 'search', trace.cycleId, index);
+    const candidateFeed = { ...feed, candidateSources: ['search'] as CandidateSourceOrigin[] };
+    const candidate = toCandidate(candidateFeed, 'search', trace.cycleId, index);
     if (memory.inventory.used.has(candidate.duplicateKey) || memory.records.has(candidate.duplicateKey) || records.has(candidate.duplicateKey)) continue;
     candidate.sourceQuery = seed.text;
     candidate.searchSeedId = seed.seedId;
@@ -458,7 +464,7 @@ async function fetchSearchUnit(
     candidate.rawMetadata.searchOffset = offset;
     candidate.rawMetadata.searchUnitKey = searchUnitKey(seed.seedId, offset);
     await enrichCandidate(candidate, memory, targetInterest, center);
-    const record = { candidate, feed };
+    const record = { candidate, feed: candidateFeed };
     records.set(candidate.duplicateKey, record);
     candidates.push(candidate);
   }
@@ -667,7 +673,8 @@ async function acquireBubble(
 
   const records: ProductV1CandidateRecord[] = [];
   for (const [index, feed] of feeds.entries()) {
-    const candidate = toCandidate(feed, 'search', trace.cycleId, index);
+    const candidateFeed = { ...feed, candidateSources: ['bubble_break'] as CandidateSourceOrigin[] };
+    const candidate = toCandidate(candidateFeed, 'search', trace.cycleId, index);
     if (memory.inventory.used.has(candidate.duplicateKey) || memory.records.has(candidate.duplicateKey)) continue;
     candidate.sourceQuery = selected.text;
     candidate.searchSeedId = selected.seedId;
@@ -687,7 +694,7 @@ async function acquireBubble(
     candidate.rejectionReason = candidate.qualified ? null : 'BUBBLE_DOMAIN_BELOW_THRESHOLD';
     candidate.rawMetadata.bubbleDomainScore = domainScore;
     if (!candidate.qualified || (highQualityEnabled && !highQualityEligibleV2(candidate))) continue;
-    const record = { candidate, feed };
+    const record = { candidate, feed: candidateFeed };
     memory.records.set(candidate.duplicateKey, record);
     records.push(record);
   }
@@ -722,12 +729,15 @@ async function runCycle(items: FeedItemInfo[]) {
   const backend = backendFromSettings(settings);
   await initializeProductV1(backend);
   const cycleId = id(`cycle-${backend.id}`);
+  const incoming = mergeRecommendationSourceItems(items);
   const trace: ProductV1Trace = {
     cycleId,
     mode: settings.mode,
     status: 'running',
     startedAt: Date.now(),
-    recommendationCount: items.length,
+    recommendationCount: incoming.items.length,
+    candidateSourceCounts: sourceCountsForItems(items),
+    sourceDedupCount: incoming.duplicateCount,
     searchRequestCount: 0,
     searchSeedIds: [],
     bubbleBreakEnabled: settings.bubbleBreakEnabled,
@@ -756,7 +766,7 @@ async function runCycle(items: FeedItemInfo[]) {
   const memory = await loadMemory(settings.mode, backend);
   memoryPromise = Promise.resolve(memory);
   try {
-    for (const [index, feed] of items.entries()) {
+  for (const [index, feed] of incoming.items.entries()) {
       const candidate = toCandidate(feed, 'recommendation', cycleId, index);
       if (memory.inventory.used.has(candidate.duplicateKey)) continue;
       await enrichCandidate(candidate, memory);
@@ -819,6 +829,32 @@ async function runCycle(items: FeedItemInfo[]) {
     trace.ratioAchieved = Object.fromEntries(Object.entries(achieved).map(([key, count]) => [key, count / Math.max(1, knownHorizon.length)]));
     trace.activeCount = memory.inventory.active.size;
     trace.reserveCount = memory.inventory.reserve.size;
+    const sourceScoreAccumulators = new Map<string, { count: number; total: number; min: number; max: number }>();
+    for (const record of ranked.records) {
+      const score = ranked.scores[record.candidate.duplicateKey]?.finalScore;
+      if (typeof score !== 'number' || !Number.isFinite(score)) continue;
+      for (const origin of normalizeCandidateSourceOrigins(record.candidate)) {
+        const current = sourceScoreAccumulators.get(origin) ?? { count: 0, total: 0, min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY };
+        current.count += 1;
+        current.total += score;
+        current.min = Math.min(current.min, score);
+        current.max = Math.max(current.max, score);
+        sourceScoreAccumulators.set(origin, current);
+      }
+    }
+    trace.sourceScoreDistribution = Object.fromEntries([...sourceScoreAccumulators.entries()].map(([origin, values]) => [origin, {
+      count: values.count,
+      mean: Number((values.total / values.count).toFixed(4)),
+      min: Number(values.min.toFixed(4)),
+      max: Number(values.max.toFixed(4)),
+    }]));
+    trace.selectedSourceCounts = {};
+    for (const record of liveOrder.slice(0, 20)) {
+      for (const origin of normalizeCandidateSourceOrigins(record.candidate)) {
+        trace.selectedSourceCounts[origin] = (trace.selectedSourceCounts[origin] ?? 0) + 1;
+      }
+    }
+    console.info(`[Native512] pool=${memory.inventory.active.size + memory.inventory.reserve.size} selected=${liveOrder.length} sourceScores=${JSON.stringify(trace.sourceScoreDistribution)} selectedSources=${JSON.stringify(trace.selectedSourceCounts)}`);
     trace.status = 'complete';
     trace.completedAt = Date.now();
     if (settings.mode === 'shadow') trace.shadowOrder = liveOrder.map((record) => record.candidate.articleId);

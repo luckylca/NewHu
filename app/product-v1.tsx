@@ -17,7 +17,11 @@ import type { ProductV1Settings, ProductV1Trace } from '@/src/product-v1/types';
 import { Button, Card, Dialog, Divider, Icon, ListRow, SegmentedControl, Slider, Switch, Text, TopAppBar } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { notify } from '@/src/stores/useNotificationStore';
-import { router } from 'expo-router';
+import { getApiInstance } from '@/src/api/ZhihuApi';
+import { useUserStore } from '@/src/stores/useUserStore';
+import { fetchAndroidRecommendPage, type AndroidRecommendationPage } from '@/src/services/androidRecommendService';
+import { getRecommendNextCursor, normalizeRecommendItem } from '@/src/services/recommendFeedService';
+import { router, useLocalSearchParams } from 'expo-router';
 import React from 'react';
 import { ScrollView, View } from 'react-native';
 import { resolveRecommendationBackend, scopedRecommendationState } from '@/src/semantic-v2/recommendationBackend';
@@ -46,7 +50,93 @@ const INTEREST_LABELS: Record<string, string> = {
 const INTEREST_OPTIONS = Object.keys(INTEREST_LABELS);
 
 const label = (interest: string) => INTEREST_LABELS[interest] ?? interest;
+
+async function compareRecommendationSources(cookie: string) {
+  const api = getApiInstance(cookie);
+  const session = await api.getMe();
+  if (!session?.name && !session?.id) throw new Error('登录状态校验失败');
+
+  const webIds = new Set<string>();
+  const androidIds = new Set<string>();
+  const webTypes: Record<string, number> = {};
+  const androidTypes: Record<string, number> = {};
+  const webStatuses: number[] = [];
+  const androidStatuses: number[] = [];
+  const androidContentTypes: string[] = [];
+  let webRaw = 0;
+  let webNormalized = 0;
+  let androidRaw = 0;
+  let androidNormalized = 0;
+  let webCursor = '';
+  let androidCursor = '';
+  let webDone = false;
+  let androidDone = false;
+  let webError = '';
+  let androidError = '';
+  let pages = 0;
+
+  for (let pageIndex = 0; pageIndex < 3 && (!webDone || !androidDone); pageIndex += 1) {
+    pages += 1;
+    const webPromise: Promise<any | null> = webDone ? Promise.resolve(null) : api.getRecommend(webCursor);
+    const androidPromise: Promise<AndroidRecommendationPage | null> = androidDone ? Promise.resolve(null) : fetchAndroidRecommendPage(androidCursor);
+    const [webResult, androidResult]: [PromiseSettledResult<any | null>, PromiseSettledResult<AndroidRecommendationPage | null>] = await Promise.allSettled([webPromise, androidPromise]);
+
+    if (webResult.status === 'fulfilled' && webResult.value) {
+      const response: any = webResult.value;
+      webStatuses.push(api.client.lastResponseStatus);
+      const raw = Array.isArray(response?.data) ? response.data : [];
+      webRaw += raw.length;
+      for (const item of raw) {
+        const kind = String(item?.target?.type ?? item?.type ?? 'unknown');
+        webTypes[kind] = (webTypes[kind] ?? 0) + 1;
+      }
+      const normalized = raw
+        .map(normalizeRecommendItem)
+        .filter((item: any) => item !== null);
+      webNormalized += normalized.length;
+      for (const item of normalized) webIds.add(`${item.feedType}:${item.item.id}`);
+      webCursor = getRecommendNextCursor(response?.paging?.next);
+      webDone = !webCursor || response?.paging?.is_end === true;
+    } else if (webResult.status === 'rejected') {
+      webError = typeof webResult.reason?.status === 'number' ? `http_${webResult.reason.status}` : 'request';
+      webStatuses.push(typeof webResult.reason?.status === 'number' ? webResult.reason.status : 0);
+      webDone = true;
+    }
+
+    if (androidResult.status === 'fulfilled' && androidResult.value) {
+      const result: AndroidRecommendationPage = androidResult.value;
+      androidStatuses.push(result.status);
+      androidContentTypes.push(result.contentType || 'unknown');
+      androidRaw += result.rawCount;
+      androidNormalized += result.items.length;
+      for (const item of result.items) {
+        androidTypes[item.feedType] = (androidTypes[item.feedType] ?? 0) + 1;
+        androidIds.add(`${item.feedType}:${item.item.id}`);
+      }
+      androidCursor = result.nextCursor;
+      androidDone = !androidCursor || result.isEnd;
+    } else if (androidResult.status === 'rejected') {
+      androidError = typeof androidResult.reason?.status === 'number' ? `http_${androidResult.reason.status}` : 'request';
+      androidStatuses.push(typeof androidResult.reason?.status === 'number' ? androidResult.reason.status : 0);
+      androidDone = true;
+    }
+
+    if (pageIndex < 2 && (!webDone || !androidDone)) await new Promise((resolve) => setTimeout(resolve, 1200));
+  }
+
+  const shared = [...webIds].filter((key) => androidIds.has(key)).length;
+  const union = new Set([...webIds, ...androidIds]).size;
+  return {
+    sessionVerified: true,
+    pagesAttempted: pages,
+    web: { httpStatuses: webStatuses, raw: webRaw, normalized: webNormalized, unique: webIds.size, duplicateAcrossPages: webNormalized - webIds.size, types: webTypes, error: webError || undefined },
+    android: { httpStatuses: androidStatuses, contentTypes: [...new Set(androidContentTypes)], raw: androidRaw, normalized: androidNormalized, unique: androidIds.size, duplicateAcrossPages: androidNormalized - androidIds.size, types: androidTypes, error: androidError || undefined },
+    overlap: { sharedUnique: shared, webOnly: webIds.size - shared, androidOnly: androidIds.size - shared, union: union, jaccard: union ? Number((shared / union).toFixed(3)) : 0 },
+  };
+}
+
 export default function ProductV1Screen() {
+  const routeParams = useLocalSearchParams<{ compareSources?: string | string[] }>();
   const theme = useTheme();
   const health = useProductV1HealthStore();
   const [settings, setSettings] = React.useState<ProductV1Settings | null>(null);
@@ -60,7 +150,10 @@ export default function ProductV1Screen() {
   const [checkingAssetUpdates, setCheckingAssetUpdates] = React.useState(false);
   const [pendingAssetUpdate, setPendingAssetUpdate] = React.useState<SemanticV2RuntimeAssetUpdate | null>(null);
   const [assetUpdateDialogVisible, setAssetUpdateDialogVisible] = React.useState(false);
+  const [sourceComparison, setSourceComparison] = React.useState<unknown>(null);
+  const [sourceComparisonRunning, setSourceComparisonRunning] = React.useState(false);
   const checkingAssetUpdatesRef = React.useRef(false);
+  const lastAutoComparisonTokenRef = React.useRef('');
 
   const reload = React.useCallback(async () => {
     const nextSettings = await loadProductV1Settings();
@@ -111,6 +204,33 @@ export default function ProductV1Screen() {
     const next = await updateProductV1Settings(patch);
     setSettings(next);
   };
+
+  const runSourceComparison = async () => {
+    if (sourceComparisonRunning) return;
+    const cookie = useUserStore.getState().cookies;
+    if (!cookie) {
+      notify({ message: '请先登录知乎，再比较推荐源', duration: 3500 });
+      return;
+    }
+    setSourceComparisonRunning(true);
+    setSourceComparison(null);
+    try {
+      const result = await compareRecommendationSources(cookie);
+      console.info(`[CandidateSourceComparison] ${JSON.stringify(result)}`);
+      setSourceComparison(result);
+    } catch (error: any) {
+      setSourceComparison({ error: typeof error?.status === 'number' ? `http_${error.status}` : 'request' });
+    } finally {
+      setSourceComparisonRunning(false);
+    }
+  };
+
+  React.useEffect(() => {
+    const token = String(routeParams.compareSources ?? '');
+    if (!token || token === lastAutoComparisonTokenRef.current) return;
+    lastAutoComparisonTokenRef.current = token;
+    void runSourceComparison();
+  }, [routeParams.compareSources, runSourceComparison]);
 
   const downloadSemanticAssets = async () => {
     if (assetDownloading) return;
@@ -246,6 +366,32 @@ export default function ProductV1Screen() {
         </Card>
 
         <Card feedback="none">
+          <View style={{ padding: theme.spacing.lg }}>
+            <Text type="footnote1" weight="bold" color={theme.colors.primary} style={{ marginBottom: theme.spacing.sm }}>官方推荐候选源</Text>
+            <SegmentedControl
+              tabs={['Web', 'Android', '混合']}
+              selected={settings.recommendationSourceMode === 'android' ? 1 : settings.recommendationSourceMode === 'mixed' ? 2 : 0}
+              onSelect={(index) => void patchSettings({ recommendationSourceMode: index === 1 ? 'android' : index === 2 ? 'mixed' : 'web' })}
+            />
+            <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary} style={{ marginTop: theme.spacing.sm }}>
+              Android 与 Web 候选都会进入 Native512；混合模式合并去重后由现有排序、领域比例和 Seed Search 决定展示。
+            </Text>
+          </View>
+          <Divider style={{ marginLeft: theme.spacing.lg }} />
+          <ListRow
+            title="比较 Web / Android 推荐"
+            summary={sourceComparisonRunning ? '正在以当前登录 Cookie 对比，每个来源最多 3 页…' : '手动请求并比较状态、候选类型、分页和两源交集'}
+            disabled={sourceComparisonRunning}
+            onPress={() => void runSourceComparison()}
+          />
+          {sourceComparison ? (
+            <View style={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.md }}>
+              <Text type="footnote2" color={theme.colors.onSurfaceVariantSummary} selectable>
+                {JSON.stringify(sourceComparison, null, 2) ?? ''}
+              </Text>
+            </View>
+          ) : null}
+          <Divider style={{ marginLeft: theme.spacing.lg }} />
           <ListRow title="高质量模式" summary="500 赞 / 250 收藏 / 50 评论，或收藏数高于赞数" summaryNumberOfLines={2} trailing={<Switch value={settings.highQualityEnabled} interactive={false} />} onPress={() => void patchSettings({ highQualityEnabled: !settings.highQualityEnabled })} />
           <Divider style={{ marginLeft: theme.spacing.lg }} />
           <ListRow title="兴趣破圈" summary="探索画像之外的内容（默认关闭）" trailing={<Switch value={settings.bubbleBreakEnabled} interactive={false} />} onPress={() => void patchSettings({ bubbleBreakEnabled: !settings.bubbleBreakEnabled })} />

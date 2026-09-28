@@ -1,4 +1,5 @@
 import type { CandidateArticle } from './core/candidateAcquisition';
+import { normalizeCandidateSourceOrigins } from './core/candidateAcquisition';
 import { supplyInterestV3 } from './core/candidateInventoryV3';
 import { qualityFromCandidateV2 } from './core/highQualityAcquisitionV2';
 import { productV1DomainLabel } from './domainLabels';
@@ -98,6 +99,7 @@ export function buildProductV1RecommendationReason(
     bubbleDomain,
     bubbleDomainLabel,
     source: candidate.source,
+    sourceOrigins: normalizeCandidateSourceOrigins(candidate),
     summary: parts.join(' · '),
   };
 }
