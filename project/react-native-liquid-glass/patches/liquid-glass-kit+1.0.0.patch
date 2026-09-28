@@ -5,7 +5,7 @@ index 2d487bc..2919d37 100644
 @@ -37,12 +37,21 @@ public object GlassUniforms {
      /** Peak refraction displacement (px). Positive bends inward, negative outward. */
      public const val REFRACTION_AMOUNT: String = "refractionAmount"
- 
+
 +    /** Broad rounded-rect coordinate remapping across the full lens body (px). */
 +    public const val BODY_REFRACTION_AMOUNT: String = "bodyRefractionAmount"
 +
@@ -14,20 +14,20 @@ index 2d487bc..2919d37 100644
 +
      /** 0..1 dispersion strength; splits RGB along the refraction direction. */
      public const val CHROMATIC_ABERRATION: String = "chromaticAberration"
- 
+
      /** `float4` straight (non-premultiplied) RGBA tint; alpha is blend strength. */
      public const val TINT: String = "tint"
- 
+
 +    /** Per-material multiplier for the tint alpha. */
 +    public const val TINT_ALPHA: String = "tintAlpha"
 +
      /** Strength of the banding-prevention grain, typically 0.0..0.05. */
      public const val NOISE_ALPHA: String = "noiseAlpha"
- 
+
 @@ -52,6 +61,15 @@ public object GlassUniforms {
      /** 0..1 intensity of the specular rim highlight. */
      public const val HIGHLIGHT_ALPHA: String = "highlightAlpha"
- 
+
 +    /** Strength of the computed 3D specular highlight. */
 +    public const val SPECULAR_STRENGTH: String = "specularStrength"
 +
@@ -39,11 +39,11 @@ index 2d487bc..2919d37 100644
 +
      /** Thickness (px) of the specular rim band. */
      public const val HIGHLIGHT_WIDTH: String = "highlightWidth"
- 
+
 @@ -61,6 +79,12 @@ public object GlassUniforms {
      /** `float2` press location in shader-local pixels. */
      public const val PRESS_POINT: String = "pressPoint"
- 
+
 +    /** Normalized screen-space lens velocity, used for subtle shear and light response. */
 +    public const val MOTION: String = "motion"
 +
@@ -119,12 +119,12 @@ index aa67cdf..00a8e9c 100644
  uniform float2 ${GlassUniforms.PRESS_POINT};
 +uniform float2 ${GlassUniforms.MOTION};
 +uniform float ${GlassUniforms.DISPLACEMENT_ONLY};
- 
+
  float sdRoundedBox(float2 p, float2 halfSize, float radius) {
      float2 q = abs(p) - halfSize + radius;
      return min(max(q.x, q.y), 0.0) + length(max(q, float2(0.0))) - radius;
  }
- 
+
 +float2 roundedBoxNormal(float2 p, float2 halfSize, float radius) {
 +    float2 q = abs(p) - halfSize + radius;
 +    float2 outside = max(q, float2(0.0));
@@ -139,7 +139,7 @@ index aa67cdf..00a8e9c 100644
      float h = clamp(0.5 + 0.5 * (b - a) / kk, 0.0, 1.0);
 @@ -65,15 +81,34 @@ float sceneSd(float2 p) {
  }
- 
+
  float2 sceneNormal(float2 p) {
 -    float2 e = float2(1.0, 0.0);
 -    float gx = sceneSd(p + e.xy) - sceneSd(p - e.xy);
@@ -176,12 +176,12 @@ index aa67cdf..00a8e9c 100644
 +    float slope = clamp(inward / height, 0.0, 3.4);
 +    return normalize(float3(sdfNormal * slope, 1.0));
  }
- 
+
  half4 main(float2 fragCoord) {
 @@ -84,16 +119,45 @@ half4 main(float2 fragCoord) {
          return half4(0.0);
      }
- 
+
 -    float2 normal = sceneNormal(p);
 +    // The first packed shape is the lens. The tab lens is a single rounded
 +    // rectangle, while the scene SDF still supports merged shapes elsewhere.
@@ -191,7 +191,7 @@ index aa67cdf..00a8e9c 100644
 +    float2 sdfNormal = sceneNormal(p);
 +    float3 surfaceNormal = lensSurfaceNormal(sd, sdfNormal, lensHalfSize);
      float edgeDist = max(-sd, 0.0);
- 
+
 -    float lens = 0.0;
 -    float2 sampleCoord = p;
 -    if (edgeDist < ${GlassUniforms.REFRACTION_HEIGHT}) {
@@ -229,13 +229,13 @@ index aa67cdf..00a8e9c 100644
 +        * (bodyAmount * (0.18 + edgeField * 0.24) * progress * bodyBoundaryFade);
 +    float2 displacement = bodyWarp + edgeWarp - motionShear;
 +    float2 sampleCoord = p - displacement;
- 
+
      if (${GlassUniforms.PRESS_AMOUNT} > 0.001) {
          float2 toPress = p - ${GlassUniforms.PRESS_POINT};
 @@ -101,10 +165,25 @@ half4 main(float2 fragCoord) {
          sampleCoord -= toPress * (${GlassUniforms.PRESS_AMOUNT} * 0.08 * falloff);
      }
- 
+
 -    float caShift = ${GlassUniforms.CHROMATIC_ABERRATION} * lens * abs(${GlassUniforms.REFRACTION_AMOUNT}) * 0.12;
 +    // Debug mode shows only one un-tinted backdrop sample. It intentionally
 +    // skips chromatic separation too, so this view isolates displacement alone.
@@ -263,11 +263,11 @@ index aa67cdf..00a8e9c 100644
 @@ -113,12 +192,29 @@ half4 main(float2 fragCoord) {
          color = float4(${GlassUniforms.CONTENT}.eval(sampleCoord));
      }
- 
+
 -    color.rgb = mix(color.rgb, ${GlassUniforms.TINT}.rgb, ${GlassUniforms.TINT}.a);
 +    float tintAmount = clamp(${GlassUniforms.TINT}.a * ${GlassUniforms.TINT_ALPHA}, 0.0, 1.0);
 +    color.rgb = mix(color.rgb, ${GlassUniforms.TINT}.rgb, tintAmount);
- 
+
      float rim = 1.0 - smoothstep(0.0, max(${GlassUniforms.HIGHLIGHT_WIDTH}, 0.0001), edgeDist);
 -    float facing = pow(abs(dot(normal, ${GlassUniforms.LIGHT_DIRECTION})), 1.5);
 -    float pressBoost = 1.0 + ${GlassUniforms.PRESS_AMOUNT} * 0.6;
@@ -291,25 +291,25 @@ index aa67cdf..00a8e9c 100644
 +    color.rgb += float3(specular + rim * fresnel * 0.22 * pressBoost);
 +    color.rgb += float3(fresnel * 0.12);
 +    color.rgb *= 1.0 - innerBand * (0.28 + progress * 0.08);
- 
+
      float noise = fract(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453) - 0.5;
      color.rgb += float3(noise * ${GlassUniforms.NOISE_ALPHA});
 diff --git a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/BackdropRecorder.kt b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/BackdropRecorder.kt
-index ca69095..89299ac 100644
+index ca69095..3aaf4bc 100644
 --- a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/BackdropRecorder.kt
 +++ b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/BackdropRecorder.kt
 @@ -1,6 +1,7 @@
  package dev.liquidglass.view
- 
+
  import android.graphics.Canvas
 +import android.graphics.Rect
  import android.graphics.RenderNode
  import android.os.Build
  import android.view.View
-@@ -27,9 +28,18 @@ public interface LiquidGlassBackdropSource {
+@@ -27,9 +28,22 @@ public interface LiquidGlassBackdropSource {
      /** True once a hardware recording of the backdrop exists. */
      public val hasRecording: Boolean
- 
+
 +    /** Crop origin of the current recording in source-view-local pixels. */
 +    public val recordedOriginX: Int
 +        get() = 0
@@ -317,28 +317,39 @@ index ca69095..89299ac 100644
 +        get() = 0
 +
      public fun registerConsumer(consumer: View)
- 
+
      public fun unregisterConsumer(consumer: View)
 +
 +    /** Ask the provider to refresh on the next display frame. */
 +    public fun requestCaptureFrame() {}
++
++    /** Whether moving a glass consumer requires a new backdrop recording. */
++    public val requiresCaptureOnConsumerMovement: Boolean
++        get() = true
  }
- 
+
  /**
-@@ -44,6 +54,9 @@ public class BackdropRecorder {
- 
+@@ -43,6 +57,16 @@ public interface LiquidGlassBackdropSource {
+ public class BackdropRecorder {
+
      private val consumers = CopyOnWriteArrayList<View>()
- 
++    // Reused scratch objects: capture runs on the UI thread and may execute every
++    // display frame, so avoid coordinate-array/Rect allocation per consumer.
++    private val sourceLocation = IntArray(2)
++    private val consumerLocation = IntArray(2)
++    private val scratchBounds = Rect()
++    private val unionBounds = Rect()
++    private val clampedCaptureBounds = Rect()
++
 +    public val hasConsumers: Boolean
 +        get() = consumers.isNotEmpty()
-+
+
      /** The live recording, exposed through [LiquidGlassBackdropSource]. */
      public var contentNode: RenderNode? = null
-         private set
-@@ -51,6 +64,12 @@ public class BackdropRecorder {
+@@ -51,6 +75,12 @@ public class BackdropRecorder {
      public val hasRecording: Boolean
          get() = Build.VERSION.SDK_INT >= 29 && contentNode?.hasDisplayList() == true
- 
+
 +    /** Crop origin of [contentNode] in provider-local pixels. */
 +    public var originX: Int = 0
 +        private set
@@ -348,7 +359,7 @@ index ca69095..89299ac 100644
      public fun register(consumer: View) {
          consumers.addIfAbsent(consumer)
      }
-@@ -68,26 +87,62 @@ public class BackdropRecorder {
+@@ -68,26 +98,63 @@ public class BackdropRecorder {
          canvas: Canvas,
          width: Int,
          height: Int,
@@ -366,13 +377,14 @@ index ca69095..89299ac 100644
 -            node.setPosition(0, 0, width, height)
 -            val recording = node.beginRecording(width, height)
 +            val bounds = captureBounds?.let {
-+                Rect(
++                clampedCaptureBounds.set(
 +                    it.left.coerceIn(0, width),
 +                    it.top.coerceIn(0, height),
 +                    it.right.coerceIn(0, width),
 +                    it.bottom.coerceIn(0, height),
 +                )
-+            }?.takeIf { it.width() > 0 && it.height() > 0 }
++                clampedCaptureBounds.takeIf { rect -> rect.width() > 0 && rect.height() > 0 }
++            }
 +            val originX = bounds?.left ?: 0
 +            val originY = bounds?.top ?: 0
 +            val recordedWidth = bounds?.width() ?: width
@@ -416,8 +428,8 @@ index ca69095..89299ac 100644
 +            }
          }
      }
- 
-@@ -96,5 +151,27 @@ public class BackdropRecorder {
+
+@@ -96,5 +163,34 @@ public class BackdropRecorder {
              contentNode?.discardDisplayList()
          }
          contentNode = null
@@ -428,25 +440,32 @@ index ca69095..89299ac 100644
 +    /** Union of active consumer bounds plus a small optical sampling margin. */
 +    public fun consumerBounds(source: View, width: Int, height: Int, marginPx: Int): Rect? {
 +        if (consumers.isEmpty()) return null
-+        val sourceLocation = IntArray(2)
 +        source.getLocationInWindow(sourceLocation)
-+        val consumerLocation = IntArray(2)
-+        var result: Rect? = null
++        var hasUnion = false
 +        for (consumer in consumers) {
 +            if (!consumer.isAttachedToWindow || consumer.width <= 0 || consumer.height <= 0) continue
 +            consumer.getLocationInWindow(consumerLocation)
 +            val left = consumerLocation[0] - sourceLocation[0] - marginPx
 +            val top = consumerLocation[1] - sourceLocation[1] - marginPx
-+            val rect = Rect(left, top, left + consumer.width + marginPx * 2, top + consumer.height + marginPx * 2)
-+            rect.intersect(0, 0, width, height)
-+            if (rect.isEmpty) continue
-+            if (result == null) result = Rect(rect) else result.union(rect)
++            scratchBounds.set(
++                left,
++                top,
++                left + consumer.width + marginPx * 2,
++                top + consumer.height + marginPx * 2,
++            )
++            if (!scratchBounds.intersect(0, 0, width, height) || scratchBounds.isEmpty) continue
++            if (!hasUnion) {
++                unionBounds.set(scratchBounds)
++                hasUnion = true
++            } else {
++                unionBounds.union(scratchBounds)
++            }
 +        }
-+        return result
++        return if (hasUnion) unionBounds else null
      }
  }
 diff --git a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/GlassViewController.kt b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/GlassViewController.kt
-index e5ad81f..1cfade3 100644
+index e5ad81f..b9ea2e6 100644
 --- a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/GlassViewController.kt
 +++ b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/GlassViewController.kt
 @@ -13,6 +13,7 @@ import androidx.annotation.ColorInt
@@ -455,9 +474,15 @@ index e5ad81f..1cfade3 100644
  import dev.liquidglass.view.internal.GlassViewRenderer
 +import kotlin.math.abs
  import kotlin.math.min
- 
+
  /** Sentinel corner radius: fully rounded capsule/circle. */
-@@ -49,6 +50,13 @@ public class GlassViewController(private val host: View) {
+@@ -45,10 +46,19 @@ public class GlassViewController(private val host: View) {
+     private val renderer = GlassViewRenderer()
+     private val locationSelf = IntArray(2)
+     private val locationProvider = IntArray(2)
++    private val relativePosition = FloatArray(2)
++    private val frame = GlassFrame()
+     private var pressAmount = 0f
      private var pressX = 0f
      private var pressY = 0f
      private var pressAnimator: ValueAnimator? = null
@@ -468,13 +493,13 @@ index e5ad81f..1cfade3 100644
 +    private var derivedMotionY = 0f
 +    private var explicitMotionX: Float? = null
 +    private var explicitMotionY: Float? = null
- 
+
      /** The backdrop this glass refracts. Must be drawn below the host. */
      public var provider: LiquidGlassBackdropSource? = null
-@@ -76,6 +84,14 @@ public class GlassViewController(private val host: View) {
+@@ -76,6 +86,14 @@ public class GlassViewController(private val host: View) {
      public var refractionAmountDp: Float = 12f
          set(value) = invalidating(field, value) { field = it }
- 
+
 +    /** Full-body rounded-rect coordinate remapping in dp, separate from the rim bend. */
 +    public var bodyRefractionAmountDp: Float = 2.5f
 +        set(value) = invalidating(field, value) { field = it }
@@ -486,10 +511,10 @@ index e5ad81f..1cfade3 100644
      /** Backdrop saturation boost; 1 leaves color untouched. */
      public var saturation: Float = 1.5f
          set(value) = invalidating(field, value) { field = it }
-@@ -85,6 +101,10 @@ public class GlassViewController(private val host: View) {
+@@ -85,6 +103,10 @@ public class GlassViewController(private val host: View) {
      public var glassTintColor: Int = Color.TRANSPARENT
          set(value) = invalidating(field, value) { field = it }
- 
+
 +    /** Material-specific multiplier applied to the RGBA tint alpha. */
 +    public var tintAlpha: Float = 1f
 +        set(value) = invalidating(field, value.coerceIn(0f, 1f)) { field = it }
@@ -497,10 +522,10 @@ index e5ad81f..1cfade3 100644
      /** 0..1 RGB dispersion along the lens edge. */
      public var chromaticAberration: Float = 0f
          set(value) = invalidating(field, value) { field = it }
-@@ -97,6 +117,18 @@ public class GlassViewController(private val host: View) {
+@@ -97,6 +119,18 @@ public class GlassViewController(private val host: View) {
      public var highlightAlpha: Float = 0.45f
          set(value) = invalidating(field, value) { field = it }
- 
+
 +    /** Gain for the half-vector specular lobe. */
 +    public var specularStrength: Float = 1f
 +        set(value) = invalidating(field, value) { field = it }
@@ -516,10 +541,10 @@ index e5ad81f..1cfade3 100644
      /** Thickness of the specular rim in dp. */
      public var highlightWidthDp: Float = 2f
          set(value) = invalidating(field, value) { field = it }
-@@ -113,6 +145,25 @@ public class GlassViewController(private val host: View) {
+@@ -113,6 +147,25 @@ public class GlassViewController(private val host: View) {
      /** When true the glass answers touch with the gel press response. */
      public var isGlassInteractive: Boolean = false
- 
+
 +    /** Keep a cropped backdrop region current while an interactive lens is mounted. */
 +    public var continuousBackdrop: Boolean = false
 +        set(value) {
@@ -542,7 +567,7 @@ index e5ad81f..1cfade3 100644
      /** Optional fidelity cap (accessibility, battery, tests). */
      public var tierOverride: GlassRenderTier? = null
          set(value) = invalidating(field, value) { field = it }
-@@ -144,6 +195,7 @@ public class GlassViewController(private val host: View) {
+@@ -144,6 +197,7 @@ public class GlassViewController(private val host: View) {
      /** Draws the glass into [canvas]; call before the host's children draw. */
      public fun draw(canvas: Canvas) {
          if (host.width < 1 || host.height < 1) return
@@ -550,41 +575,64 @@ index e5ad81f..1cfade3 100644
          val frame = buildFrame()
          val backdrop = provider
          val providerNode =
-@@ -176,6 +228,10 @@ public class GlassViewController(private val host: View) {
+@@ -176,36 +230,83 @@ public class GlassViewController(private val host: View) {
              min(cornerRadiusDp * density, maxRadius)
          }
          val relative = relativeToProvider()
+-        return GlassFrame(
+-            widthPx = width,
+-            heightPx = height,
+-            cornerRadiusPx = cornerRadiusPx,
+-            blurRadiusPx = blurRadiusDp * density,
+-            refractionHeightPx = refractionHeightDp * density,
+-            refractionAmountPx = refractionAmountDp * density,
+-            saturation = saturation,
+-            tintColor = glassTintColor,
+-            chromaticAberration = chromaticAberration,
+-            noiseAlpha = noiseAlpha,
+-            highlightAlpha = highlightAlpha * (1f + pressAmount * 0.4f),
+-            highlightWidthPx = highlightWidthDp * density,
+-            lightAngleDegrees = lightAngleDegrees,
+-            pressAmount = pressAmount,
+-            pressX = pressX,
+-            pressY = pressY,
+-            relativeX = relative[0],
+-            relativeY = relative[1],
+-        )
 +        updateMotion(relative)
 +        val backdrop = provider
 +        val recordedOriginX = backdrop?.recordedOriginX ?: 0
 +        val recordedOriginY = backdrop?.recordedOriginY ?: 0
-         return GlassFrame(
-             widthPx = width,
-             heightPx = height,
-@@ -189,15 +245,51 @@ public class GlassViewController(private val host: View) {
-             noiseAlpha = noiseAlpha,
-             highlightAlpha = highlightAlpha * (1f + pressAmount * 0.4f),
-             highlightWidthPx = highlightWidthDp * density,
-+            bodyRefractionAmountPx = bodyRefractionAmountDp * density,
-+            interactionProgress = interactionProgress,
-+            tintAlpha = tintAlpha,
-+            specularStrength = specularStrength,
-+            fresnelStrength = fresnelStrength,
-+            innerShadowStrength = innerShadowStrength,
-+            displacementOnlyDebug = displacementOnlyDebug,
-             lightAngleDegrees = lightAngleDegrees,
-             pressAmount = pressAmount,
-             pressX = pressX,
-             pressY = pressY,
--            relativeX = relative[0],
--            relativeY = relative[1],
-+            relativeX = relative[0] - recordedOriginX,
-+            relativeY = relative[1] - recordedOriginY,
-+            motionX = motionX ?: derivedMotionX,
-+            motionY = motionY ?: derivedMotionY,
-         )
-     }
- 
++        frame.widthPx = width
++        frame.heightPx = height
++        frame.cornerRadiusPx = cornerRadiusPx
++        frame.blurRadiusPx = blurRadiusDp * density
++        frame.refractionHeightPx = refractionHeightDp * density
++        frame.refractionAmountPx = refractionAmountDp * density
++        frame.bodyRefractionAmountPx = bodyRefractionAmountDp * density
++        frame.interactionProgress = interactionProgress
++        frame.saturation = saturation
++        frame.tintColor = glassTintColor
++        frame.tintAlpha = tintAlpha
++        frame.chromaticAberration = chromaticAberration
++        frame.noiseAlpha = noiseAlpha
++        frame.highlightAlpha = highlightAlpha * (1f + pressAmount * 0.4f)
++        frame.specularStrength = specularStrength
++        frame.fresnelStrength = fresnelStrength
++        frame.innerShadowStrength = innerShadowStrength
++        frame.highlightWidthPx = highlightWidthDp * density
++        frame.displacementOnlyDebug = displacementOnlyDebug
++        frame.lightAngleDegrees = lightAngleDegrees
++        frame.pressAmount = pressAmount
++        frame.pressX = pressX
++        frame.pressY = pressY
++        frame.relativeX = relative[0] - recordedOriginX
++        frame.relativeY = relative[1] - recordedOriginY
++        frame.motionX = motionX ?: derivedMotionX
++        frame.motionY = motionY ?: derivedMotionY
++        return frame
++    }
++
 +    private fun updateMotion(relative: FloatArray) {
 +        val now = System.nanoTime()
 +        val previousX = previousRelativeX
@@ -593,9 +641,13 @@ index e5ad81f..1cfade3 100644
 +        if (previousX != null && previousY != null &&
 +            (abs(relative[0] - previousX) > 0.5f || abs(relative[1] - previousY) > 0.5f)
 +        ) {
-+            // Idle lenses request one dirty capture when their crop moves (for
-+            // example, a tap-driven tab spring); stationary lenses stay cached.
-+            if (!continuousBackdrop) provider?.requestCaptureFrame()
++            // Cropped providers need a new recording when the consumer moves.
++            // Full-scene providers (the Expo/RN host) only need new sampling
++            // coordinates, so avoid an otherwise redundant full-page re-record.
++            val backdrop = provider
++            if (!continuousBackdrop && backdrop?.requiresCaptureOnConsumerMovement == true) {
++                backdrop.requestCaptureFrame()
++            }
 +        }
 +        if (previousX != null && previousY != null && elapsedSeconds in 0.004f..0.12f) {
 +            val density = host.resources.displayMetrics.density.coerceAtLeast(1f)
@@ -610,44 +662,197 @@ index e5ad81f..1cfade3 100644
 +        previousRelativeX = relative[0]
 +        previousRelativeY = relative[1]
 +        previousMotionAtNanos = now
-+    }
-+
+     }
+
      private fun relativeToProvider(): FloatArray {
-         val backdrop = provider ?: return floatArrayOf(0f, 0f)
+-        val backdrop = provider ?: return floatArrayOf(0f, 0f)
++        val backdrop = provider
++        if (backdrop == null) {
++            relativePosition[0] = 0f
++            relativePosition[1] = 0f
++            return relativePosition
++        }
          host.getLocationInWindow(locationSelf)
+         backdrop.sourceView.getLocationInWindow(locationProvider)
+-        return floatArrayOf(
+-            (locationSelf[0] - locationProvider[0]).toFloat(),
+-            (locationSelf[1] - locationProvider[1]).toFloat(),
+-        )
++        relativePosition[0] = (locationSelf[0] - locationProvider[0]).toFloat()
++        relativePosition[1] = (locationSelf[1] - locationProvider[1]).toFloat()
++        return relativePosition
+     }
+
+     private fun resolveScrimColor(): Int =
 diff --git a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/internal/GlassViewRenderer.kt b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/internal/GlassViewRenderer.kt
-index 4874b15..bfea816 100644
+index 4874b15..936322b 100644
 --- a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/internal/GlassViewRenderer.kt
 +++ b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/internal/GlassViewRenderer.kt
-@@ -33,18 +33,27 @@ internal class GlassFrame(
-     val blurRadiusPx: Float,
-     val refractionHeightPx: Float,
-     val refractionAmountPx: Float,
-+    val bodyRefractionAmountPx: Float,
-+    val interactionProgress: Float,
-     val saturation: Float,
-     val tintColor: Int,
-+    val tintAlpha: Float,
-     val chromaticAberration: Float,
-     val noiseAlpha: Float,
-     val highlightAlpha: Float,
-+    val specularStrength: Float,
-+    val fresnelStrength: Float,
-+    val innerShadowStrength: Float,
-     val highlightWidthPx: Float,
-+    val displacementOnlyDebug: Boolean,
-     val lightAngleDegrees: Float,
-     val pressAmount: Float,
-     val pressX: Float,
-     val pressY: Float,
-     val relativeX: Float,
-     val relativeY: Float,
-+    val motionX: Float,
-+    val motionY: Float,
+@@ -13,13 +13,12 @@ import android.graphics.RenderNode
+ import android.graphics.RuntimeShader
+ import android.graphics.Shader
+ import androidx.annotation.RequiresApi
+-import dev.liquidglass.core.GlassShapePacker
+ import dev.liquidglass.core.GlassUniforms
+ import dev.liquidglass.core.LiquidGlassShaders
+-import dev.liquidglass.core.PackedGlassShape
+ import kotlin.math.abs
+ import kotlin.math.cos
+ import kotlin.math.max
++import kotlin.math.min
+ import kotlin.math.sin
+
+ private const val MIN_BLUR_RADIUS_PX = 0.05f
+@@ -27,24 +26,33 @@ private const val SATURATION_EPSILON = 0.01f
+
+ /** Everything the renderer needs for one frame, resolved to pixels. */
+ internal class GlassFrame(
+-    val widthPx: Float,
+-    val heightPx: Float,
+-    val cornerRadiusPx: Float,
+-    val blurRadiusPx: Float,
+-    val refractionHeightPx: Float,
+-    val refractionAmountPx: Float,
+-    val saturation: Float,
+-    val tintColor: Int,
+-    val chromaticAberration: Float,
+-    val noiseAlpha: Float,
+-    val highlightAlpha: Float,
+-    val highlightWidthPx: Float,
+-    val lightAngleDegrees: Float,
+-    val pressAmount: Float,
+-    val pressX: Float,
+-    val pressY: Float,
+-    val relativeX: Float,
+-    val relativeY: Float,
++    var widthPx: Float = 0f,
++    var heightPx: Float = 0f,
++    var cornerRadiusPx: Float = 0f,
++    var blurRadiusPx: Float = 0f,
++    var refractionHeightPx: Float = 0f,
++    var refractionAmountPx: Float = 0f,
++    var bodyRefractionAmountPx: Float = 0f,
++    var interactionProgress: Float = 0f,
++    var saturation: Float = 1f,
++    var tintColor: Int = Color.TRANSPARENT,
++    var tintAlpha: Float = 1f,
++    var chromaticAberration: Float = 0f,
++    var noiseAlpha: Float = 0f,
++    var highlightAlpha: Float = 0f,
++    var specularStrength: Float = 1f,
++    var fresnelStrength: Float = 0.85f,
++    var innerShadowStrength: Float = 0.18f,
++    var highlightWidthPx: Float = 0f,
++    var displacementOnlyDebug: Boolean = false,
++    var lightAngleDegrees: Float = 245f,
++    var pressAmount: Float = 0f,
++    var pressX: Float = 0f,
++    var pressY: Float = 0f,
++    var relativeX: Float = 0f,
++    var relativeY: Float = 0f,
++    var motionX: Float = 0f,
++    var motionY: Float = 0f,
  )
- 
+
  /**
-@@ -157,6 +166,8 @@ internal class GlassViewRenderer {
+@@ -60,6 +68,27 @@ internal class GlassViewRenderer {
+     private val scrimPaint = Paint()
+     private val rimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+     private val rectF = RectF()
++    private val packedShapes = FloatArray(GlassUniforms.MAX_SHAPES * GlassUniforms.SHAPE_FLOATS).apply {
++        for (i in 0 until GlassUniforms.MAX_SHAPES) {
++            val base = i * GlassUniforms.SHAPE_FLOATS
++            this[base] = GlassUniforms.SENTINEL_CENTER
++            this[base + 1] = GlassUniforms.SENTINEL_CENTER
++            this[base + 2] = 1f
++            this[base + 3] = 1f
++        }
++    }
++    private val packedRadii = FloatArray(GlassUniforms.MAX_SHAPES)
++    private var shaderEffect: RenderEffect? = null
++    private var cachedPrepEffect: RenderEffect? = null
++    private var cachedPrepBlur = Float.NaN
++    private var cachedPrepSaturation = Float.NaN
++    private var cachedPrepValid = false
++    private var cachedChainEffect: RenderEffect? = null
++    private var cachedChainPrep: RenderEffect? = null
++    private var appliedRenderEffect: RenderEffect? = null
++    private var cachedLightAngle = Float.NaN
++    private var cachedLightDirX = 0f
++    private var cachedLightDirY = 0f
+
+     fun release() {
+         if (android.os.Build.VERSION.SDK_INT >= 29) {
+@@ -67,6 +96,15 @@ internal class GlassViewRenderer {
+         }
+         glassNode = null
+         runtimeShader = null
++        shaderEffect = null
++        cachedPrepEffect = null
++        cachedPrepBlur = Float.NaN
++        cachedPrepSaturation = Float.NaN
++        cachedPrepValid = false
++        cachedChainEffect = null
++        cachedChainPrep = null
++        appliedRenderEffect = null
++        cachedLightAngle = Float.NaN
+     }
+
+     /** SHADER (33+) and BLUR (31+) tiers: backdrop slice + RenderEffect. */
+@@ -91,13 +129,15 @@ internal class GlassViewRenderer {
+         } finally {
+             node.endRecording()
+         }
+-        node.setRenderEffect(
+-            if (useShader && android.os.Build.VERSION.SDK_INT >= 33) {
+-                buildShaderEffect(frame, inflate)
+-            } else {
+-                buildBackdropPrepEffect(frame.blurRadiusPx, frame.saturation)
+-            },
+-        )
++        val effect = if (useShader && android.os.Build.VERSION.SDK_INT >= 33) {
++            buildShaderEffect(frame, inflate)
++        } else {
++            buildBackdropPrepEffect(frame.blurRadiusPx, frame.saturation)
++        }
++        if (appliedRenderEffect !== effect) {
++            node.setRenderEffect(effect)
++            appliedRenderEffect = effect
++        }
+
+         canvas.save()
+         if (!useShader) {
+@@ -142,21 +182,27 @@ internal class GlassViewRenderer {
+     private fun buildShaderEffect(frame: GlassFrame, inflate: Float): RenderEffect {
+         val shader = runtimeShader
+             ?: RuntimeShader(LiquidGlassShaders.LIQUID_GLASS).also { runtimeShader = it }
+-        val shape = PackedGlassShape(
+-            centerX = frame.widthPx / 2f + inflate,
+-            centerY = frame.heightPx / 2f + inflate,
+-            halfWidth = frame.widthPx / 2f,
+-            halfHeight = frame.heightPx / 2f,
+-            cornerRadius = frame.cornerRadiusPx,
+-        )
+-        val shapes = listOf(shape)
+-        val angleRadians = Math.toRadians(frame.lightAngleDegrees.toDouble())
++        val halfWidth = frame.widthPx / 2f
++        val halfHeight = frame.heightPx / 2f
++        packedShapes[0] = halfWidth + inflate
++        packedShapes[1] = halfHeight + inflate
++        packedShapes[2] = halfWidth
++        packedShapes[3] = halfHeight
++        packedRadii[0] = min(frame.cornerRadiusPx, max(min(halfWidth, halfHeight), 0f))
++        if (cachedLightAngle != frame.lightAngleDegrees) {
++            val angleRadians = Math.toRadians(frame.lightAngleDegrees.toDouble())
++            cachedLightDirX = cos(angleRadians).toFloat()
++            cachedLightDirY = sin(angleRadians).toFloat()
++            cachedLightAngle = frame.lightAngleDegrees
++        }
+         with(shader) {
+-            setFloatUniform(GlassUniforms.SHAPES, GlassShapePacker.packShapes(shapes))
+-            setFloatUniform(GlassUniforms.SHAPE_RADII, GlassShapePacker.packCornerRadii(shapes))
++            setFloatUniform(GlassUniforms.SHAPES, packedShapes)
++            setFloatUniform(GlassUniforms.SHAPE_RADII, packedRadii)
              setFloatUniform(GlassUniforms.MERGE_SMOOTHING, 0f)
              setFloatUniform(GlassUniforms.REFRACTION_HEIGHT, frame.refractionHeightPx)
              setFloatUniform(GlassUniforms.REFRACTION_AMOUNT, frame.refractionAmountPx)
@@ -656,7 +861,7 @@ index 4874b15..bfea816 100644
              setFloatUniform(GlassUniforms.CHROMATIC_ABERRATION, frame.chromaticAberration)
              setFloatUniform(
                  GlassUniforms.TINT,
-@@ -165,6 +176,7 @@ internal class GlassViewRenderer {
+@@ -165,46 +211,70 @@ internal class GlassViewRenderer {
                  Color.blue(frame.tintColor) / 255f,
                  Color.alpha(frame.tintColor) / 255f,
              )
@@ -664,8 +869,10 @@ index 4874b15..bfea816 100644
              setFloatUniform(GlassUniforms.NOISE_ALPHA, frame.noiseAlpha)
              setFloatUniform(
                  GlassUniforms.LIGHT_DIRECTION,
-@@ -172,8 +184,13 @@ internal class GlassViewRenderer {
-                 sin(angleRadians).toFloat(),
+-                cos(angleRadians).toFloat(),
+-                sin(angleRadians).toFloat(),
++                cachedLightDirX,
++                cachedLightDirY,
              )
              setFloatUniform(GlassUniforms.HIGHLIGHT_ALPHA, frame.highlightAlpha)
 +            setFloatUniform(GlassUniforms.SPECULAR_STRENGTH, frame.specularStrength)
@@ -678,26 +885,64 @@ index 4874b15..bfea816 100644
              setFloatUniform(
                  GlassUniforms.PRESS_POINT,
                  frame.pressX + inflate,
-@@ -182,7 +199,11 @@ internal class GlassViewRenderer {
+                 frame.pressY + inflate,
+             )
          }
-         val shaderEffect =
-             RenderEffect.createRuntimeShaderEffect(shader, GlassUniforms.CONTENT)
+-        val shaderEffect =
+-            RenderEffect.createRuntimeShaderEffect(shader, GlassUniforms.CONTENT)
 -        val prep = buildBackdropPrepEffect(frame.blurRadiusPx, frame.saturation)
+-            ?: return shaderEffect
+-        return RenderEffect.createChainEffect(shaderEffect, prep)
++        val runtimeEffect = shaderEffect
++            ?: RenderEffect.createRuntimeShaderEffect(shader, GlassUniforms.CONTENT).also { shaderEffect = it }
 +        val prep = if (frame.displacementOnlyDebug) {
 +            null
 +        } else {
 +            buildBackdropPrepEffect(frame.blurRadiusPx, frame.saturation)
++        } ?: return runtimeEffect
++        if (cachedChainEffect == null || cachedChainPrep !== prep) {
++            cachedChainPrep = prep
++            cachedChainEffect = RenderEffect.createChainEffect(runtimeEffect, prep)
 +        }
-             ?: return shaderEffect
-         return RenderEffect.createChainEffect(shaderEffect, prep)
++        return cachedChainEffect!!
      }
-@@ -204,7 +225,7 @@ internal class GlassViewRenderer {
+
+     @RequiresApi(31)
+     private fun buildBackdropPrepEffect(blurRadiusPx: Float, saturation: Float): RenderEffect? {
++        if (cachedPrepValid && cachedPrepBlur == blurRadiusPx && cachedPrepSaturation == saturation) {
++            return cachedPrepEffect
++        }
+         val blur = if (blurRadiusPx > MIN_BLUR_RADIUS_PX) {
+             RenderEffect.createBlurEffect(blurRadiusPx, blurRadiusPx, Shader.TileMode.CLAMP)
+         } else {
+             null
+         }
+-        if (abs(saturation - 1f) < SATURATION_EPSILON) return blur
+-        val filter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(saturation) })
+-        return if (blur != null) {
+-            RenderEffect.createColorFilterEffect(filter, blur)
++        val effect = if (abs(saturation - 1f) < SATURATION_EPSILON) {
++            blur
+         } else {
+-            RenderEffect.createColorFilterEffect(filter)
++            val filter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(saturation) })
++            if (blur != null) {
++                RenderEffect.createColorFilterEffect(filter, blur)
++            } else {
++                RenderEffect.createColorFilterEffect(filter)
++            }
+         }
++        cachedPrepBlur = blurRadiusPx
++        cachedPrepSaturation = saturation
++        cachedPrepEffect = effect
++        cachedPrepValid = true
++        return effect
      }
- 
+
      private fun inflateMargin(frame: GlassFrame): Float =
 -        frame.blurRadiusPx * 2f + abs(frame.refractionAmountPx) + 4f
 +        frame.blurRadiusPx * 2f + abs(frame.refractionAmountPx) + abs(frame.bodyRefractionAmountPx) + 4f
- 
+
      private fun shapePath(frame: GlassFrame): Path {
          clipPath.rewind()
 diff --git a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassModule.kt b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassModule.kt
@@ -762,18 +1007,10 @@ index fdbc794..fbfd92f 100644
      }
  }
 diff --git a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassProviderModule.kt b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassProviderModule.kt
-index f1f9584..ff12546 100644
+index f1f9584..faf3e60 100644
 --- a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassProviderModule.kt
 +++ b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassProviderModule.kt
-@@ -2,6 +2,7 @@ package expo.modules.liquidglass
- 
- import android.content.Context
- import android.graphics.Canvas
-+import android.graphics.Rect
- import android.graphics.RenderNode
- import android.view.View
- import dev.liquidglass.view.BackdropRecorder
-@@ -24,6 +25,9 @@ class ExpoLiquidGlassProviderModule : Module() {
+@@ -24,6 +24,9 @@ class ExpoLiquidGlassProviderModule : Module() {
              Prop("providerId") { view: LiquidGlassProviderExpoView, id: String ->
                  view.providerId = id
              }
@@ -783,9 +1020,9 @@ index f1f9584..ff12546 100644
          }
      }
  }
-@@ -34,6 +38,16 @@ class LiquidGlassProviderExpoView(
+@@ -34,6 +37,16 @@ class LiquidGlassProviderExpoView(
  ) : ExpoView(context, appContext), LiquidGlassBackdropSource {
- 
+
      private val recorder = BackdropRecorder()
 +    private var backdropDirty = true
 +    private var lastBackdropCaptureAtNanos = 0L
@@ -797,14 +1034,20 @@ index f1f9584..ff12546 100644
 +            backdropDirty = true
 +            postInvalidateOnAnimation()
 +        }
- 
+
      var providerId: String = "default"
          set(value) {
-@@ -54,12 +68,62 @@ class LiquidGlassProviderExpoView(
+@@ -54,12 +67,75 @@ class LiquidGlassProviderExpoView(
      override val hasRecording: Boolean
          get() = recorder.hasRecording
- 
+
 -    override fun registerConsumer(consumer: View) = recorder.register(consumer)
++    // This provider records the full scene display list, so a glass surface can
++    // move across it by changing only its sampling coordinates. Consumer
++    // movement therefore does not require a backdrop re-record.
++    override val requiresCaptureOnConsumerMovement: Boolean
++        get() = false
++
 +    override val recordedOriginX: Int
 +        get() = recorder.originX
 +
@@ -816,11 +1059,11 @@ index f1f9584..ff12546 100644
 +        backdropDirty = true
 +        postInvalidateOnAnimation()
 +    }
- 
+
      override fun unregisterConsumer(consumer: View) = recorder.unregister(consumer)
- 
+
 +    override fun requestCaptureFrame() {
-+        if (!recorder.hasConsumers) return
++        if (!recorder.hasConsumers || backdropDirty) return
 +        backdropDirty = true
 +        postInvalidateOnAnimation()
 +    }
@@ -849,19 +1092,26 @@ index f1f9584..ff12546 100644
 +        val displayRate = (display?.refreshRate ?: 60f).coerceIn(30f, 120f)
 +        val refreshRate = minOf(displayRate, maxCaptureRateHz)
 +        val minCaptureIntervalNanos = (1_000_000_000.0 / refreshRate).toLong()
-+        val captureBounds = recorder.consumerBounds(
-+            this,
-+            width,
-+            height,
-+            (28f * resources.displayMetrics.density).toInt(),
-+        )
-+        val shouldCaptureBackdrop = backdropDirty && captureBounds != null &&
++        val shouldCaptureBackdrop = backdropDirty &&
 +            (lastBackdropCaptureAtNanos == 0L || now - lastBackdropCaptureAtNanos >= minCaptureIntervalNanos)
 +        if (shouldCaptureBackdrop) {
 +            backdropDirty = false
 +            lastBackdropCaptureAtNanos = now
 +        }
-+        recorder.drawRecorded(canvas, width, height, shouldCaptureBackdrop, shouldCaptureBackdrop, captureBounds) { target ->
++        // Record the provider once into a full-scene display list and replay it.
++        // Region capture required a second dispatchDraw() for the area outside the
++        // crop, effectively traversing the React Native view tree twice on dirty
++        // scroll/animation frames. RenderNode is a display list, not a bitmap, so
++        // keeping the full scene preserves exact sampling while avoiding that
++        // duplicate traversal; each glass surface still renders only its own layer.
++        recorder.drawRecorded(
++            canvas,
++            width,
++            height,
++            shouldCaptureBackdrop,
++            shouldCaptureBackdrop,
++            null,
++        ) { target ->
              super.dispatchDraw(target)
          }
      }
@@ -982,12 +1232,12 @@ index f472480..a840338 100644
 +    /** Cap dirty backdrop refreshes; Balanced uses 60 Hz and High may use 120 Hz. */
 +    maxCaptureRateHz?: number;
  }
- 
+
  /**
 @@ -37,14 +39,20 @@ export interface LiquidGlassViewProps extends ViewProps {
    /** Width of the refracting band along the rim, in dp. Default 12. */
    refractionHeight?: number;
- 
+
 -  /** Peak refraction displacement in dp (negative bends outward). Default 16. */
 -  refractionAmount?: number;
 +    /** Peak refraction displacement in dp (negative bends outward). Default 16. */
@@ -996,23 +1246,23 @@ index f472480..a840338 100644
 +    bodyRefractionAmount?: number;
 +    /** Animated 0..1 transition from idle to interactive optical strength. */
 +    interactionProgress?: number;
- 
+
    /** Backdrop saturation boost; 1 = unchanged. Default 1.5. */
    saturation?: number;
- 
+
 -  /** Surface tint; the alpha channel is the blend strength. */
 -  tint?: ColorValue;
 +    /** Surface tint; the alpha channel is the blend strength. */
 +    tint?: ColorValue;
 +    /** Per-material multiplier applied to the tint alpha. */
 +    tintAlpha?: number;
- 
+
    /** 0..1 RGB dispersion along the lens edge. Default 0. */
    chromaticAberration?: number;
 @@ -52,8 +60,14 @@ export interface LiquidGlassViewProps extends ViewProps {
    /** Strength of the anti-banding grain, 0..1. Default 0.015. */
    noiseAlpha?: number;
- 
+
 -  /** 0..1 intensity of the specular rim highlight. Default 0.55. */
 -  highlightAlpha?: number;
 +    /** 0..1 intensity of the specular rim highlight. Default 0.55. */
@@ -1023,13 +1273,13 @@ index f472480..a840338 100644
 +    fresnelStrength?: number;
 +    /** Gain for the thin compression shade just inside the rim. */
 +    innerShadowStrength?: number;
- 
+
    /** Thickness of the specular rim in dp. Default 2.5. */
    highlightWidth?: number;
 @@ -61,6 +75,15 @@ export interface LiquidGlassViewProps extends ViewProps {
    /** Screen-space angle the rim light comes from, in degrees. Default 245. */
    lightAngle?: number;
- 
+
 -  /** Respond to touch with the gel press (scale, bulge, brighter rim). */
 -  interactive?: boolean;
 +    /** Respond to touch with the gel press (scale, bulge, brighter rim). */
@@ -1051,12 +1301,12 @@ index 7a6f4b9..7f42cb2 100644
 @@ -28,7 +28,7 @@ type NativeGlassProps = Omit<LiquidGlassViewProps, 'tint'> & {
    tint?: ReturnType<typeof processColor>;
  };
- 
+
 -const NativeGlassView: React.ComponentType<NativeGlassProps> | null = isAndroid
 +const NativeGlassView: React.ComponentType<NativeGlassProps & React.RefAttributes<View>> | null = isAndroid
    ? requireNativeViewManager('ExpoLiquidGlass')
    : null;
- 
+
 @@ -71,19 +71,19 @@ export function LiquidGlassProvider({
   * platforms it is a plain `View` — children render with no glass effect — so
   * the same component is safe across a cross-platform app.

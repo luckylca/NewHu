@@ -438,7 +438,11 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
 RenderCardModeItem.displayName = 'RenderCardModeItem';
 
 // ==================== 主屏幕 ====================
-const HomeScreen = () => {
+type HomeScreenProps = {
+    active?: boolean;
+};
+
+const HomeScreen = ({ active = true }: HomeScreenProps) => {
     const theme = useTheme();
     const insets = useSafeAreaInsets();
     const bottomContentInset = useMainTabBottomContentInset();
@@ -455,7 +459,11 @@ const HomeScreen = () => {
     
     const cookies = useUserStore((state) => state.cookies);
     const disableAnimations = useSettingStore((state) => state.disableAnimations);
-    const displayMode = useSettingStore((state) => state.mode);
+    // `mode` is intentionally not subscribed through the React hook while Home
+    // is hidden behind PagerView. Switching the mode from the User page would
+    // otherwise synchronously rebuild the entire feed tree in the same frame as
+    // the SegmentedControl glass animation.
+    const [displayMode, setDisplayMode] = useState(() => useSettingStore.getState().mode);
     const filterAds = useSettingStore((state) => state.isAds);
     const filterPaid = useSettingStore((state) => state.isPaid);
     const deduplicateFeed = useSettingStore((state) => state.deduplicateFeed);
@@ -475,6 +483,36 @@ const HomeScreen = () => {
     const commitVisibleDomainKeys = useCallback((next: Set<string>) => {
         setVisibleDomainKeys((current) => sameStringSet(current, next) ? current : next);
     }, []);
+
+    // Only observe display-mode changes while Home is actually visible. When
+    // inactive, the persisted setting can change freely without mounting a new
+    // FlatList/ScrollView tree off-screen. On re-entry we apply the latest mode
+    // on the next frame so the bottom-tab page switch is not blocked by that
+    // potentially expensive feed reconstruction.
+    useEffect(() => {
+        if (!active) return;
+
+        let frame = requestAnimationFrame(() => {
+            frame = 0;
+            const nextMode = useSettingStore.getState().mode;
+            setDisplayMode((current) => current === nextMode ? current : nextMode);
+        });
+
+        const unsubscribe = useSettingStore.subscribe((state, previousState) => {
+            if (state.mode === previousState.mode) return;
+            const nextMode = state.mode;
+            if (frame) cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(() => {
+                frame = 0;
+                setDisplayMode((current) => current === nextMode ? current : nextMode);
+            });
+        });
+
+        return () => {
+            if (frame) cancelAnimationFrame(frame);
+            unsubscribe();
+        };
+    }, [active]);
     const requestInFlightRef = useRef(false);
     const productMergeGenerationRef = useRef(0);
     const offlineSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -1213,4 +1251,6 @@ const HomeScreen = () => {
     );
 }
 
-export default HomeScreen;
+// PagerView changes activeIndex after a swipe; the feed owns its own store and
+// state subscriptions, so the parent's tab update need not rerun this screen.
+export default React.memo(HomeScreen);

@@ -82,6 +82,7 @@ const UserScreen = ({ navigation }: any) => {
                 <SegmentedControl
                     tabs={['普通模式', '滑动模式', '瀑布流']}
                     selected={modeToIndex(mode)}
+                    lensRefractionHeight={8}
                     onSelect={handleModeSelect}
                 />
             </View>
@@ -106,4 +107,5 @@ const UserScreen = ({ navigation }: any) => {
     );
 }
 
-export default UserScreen;
+// Keep PagerView's selection bookkeeping from rerendering the settings page.
+export default React.memo(UserScreen);

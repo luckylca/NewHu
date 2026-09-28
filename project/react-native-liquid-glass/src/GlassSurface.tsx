@@ -100,6 +100,10 @@ export function GlassMaterialProvider({ children, style, tokens, dark, reducedMo
     const providerId = useId();
     const [entries, setEntries] = useState<Record<string, HostEntry>>({});
     const balancedShaderSurfaces = useMemo(() => selectBalancedShaderSurfaces(entries), [entries]);
+    const orderedEntries = useMemo(
+        () => Object.entries(entries).sort((left, right) => entryZIndex(left[1]) - entryZIndex(right[1])),
+        [entries],
+    );
     const runtime = useMemo(() => ({ tokens, dark, reducedMotion }), [tokens, dark, reducedMotion]);
 
     const updateSurface = useCallback((id: string, entry: SurfaceEntry) => {
@@ -153,7 +157,7 @@ export function GlassMaterialProvider({ children, style, tokens, dark, reducedMo
                         {children}
                     </LiquidGlassProvider>
                     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-                        {Object.entries(entries).sort((left, right) => entryZIndex(left[1]) - entryZIndex(right[1])).map(([id, entry]) => (
+                        {orderedEntries.map(([id, entry]) => (
                             entry.kind === 'surface'
                                 ? <PortalGlassSurface
                                     key={id}
@@ -170,15 +174,15 @@ export function GlassMaterialProvider({ children, style, tokens, dark, reducedMo
     );
 }
 
-function PortalOverlay({ entry }: { entry: OverlayEntry }) {
+const PortalOverlay = React.memo(function PortalOverlay({ entry }: { entry: OverlayEntry }) {
     return (
         <Animated.View pointerEvents="box-none" style={[StyleSheet.absoluteFill, entry.style, { zIndex: entry.zIndex }]}>
             {entry.children}
         </Animated.View>
     );
-}
+});
 
-function PortalGlassSurface({ providerId, entry, shaderEnabled }: { providerId: string; entry: SurfaceEntry; shaderEnabled: boolean }) {
+const PortalGlassSurface = React.memo(function PortalGlassSurface({ providerId, entry, shaderEnabled }: { providerId: string; entry: SurfaceEntry; shaderEnabled: boolean }) {
     const runtime = useContext(GlassRuntimeContext);
     const opticalProgress = entry.opticalProgress;
     const opticalMotionX = entry.opticalMotionX;
@@ -273,9 +277,9 @@ function PortalGlassSurface({ providerId, entry, shaderEnabled }: { providerId: 
             {nativeSurface}
         </Animated.View>
     );
-}
+});
 
-function PortalFallbackSurface({ entry }: { entry: SurfaceEntry }) {
+const PortalFallbackSurface = React.memo(function PortalFallbackSurface({ entry }: { entry: SurfaceEntry }) {
     const runtime = useContext(GlassRuntimeContext);
     if (!runtime) return null;
     const { tokens, dark } = runtime;
@@ -336,7 +340,7 @@ function PortalFallbackSurface({ entry }: { entry: SurfaceEntry }) {
             {fallbackSurface}
         </Animated.View>
     );
-}
+});
 
 export interface GlassSurfaceProps {
     variant?: GlassVariant;

@@ -8,6 +8,8 @@ export interface AppSegmentedControlProps {
     tabs: string[];
     selected?: number;
     onSelect?: (index: number) => void;
+    /** Optional narrower/wider refraction rim for text-heavy segmented selectors. */
+    lensRefractionHeight?: number;
 }
 
 const CONTROL_HEIGHT = 56;
@@ -16,7 +18,7 @@ const CONTROL_HEIGHT = 56;
  * Glass mode selectors intentionally use the same lens, tap and drag controller
  * as the app's bottom navigation. This keeps long-press drag behavior identical.
  */
-export const SegmentedControl = React.memo(function SegmentedControl({ tabs, selected = 0, onSelect }: AppSegmentedControlProps) {
+export const SegmentedControl = React.memo(function SegmentedControl({ tabs, selected = 0, onSelect, lensRefractionHeight }: AppSegmentedControlProps) {
     const theme = useTheme();
     const renderModeLabel = useCallback((item: { label: string }, _index: number, active: boolean) => (
         <Text
@@ -39,6 +41,7 @@ export const SegmentedControl = React.memo(function SegmentedControl({ tabs, sel
                 width="100%"
                 horizontalPadding={4}
                 shellRadius={18}
+                lensRefractionHeight={lensRefractionHeight}
                 shellBackgroundColor={theme.colors.surfaceContainerHigh}
                 accessibilityHint="点击切换，或长按玻璃选中项并横向拖动切换"
                 onSelect={(index) => onSelect?.(index)}

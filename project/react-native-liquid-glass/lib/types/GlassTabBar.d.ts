@@ -16,6 +16,8 @@ export interface GlassTabBarProps {
     horizontalPadding?: number;
     shellRadius?: number;
     lensMaxWidth?: number;
+    /** Optional per-instance optical rim width. Smaller values keep center content flatter. */
+    lensRefractionHeight?: number;
     accessibilityHint?: string;
     /** Fully opaque fill behind the tab icons; the selected lens samples this local scene. */
     shellBackgroundColor?: string;

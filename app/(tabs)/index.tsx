@@ -25,15 +25,19 @@ const MainScreens = () => {
         { key: 'user', title: '我的', icon: 'account' }
     ], []);
 
-    const handlePageSelected = (e: any) => {
+    const handlePageSelected = React.useCallback((e: any) => {
         setActiveIndex(e.nativeEvent.position);
-    };
+    }, []);
 
-    const handleTabPress = (index: number) => {
+    const handleTabPress = React.useCallback((index: number) => {
         if (index === 0) requestHomeScrollTop();
         setActiveIndex(index);
         pageViewRef.current?.setPageWithoutAnimation(index);
-    }
+    }, [requestHomeScrollTop]);
+
+    const handleDoubleSelect = React.useCallback((index: number) => {
+        if (index === 0) requestFeedRefresh();
+    }, [requestFeedRefresh]);
 
     return (
         <MainTabLayoutProvider value={bottomContentInset}>
@@ -43,12 +47,12 @@ const MainScreens = () => {
                 ref={pageViewRef}           // 挂上钩子
                 style={styles.pagerView} // 样式
                 initialPage={0}          // 初始在第 0 页
-                scrollEnabled={true}     // 主页面支持横向手势切页，选中态由 onPageSelected 同步
+                scrollEnabled={false}    // 关闭页面横向手势滑动；通过底部 Tab 点击切页
                 onPageSelected={handlePageSelected} // 监听滑动结束事件
             >
                 {/* 第 0 页：首页 */}
                 <View key="home_page" style={styles.pageWrapper}>
-                    <HomeScreen />
+                    <HomeScreen active={activeIndex === 0} />
                 </View>
                 {/* 第 1 页：用户 */}
                 <View key="user_page" style={styles.pageWrapper}>
@@ -60,9 +64,7 @@ const MainScreens = () => {
             <CustomTabNav
                 activeIndex={activeIndex}      // 告诉它：现在哪一页是激活的（用来变色）
                 onIndexChange={handleTabPress} // 告诉它：有人按按钮时，执行这个函数
-                onDoubleSelect={(index) => {
-                    if (index === 0) requestFeedRefresh();
-                }}
+                onDoubleSelect={handleDoubleSelect}
                 routes={routes}                // 告诉它：有哪些按钮要渲染
             />
         </View>

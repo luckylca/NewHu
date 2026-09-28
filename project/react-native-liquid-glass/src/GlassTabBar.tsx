@@ -54,7 +54,11 @@ interface GestureDebugSnapshot {
 }
 
 function logGlassTabGesture(event: string, detail?: string) {
-    if (__DEV__) console.info(`[GlassTab] ${event}${detail ? ` ${detail}` : ''}`);
+    if (__DEV__) {
+        const timestamp = globalThis.performance?.now?.();
+        const time = typeof timestamp === 'number' ? timestamp.toFixed(1) : 'n/a';
+        console.info(`[GlassTab ${time}ms] ${event}${detail ? ` ${detail}` : ''}`);
+    }
 }
 
 /** Extra scroll room below content: bar height + bottom gap + visual clearance. */
@@ -76,6 +80,8 @@ export interface GlassTabBarProps {
     horizontalPadding?: number;
     shellRadius?: number;
     lensMaxWidth?: number;
+    /** Optional per-instance optical rim width. Smaller values keep center content flatter. */
+    lensRefractionHeight?: number;
     accessibilityHint?: string;
     /** Fully opaque fill behind the tab icons; the selected lens samples this local scene. */
     shellBackgroundColor?: string;
@@ -111,6 +117,7 @@ export function GlassTabBar({
     horizontalPadding = TAB_BAR_HORIZONTAL_PADDING,
     shellRadius,
     lensMaxWidth = SELECTION_LENS_MAX_WIDTH,
+    lensRefractionHeight,
     accessibilityHint,
 }: GlassTabBarProps) {
     const { width: windowWidth } = useWindowDimensions();
@@ -172,6 +179,7 @@ export function GlassTabBar({
     const dragVelocityY = useSharedValue(0);
     const [liveBackdropEnabled, setLiveBackdropEnabled] = useState(false);
     const interactionActiveRef = useRef(false);
+    const dragCommittedTargetRef = useRef<number | null>(null);
     const previousGeometryRef = useRef({ selected, barWidth: 0 });
     const [gestureDebug, setGestureDebug] = useState<GestureDebugSnapshot>({
         phase: 'idle',
@@ -257,6 +265,7 @@ export function GlassTabBar({
 
     const beginInteraction = useCallback(() => {
         interactionActiveRef.current = true;
+        dragCommittedTargetRef.current = null;
         if (nativeLiveAvailable) setLiveBackdropEnabled(true);
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
     }, [nativeLiveAvailable]);
@@ -293,25 +302,33 @@ export function GlassTabBar({
         }
     }, [beginInteraction, grabOffsetX, holdActivated, holdCandidate, hoveredIndex, interactionActive, interactionProgress, lensBaseHeight, lensHeight, lensLeft, lensRight, lensWidth, originSelectedIndex, pendingIndex, phase, reducedMotion, selected, sessionId, shellScreenLeft, touchMovedPastSlop, touchSessionActive, touchStartX, updateGestureDebug]);
 
-    const finishInteraction = useCallback((targetIndex: number, startIndex: number, commit: boolean) => {
+    const commitDragSelection = useCallback((targetIndex: number, startIndex: number) => {
         const safeTarget = Math.max(0, Math.min(itemCount - 1, targetIndex));
         const safeStart = Math.max(0, Math.min(itemCount - 1, startIndex));
-        interactionActiveRef.current = false;
-        setLiveBackdropEnabled(false);
-        // Record the settled geometry before notifying navigation. The next
-        // selected-prop effect then recognizes this as already reconciled.
+        if (safeTarget === safeStart || dragCommittedTargetRef.current !== null) return;
+
+        // Mark this as the drag's own page change before notifying navigation.
+        // The selection effect must leave the remaining glass settle intact.
+        dragCommittedTargetRef.current = safeTarget;
         previousGeometryRef.current = { selected: safeTarget, barWidth };
-        if (commit && safeTarget !== safeStart) {
-            logGlassTabGesture('COMMIT', `target=${safeTarget}`);
-            (onSelectFromDrag ?? onSelect)(safeTarget);
-        }
+        logGlassTabGesture('COMMIT', `target=${safeTarget}`);
+        (onSelectFromDrag ?? onSelect)(safeTarget);
     }, [barWidth, itemCount, onSelect, onSelectFromDrag]);
 
-    const resetInteractionOnUI = useCallback((targetIndex: number, startIndex: number, commit: boolean) => {
+    const finishInteraction = useCallback((targetIndex: number) => {
+        const safeTarget = Math.max(0, Math.min(itemCount - 1, targetIndex));
+        interactionActiveRef.current = false;
+        setLiveBackdropEnabled(false);
+        previousGeometryRef.current = { selected: safeTarget, barWidth };
+        dragCommittedTargetRef.current = null;
+        logGlassTabGesture('BACKDROP_OFF');
+        logGlassTabGesture('RESET');
+    }, [barWidth, itemCount]);
+
+    const resetInteractionOnUI = useCallback((targetIndex: number) => {
         'worklet';
         const safeTarget = Math.max(0, Math.min(itemCount - 1, targetIndex));
         if (phase.value === 'idle' && !interactionActive.value && !snapStarted.value) return;
-        const previousPhase = phase.value;
 
         // Mark idle before cancelling. A cancelled animation callback can
         // re-enter this function, where it will now be a harmless no-op.
@@ -349,9 +366,7 @@ export function GlassTabBar({
         hoveredIndex.value = safeTarget;
         pendingIndex.value = safeTarget;
         lastHapticIndex.value = -1;
-        if (previousPhase === 'settling' || previousPhase === 'snapping') runOnJS(logGlassTabGesture)('SNAP_END');
-        runOnJS(logGlassTabGesture)('RESET');
-        runOnJS(finishInteraction)(safeTarget, startIndex, commit);
+        runOnJS(finishInteraction)(safeTarget);
     }, [dragVelocityX, dragVelocityY, finishInteraction, holdActivated, holdCandidate, holdTimerProgress, horizontalPadding, hoveredIndex, interactionActive, interactionProgress, itemCount, itemWidth, lastHapticIndex, lensBaseHeight, lensHeight, lensLeft, lensOffsetY, lensRight, lensWidth, originSelectedIndex, panActivated, panActivationRequested, panUpdateLogged, pendingIndex, phase, snapStarted, touchMovedPastSlop, touchSessionActive, touchStartX, touchStartY, touchedIndex]);
 
     useEffect(() => {
@@ -361,6 +376,13 @@ export function GlassTabBar({
         const initialMeasurement = previous.barWidth <= 0;
         const selectionChanged = previous.selected !== selected;
         const widthChanged = previous.barWidth > 0 && previous.barWidth !== barWidth;
+
+        if (dragCommittedTargetRef.current === selected) {
+            // Our drag already placed the lens at this page. Do not cancel its
+            // settling animation or run the normal tap-selection spring again.
+            previousGeometryRef.current = { selected, barWidth };
+            return;
+        }
 
         if (interactionActiveRef.current || interactionActive.value || phase.value !== 'idle') {
             // An external page change during a live gesture takes ownership:
@@ -404,6 +426,8 @@ export function GlassTabBar({
                 lastHapticIndex.value = -1;
                 interactionActiveRef.current = false;
                 setLiveBackdropEnabled(false);
+                dragCommittedTargetRef.current = null;
+                logGlassTabGesture('BACKDROP_OFF');
                 logGlassTabGesture('RESET', 'external_selection');
                 previousGeometryRef.current = { selected, barWidth };
             }
@@ -546,6 +570,14 @@ export function GlassTabBar({
         const targetLeft = targetCenter - lensWidth / 2;
         pendingIndex.value = targetIndex;
         runOnJS(logGlassTabGesture)('SNAP_START', `target=${targetIndex}${cancelled ? ' rollback' : ''}`);
+
+        // Page ownership changes as soon as the finger is released and the
+        // destination is known. The glass snap/settle continues independently,
+        // so navigation never waits for the trailing spring to finish.
+        if (!cancelled && targetIndex !== originIndex) {
+            runOnJS(commitDragSelection)(targetIndex, originIndex);
+        }
+
         lensOffsetY.value = withSpring(0, { damping: 24, stiffness: 300 });
         lensHeight.value = reducedMotion
             ? withTiming(lensBaseHeight, { duration: 100 })
@@ -555,15 +587,17 @@ export function GlassTabBar({
             'worklet';
             if (phase.value !== 'snapping') return;
             if (!finished) {
-                resetInteractionOnUI(originIndex, originIndex, false);
+                resetInteractionOnUI(originIndex);
                 return;
             }
             phase.value = 'settling';
+            runOnJS(logGlassTabGesture)('SNAP_END', `target=${targetIndex}`);
             interactionProgress.value = withTiming(0, { duration: reducedMotion ? 95 : 145 }, (settled) => {
                 if (settled) {
-                    resetInteractionOnUI(targetIndex, originIndex, !cancelled && targetIndex !== originIndex);
+                    runOnJS(logGlassTabGesture)('SETTLE_END');
+                    resetInteractionOnUI(targetIndex);
                 } else {
-                    resetInteractionOnUI(originIndex, originIndex, false);
+                    resetInteractionOnUI(originIndex);
                 }
             });
         };
@@ -579,7 +613,7 @@ export function GlassTabBar({
             lensLeft.value = withSpring(targetLeft, wasMovingRight ? EDGE_SPRING_SLOW : EDGE_SPRING_FAST, wasMovingRight ? finishSnap : undefined);
             lensRight.value = withSpring(targetLeft + lensWidth, wasMovingRight ? EDGE_SPRING_FAST : EDGE_SPRING_SLOW, wasMovingRight ? undefined : finishSnap);
         }
-    }, [horizontalPadding, interactionProgress, itemCount, itemWidth, lensBaseHeight, lensHeight, lensLeft, lensOffsetY, lensRight, lensWidth, originSelectedIndex, pendingIndex, phase, reducedMotion, resetInteractionOnUI, snapStarted]);
+    }, [commitDragSelection, horizontalPadding, interactionProgress, itemCount, itemWidth, lensBaseHeight, lensHeight, lensLeft, lensOffsetY, lensRight, lensWidth, originSelectedIndex, pendingIndex, phase, reducedMotion, resetInteractionOnUI, snapStarted]);
 
     const tabBarGesture = React.useMemo(() => Gesture.Pan()
         .manualActivation(true)
@@ -663,6 +697,7 @@ export function GlassTabBar({
         .onTouchesUp((event, manager) => {
             'worklet';
             if (!touchSessionActive.value) return;
+            runOnJS(logGlassTabGesture)('RELEASE');
             cancelAnimation(holdTimerProgress);
             holdTimerProgress.value = 0;
 
@@ -730,7 +765,7 @@ export function GlassTabBar({
             holdTimerProgress.value = 0;
             touchSessionActive.value = false;
             if (phase.value === 'pressing') {
-                resetInteractionOnUI(originSelectedIndex.value, originSelectedIndex.value, false);
+                resetInteractionOnUI(originSelectedIndex.value);
             } else if (phase.value === 'inflating' || phase.value === 'dragging') {
                 runOnJS(logGlassTabGesture)('PAN_END', 'cancel');
                 onBeginSnap(0, originSelectedIndex.value, true);
@@ -852,7 +887,7 @@ export function GlassTabBar({
                         providerId={providerId}
                         cornerRadius={appearance?.tokens.materials.tabSelectionLens.radius ?? lensBaseHeight / 2}
                         blurRadius={(appearance?.tokens.materials.tabSelectionLens.blurRadius ?? 0.35) * (appearance?.tokens.quality === 'high' ? 1.2 : 1)}
-                        refractionHeight={appearance?.tokens.materials.tabSelectionLens.refractionHeight ?? 12}
+                        refractionHeight={lensRefractionHeight ?? appearance?.tokens.materials.tabSelectionLens.refractionHeight ?? 12}
                         refractionAmount={appearance?.tokens.materials.tabSelectionLens.refractionAmount ?? 5.5}
                         bodyRefractionAmount={appearance?.tokens.materials.tabSelectionLens.refractionBodyAmount ?? 1.5}
                         saturation={appearance?.tokens.materials.tabSelectionLens.saturation ?? 1.02}
