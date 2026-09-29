@@ -10,7 +10,7 @@ export interface GlassTabBarProps {
     bottomInset?: number;
     /** Render as a normal in-flow segmented selector instead of a screen overlay. */
     presentation?: 'floating' | 'inline';
-    /** Geometry overrides used by inline selectors; omitted values keep bottom-bar defaults. */
+    /** Geometry overrides used by inline selectors; omitted values keep the bottom bar defaults. */
     height?: number;
     width?: number | '100%';
     horizontalPadding?: number;
@@ -33,4 +33,4 @@ export interface GlassTabBarProps {
  * inflation, drag deformation and snap. It is cached while still and requests
  * continuous cropped captures only during the active drag/settle phase.
  */
-export declare function GlassTabBar(props: GlassTabBarProps): import("react/jsx-runtime").JSX.Element;
+export declare function GlassTabBar({ items, selected, bottomInset, shellBackgroundColor, onSelect, onSelectFromDrag, renderIcon, renderItem, presentation, height, width: requestedWidth, horizontalPadding, shellRadius, lensMaxWidth, lensRefractionHeight, accessibilityHint, }: GlassTabBarProps): import("react/jsx-runtime").JSX.Element;

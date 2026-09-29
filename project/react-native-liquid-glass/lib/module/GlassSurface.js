@@ -16,9 +16,8 @@ function entryZIndex(entry) {
     return entry.value.zIndex;
 }
 function selectBalancedShaderSurfaces(entries) {
-    // Backdrop glass is the default on Android 13+. Balanced limits refresh
-    // cadence at the provider, rather than silently turning all but one
-    // visible glass surface back into a tint overlay.
+    // Every mounted backdrop surface keeps the same renderer regardless of
+    // quality preset; display cadence is selected by the native provider.
     return new Set(Object.entries(entries)
         .filter((entry) => entry[1].kind === 'surface')
         .map(([id]) => id));
@@ -29,6 +28,7 @@ export function GlassMaterialProvider({ children, style, tokens, dark, reducedMo
     const providerId = useId();
     const [entries, setEntries] = useState({});
     const balancedShaderSurfaces = useMemo(() => selectBalancedShaderSurfaces(entries), [entries]);
+    const orderedEntries = useMemo(() => Object.entries(entries).sort((left, right) => entryZIndex(left[1]) - entryZIndex(right[1])), [entries]);
     const runtime = useMemo(() => ({ tokens, dark, reducedMotion }), [tokens, dark, reducedMotion]);
     const updateSurface = useCallback((id, entry) => {
         setEntries((current) => {
@@ -66,14 +66,14 @@ export function GlassMaterialProvider({ children, style, tokens, dark, reducedMo
     if (!tokens.enabled) {
         return _jsx(View, { style: [styles.root, style], children: children });
     }
-    return (_jsx(GlassRuntimeContext.Provider, { value: runtime, children: _jsx(GlassHostContext.Provider, { value: context, children: _jsxs(View, { ref: hostRef, collapsable: false, style: [styles.root, style], children: [_jsx(LiquidGlassProvider, { providerId: providerId, maxCaptureRateHz: tokens.quality === 'high' ? 120 : 60, style: StyleSheet.absoluteFill, children: children }), _jsx(View, { pointerEvents: "box-none", style: StyleSheet.absoluteFill, children: Object.entries(entries).sort((left, right) => entryZIndex(left[1]) - entryZIndex(right[1])).map(([id, entry]) => (entry.kind === 'surface'
+    return (_jsx(GlassRuntimeContext.Provider, { value: runtime, children: _jsx(GlassHostContext.Provider, { value: context, children: _jsxs(View, { ref: hostRef, collapsable: false, style: [styles.root, style], children: [_jsx(LiquidGlassProvider, { providerId: providerId, maxCaptureRateHz: 120, style: StyleSheet.absoluteFill, children: children }), _jsx(View, { pointerEvents: "box-none", style: StyleSheet.absoluteFill, children: orderedEntries.map(([id, entry]) => (entry.kind === 'surface'
                             ? _jsx(PortalGlassSurface, { providerId: providerId, entry: entry.value, shaderEnabled: tokens.quality === 'high' || (tokens.quality === 'balanced' && balancedShaderSurfaces.has(id)) }, id)
                             : _jsx(PortalOverlay, { entry: entry.value }, id))) })] }) }) }));
 }
-function PortalOverlay({ entry }) {
+const PortalOverlay = React.memo(function PortalOverlay({ entry }) {
     return (_jsx(Animated.View, { pointerEvents: "box-none", style: [StyleSheet.absoluteFill, entry.style, { zIndex: entry.zIndex }], children: entry.children }));
-}
-function PortalGlassSurface({ providerId, entry, shaderEnabled }) {
+});
+const PortalGlassSurface = React.memo(function PortalGlassSurface({ providerId, entry, shaderEnabled }) {
     const runtime = useContext(GlassRuntimeContext);
     const opticalProgress = entry.opticalProgress;
     const opticalMotionX = entry.opticalMotionX;
@@ -120,8 +120,8 @@ function PortalGlassSurface({ providerId, entry, shaderEnabled }) {
             entry.animatedStyle,
             { zIndex: entry.zIndex },
         ], children: nativeSurface }));
-}
-function PortalFallbackSurface({ entry }) {
+});
+const PortalFallbackSurface = React.memo(function PortalFallbackSurface({ entry }) {
     const runtime = useContext(GlassRuntimeContext);
     if (!runtime)
         return null;
@@ -157,7 +157,7 @@ function PortalFallbackSurface({ entry }) {
             entry.animatedStyle,
             { zIndex: entry.zIndex },
         ], children: fallbackSurface }));
-}
+});
 /** Theme-driven glass material. Callers select a role; all optical settings live in AppTheme. */
 export const GlassSurface = React.memo(function GlassSurface({ variant = 'surface', renderMode, pointerEvents, interactive = false, continuous = false, opticalProgress, opticalMotionX, opticalMotionY, materialOverrides, displacementOnlyDebug = false, style, contentStyle, animatedStyle, placement = 'layout', bottomInset, zIndex = 1, children, placeholderChildren = children, }) {
     const runtime = useContext(GlassRuntimeContext);

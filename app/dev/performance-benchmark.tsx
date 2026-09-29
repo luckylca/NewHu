@@ -1,177 +1,332 @@
-import { Card, Checkbox, GlassSurface, ListRow, NavigationBar, NumberWheel, ProgressIndicator, SegmentedControl, Slider, Text, useTheme } from '@/src/ui';
+import { BottomSheet, Button, Dialog, GlassSurface, ListRow, Text, TopAppBar, useTheme } from '@/src/ui';
 import { useLocalSearchParams } from 'expo-router';
 import { useSettingStore } from '@/src/stores/useSettingStore';
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
-import type { MutableRefObject } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
-import { useSharedValue } from 'react-native-reanimated';
+import {
+    getLiquidGlassPerformanceStats,
+    GlassTabBar,
+    setLiquidGlassPerformanceTelemetryEnabled,
+} from '@newhu/react-native-liquid-glass';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Image, ScrollView, StyleSheet, Text as NativeText, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const ROWS = Array.from({ length: 120 }, (_, index) => index + 1);
-const NAV_ITEMS = [{ label: '首页' }, { label: '发现' }, { label: '我的' }];
-const SEGMENT_TABS = ['推荐', '关注', '热榜'];
-const FIXED_SUMMARY = '固定 props；观察父级更新时行组件的重复渲染';
+const ROWS = Array.from({ length: 160 }, (_, index) => index + 1);
+const TABS = [{ label: '推荐' }, { label: '关注' }, { label: '热榜' }];
+const RUN_DURATION_MS = 12_000;
 
-type MeasuredRowProps = { id: number; renderCount: MutableRefObject<number> };
-
-const MemoMeasuredHyperRow = memo(function MemoMeasuredHyperRow({ id, renderCount }: MeasuredRowProps) {
-    renderCount.current += 1;
-    return <ListRow title={`Hyper UI row ${id}`} summary={FIXED_SUMMARY} />;
+const BenchmarkRow = memo(function BenchmarkRow({ id }: { id: number }) {
+    return <ListRow title={`Benchmark row ${id}`} summary="固定原生行；滚动期间父级不更新" />;
 });
 
-/** Same ListRow native tree without the library's React.memo boundary. */
-function UnmemoizedReferenceRow({ id, renderCount }: MeasuredRowProps) {
-    'use no memo';
-    renderCount.current += 1;
-    const theme = useTheme();
-    const tokens = theme.components.preference;
-    const pressed = useSharedValue(0);
-    void pressed;
+function NativeTelemetryOverlay() {
+    const [metrics, setMetrics] = useState({ displayHz: 0, uiFps: 0, jsFps: 0, captureRate: 0, glassDrawRate: 0, jsP95: 0, jsJank: 0 });
+    const jsSamples = useRef<number[]>([]);
+    const jsCounters = useRef({ frames: 0, windowStart: 0, fps: 0 });
+    const lastJsFrame = useRef(0);
+
+    useEffect(() => {
+        let active = true;
+        let frameId = 0;
+        let pollPending = false;
+        let previous: Awaited<ReturnType<typeof getLiquidGlassPerformanceStats>> = null;
+        let previousAt = 0;
+
+        const onAnimationFrame = (time: number) => {
+            const counters = jsCounters.current;
+            if (counters.windowStart === 0) counters.windowStart = time;
+            if (lastJsFrame.current > 0) {
+                jsSamples.current.push(time - lastJsFrame.current);
+                if (jsSamples.current.length > 180) jsSamples.current.shift();
+            }
+            lastJsFrame.current = time;
+            counters.frames += 1;
+            if (time - counters.windowStart >= 500) {
+                counters.fps = counters.frames * 1000 / (time - counters.windowStart);
+                counters.frames = 0;
+                counters.windowStart = time;
+            }
+            frameId = requestAnimationFrame(onAnimationFrame);
+        };
+        frameId = requestAnimationFrame(onAnimationFrame);
+
+        const timer = setInterval(() => {
+            if (pollPending) return;
+            pollPending = true;
+            void getLiquidGlassPerformanceStats().then((current) => {
+                if (!active || !current) return;
+                const now = Date.now();
+                const elapsed = previousAt > 0 ? Math.max((now - previousAt) / 1000, 0.001) : 0.5;
+                const rate = (key: 'uiFrameCount' | 'backdropCaptureCount' | 'consumerDrawCount') => {
+                    if (!previous) return 0;
+                    return Math.max(0, current[key] - previous[key]) / elapsed;
+                };
+                const intervals = [...jsSamples.current].sort((a, b) => a - b);
+                const at = (fraction: number) => intervals.length
+                    ? intervals[Math.floor((intervals.length - 1) * fraction)]
+                    : 0;
+                const p95 = intervals.length ? intervals[Math.floor((intervals.length - 1) * 0.95)] : 0;
+                const hz = current.displayRefreshRate || 60;
+                const jank = intervals.length
+                    ? intervals.filter((interval) => interval > 1000 / hz).length * 100 / intervals.length
+                    : 0;
+                setMetrics({
+                    displayHz: hz,
+                    uiFps: rate('uiFrameCount'),
+                    jsFps: jsCounters.current.fps,
+                    captureRate: rate('backdropCaptureCount'),
+                    glassDrawRate: rate('consumerDrawCount'),
+                    jsP95: p95,
+                    jsJank: jank,
+                });
+                if (__DEV__) {
+                    console.info(
+                        `[GLASS_JS] hz=${hz.toFixed(0)} fps=${jsCounters.current.fps.toFixed(1)} ` +
+                        `p50=${at(0.50).toFixed(2)}ms p90=${at(0.90).toFixed(2)}ms ` +
+                        `p95=${at(0.95).toFixed(2)}ms p99=${at(0.99).toFixed(2)}ms ` +
+                        `jank=${jank.toFixed(1)}%`,
+                    );
+                }
+                previous = current;
+                previousAt = now;
+            }).finally(() => {
+                pollPending = false;
+            });
+        }, 500);
+
+        return () => {
+            active = false;
+            cancelAnimationFrame(frameId);
+            clearInterval(timer);
+        };
+    }, []);
 
     return (
-        <Pressable
-            accessibilityState={{ disabled: false }}
-            style={[{ minHeight: tokens.minHeight, padding: tokens.padding, justifyContent: 'center' }]}
-        >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: tokens.gap }}>
-                <View style={{ flex: 1, minWidth: 0, flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center' }}>
-                    <Text type="headline1" weight="medium" color={theme.colors.onBackground} numberOfLines={1}>
-                        {`Hyper UI row ${id}`}
-                    </Text>
-                    <Text type="body2" color={theme.colors.onSurfaceVariantSummary} numberOfLines={1}>
-                        {FIXED_SUMMARY}
-                    </Text>
-                </View>
-            </View>
-        </Pressable>
+        <View pointerEvents="none" style={styles.telemetry}>
+            <NativeText style={styles.telemetryText}>
+                {`Display ${metrics.displayHz.toFixed(0)}Hz · UI ${metrics.uiFps.toFixed(0)} · JS ${metrics.jsFps.toFixed(0)}fps\n` +
+                    `Capture ${metrics.captureRate.toFixed(0)}/s · Glass ${metrics.glassDrawRate.toFixed(0)}/s\n` +
+                    `JS P95 ${metrics.jsP95.toFixed(1)}ms · JS jank ${metrics.jsJank.toFixed(1)}%`}
+            </NativeText>
+        </View>
     );
 }
 
-/** Temporary, deterministic Hyper UI stress screen for device frame profiling. */
-export default function HyperPerformanceBenchmark() {
-    'use no memo';
-    const { case: requestedCase, variant: requestedVariant, run: requestedRun, scene: requestedScene } = useLocalSearchParams<{ case?: string; variant?: string; run?: string; scene?: string }>();
-    const testCase = requestedCase ?? 'scroll';
-    const variant = requestedVariant === 'plain' ? 'plain' : 'memo';
-    const scene = requestedScene === 'A' || requestedScene === 'C' ? requestedScene : 'B';
-    const runId = requestedRun ?? '0';
-    const setThemeName = useSettingStore((state) => state.setThemeName);
+export default function PerformanceBenchmark() {
+    const { scene: rawScene, case: runCase, run, telemetry, nativeTelemetry, wallpaper } = useLocalSearchParams<{
+        scene?: string;
+        case?: string;
+        run?: string;
+        telemetry?: string;
+        nativeTelemetry?: string;
+        wallpaper?: string;
+    }>();
+    const scene = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].includes(rawScene ?? '') ? rawScene! : 'B';
     const theme = useTheme();
+    const setThemeName = useSettingStore((state) => state.setThemeName);
+    const setWallpaperUri = useSettingStore((state) => state.setWallpaperUri);
     const scrollRef = useRef<ScrollView>(null);
-    const rowRenderCount = useRef(0);
-    const [revision, setRevision] = useState(0);
-    const [sliderValue, setSliderValue] = useState(40);
-    const [wheelValue, setWheelValue] = useState(25);
-    const [checkboxValue, setCheckboxValue] = useState(false);
-    const [segment, setSegment] = useState(0);
-    const [navIndex, setNavIndex] = useState(0);
-    const [progressAnimating, setProgressAnimating] = useState(false);
-    const [runStatus, setRunStatus] = useState('warmup');
+    const [selectedTab, setSelectedTab] = useState(0);
+    const [dialogVisible, setDialogVisible] = useState(false);
+    const [sheetVisible, setSheetVisible] = useState(false);
+    const insets = useSafeAreaInsets();
 
     useEffect(() => {
-        const previousTheme = useSettingStore.getState().themeName;
+        const enabled = telemetry === '1' || nativeTelemetry === '1';
+        setLiquidGlassPerformanceTelemetryEnabled(enabled);
+        return () => setLiquidGlassPerformanceTelemetryEnabled(false);
+    }, [nativeTelemetry, run, telemetry]);
+
+    useEffect(() => {
+        const state = useSettingStore.getState();
+        const previousTheme = state.themeName;
+        const previousWallpaper = state.wallpaperUri;
         const nextTheme = scene === 'A' ? 'hyperos' : 'liquidGlass';
-        if (previousTheme !== nextTheme) setThemeName(nextTheme);
+        setThemeName(nextTheme);
+        if (wallpaper === 'on') {
+            const source = Image.resolveAssetSource(require('../../assets/images/react-logo.png'));
+            setWallpaperUri(source?.uri ?? null);
+        } else if (wallpaper === 'off') {
+            setWallpaperUri(null);
+        }
         return () => {
-            if (previousTheme !== nextTheme) setThemeName(previousTheme);
+            if (nextTheme !== previousTheme) setThemeName(previousTheme);
+            if (wallpaper === 'on' || wallpaper === 'off') setWallpaperUri(previousWallpaper);
         };
-    }, [scene, setThemeName]);
-
-    const onSliderChange = useCallback((value: number) => setSliderValue(value), []);
-    const onWheelChange = useCallback((value: number) => setWheelValue(value), []);
-    const onCheckboxChange = useCallback((value: boolean) => setCheckboxValue(value), []);
-    const onSegmentSelect = useCallback((value: number) => setSegment(value), []);
-    const onNavigationSelect = useCallback((value: number) => setNavIndex(value), []);
-
-    const benchmarkRows = ROWS.map((id) => variant === 'plain'
-        ? <UnmemoizedReferenceRow key={id} id={id} renderCount={rowRenderCount} />
-        : <MemoMeasuredHyperRow key={id} id={id} renderCount={rowRenderCount} />);
+    }, [scene, setThemeName, setWallpaperUri, wallpaper]);
 
     useEffect(() => {
-        setRunStatus('warmup');
+        if (runCase !== 'scroll' && runCase !== 'dialog' && runCase !== 'sheet' && runCase !== 'tab') return;
+        let tick = 0;
+        let phase = false;
         let interval: ReturnType<typeof setInterval> | undefined;
-        const warmup = setTimeout(() => {
-            setRunStatus('running');
-            if (testCase === 'motion') setProgressAnimating(true);
-
-            const startedAt = Date.now();
-            let tick = 0;
-            const targetTicks = testCase === 'updates' ? 120 : testCase === 'scroll' ? 16 : 80;
-            const intervalMs = testCase === 'updates' ? 33 : testCase === 'scroll' ? 550 : 100;
+        let finish: ReturnType<typeof setTimeout> | undefined;
+        const start = setTimeout(() => {
             interval = setInterval(() => {
                 tick += 1;
-
-                if (testCase === 'updates') {
-                    setRevision((value) => value + 1);
-                } else if (testCase === 'scroll') {
-                    const target = tick % 12;
-                    scrollRef.current?.scrollTo({ y: target * 600, animated: true });
-                    setRevision((value) => value + 1);
-                } else if (testCase === 'controls' || testCase === 'motion') {
-                    setSliderValue((value) => (value + 5) % 105);
-                    setWheelValue((value) => (value + 5) % 105);
-                    setCheckboxValue((value) => !value);
-                    setSegment((value) => (value + 1) % 3);
-                    setNavIndex((value) => (value + 1) % NAV_ITEMS.length);
-                    setRevision((value) => value + 1);
+                if (runCase === 'scroll') {
+                    const maxY = Math.max(0, ROWS.length * 96 - 1_600);
+                    scrollRef.current?.scrollTo({ y: (tick * 420) % maxY, animated: true });
+                } else if (runCase === 'tab') {
+                    setSelectedTab(tick % TABS.length);
+                } else if (runCase === 'dialog') {
+                    phase = !phase;
+                    setDialogVisible(phase);
+                } else {
+                    phase = !phase;
+                    setSheetVisible(phase);
                 }
-
-                if (tick >= targetTicks) {
-                    if (interval) clearInterval(interval);
-                    setProgressAnimating(false);
-                    const elapsedMs = Date.now() - startedAt;
-                    setRunStatus(`scene ${scene} · ${variant} · rows ${rowRenderCount.current} · ${elapsedMs}ms`);
-                    console.log(`[HYPER_PERF] scene=${scene} case=${testCase} variant=${variant} ticks=${tick} rows=${rowRenderCount.current} elapsedMs=${elapsedMs}`);
+            }, runCase === 'scroll' ? 250 : runCase === 'tab' ? 320 : 600);
+            finish = setTimeout(() => {
+                if (interval) clearInterval(interval);
+                setDialogVisible(false);
+                setSheetVisible(false);
+                if (__DEV__) {
+                    console.info(`[GLASS_BENCH] scene=${scene} case=${runCase} run=${run ?? '0'} durationMs=${RUN_DURATION_MS} actions=${tick}`);
                 }
-            }, intervalMs);
-        }, 5000);
-
+            }, RUN_DURATION_MS);
+        }, 2_000);
         return () => {
-            clearTimeout(warmup);
+            clearTimeout(start);
             if (interval) clearInterval(interval);
+            if (finish) clearTimeout(finish);
         };
-    }, [testCase, variant, scene, runId]);
+    }, [runCase, run, scene]);
+
+    const rowContent = useMemo(() => ROWS.map((id) => <BenchmarkRow key={id} id={id} />), []);
+    const noOp = useCallback(() => {}, []);
+    const hasScrollScene = scene === 'A' || scene === 'C' || scene === 'D' || scene === 'E' || scene === 'F' || scene === 'G';
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
-            <View style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 12 }}>
-                <Text type="title3" weight="medium">Hyper UI 性能测试</Text>
-                <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>
-                    scene {scene} · case={testCase} · {runStatus} · parent revision {revision}
-                </Text>
-            </View>
-            {scene === 'C' ? (
-                <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingBottom: 12 }}>
-                    {[1, 2, 3].map((index) => (
+        <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
+            {scene !== 'C' ? (
+                <View style={[styles.titleBlock, { paddingTop: insets.top + 10 }]}>
+                    <Text type="title4" weight="medium">Liquid Glass 性能场景 {scene}</Text>
+                    <Text type="footnote2" color={theme.colors.onSurfaceVariantSummary}>
+                        {`case=${runCase ?? 'idle'} · ${wallpaper === 'on' ? 'wallpaper on' : 'wallpaper off'}`}
+                    </Text>
+                </View>
+            ) : null}
+
+            {scene === 'C' ? <TopAppBar title="Fixed Glass TopAppBar" back={noOp} /> : null}
+
+            {scene === 'B' ? (
+                <View style={styles.staticScene}>
+                    <View style={styles.colorField} />
+                    <GlassSurface
+                        variant="card"
+                        renderMode="backdrop"
+                        style={styles.singleGlass}
+                        placeholderChildren={<View style={styles.singleGlass} />}
+                    >
+                        <View style={styles.glassLabel}><Text type="headline1" weight="medium">One static GlassSurface</Text></View>
+                    </GlassSurface>
+                </View>
+            ) : null}
+
+            {scene === 'E' ? (
+                <View style={styles.threeGlassRow}>
+                    {[1, 2, 3].map((id) => (
                         <GlassSurface
-                            key={index}
+                            key={id}
                             variant="card"
-                            style={{ flex: 1, height: 68, borderRadius: 18 }}
-                            placeholderChildren={<View style={{ flex: 1, minHeight: 68 }} />}
+                            renderMode="backdrop"
+                            style={styles.smallGlass}
+                            placeholderChildren={<View style={styles.smallGlass} />}
                         >
-                            <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 10 }}>
-                                <Text type="footnote1" weight="medium">Glass {index}</Text>
-                                <Text type="footnote2" color={theme.colors.onSurfaceVariantSummary}>shared backdrop</Text>
-                            </View>
+                            <View style={styles.glassLabel}><Text type="footnote1" weight="medium">Glass {id}</Text></View>
                         </GlassSurface>
                     ))}
                 </View>
             ) : null}
-            <ScrollView ref={scrollRef} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 48, gap: 16 }}>
-                <Card>
-                    <View style={{ padding: 16, gap: 12 }}>
-                        <Text type="headline1" weight="medium">Hyper 控件负载</Text>
-                        <Slider value={sliderValue} minimumValue={0} maximumValue={100} step={5} showKeyPoints onValueChange={onSliderChange} accessibilityLabel="测试滑块" />
-                        <NumberWheel value={wheelValue} min={0} max={100} step={5} onChange={onWheelChange} />
-                        <Checkbox value={checkboxValue} onValueChange={onCheckboxChange} accessibilityLabel="测试复选框" />
-                        <ProgressIndicator progress={sliderValue / 100} indeterminate={progressAnimating} />
-                        <SegmentedControl tabs={SEGMENT_TABS} selected={segment} onSelect={onSegmentSelect} />
-                    </View>
-                </Card>
-                {benchmarkRows}
-            </ScrollView>
-            <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 10 }}>
-                <NavigationBar items={NAV_ITEMS} selected={navIndex} onSelect={onNavigationSelect} />
-            </View>
+
+            {scene === 'H' ? (
+                <View style={styles.tabScene}>
+                    <GlassTabBar
+                        items={TABS}
+                        selected={selectedTab}
+                        onSelect={setSelectedTab}
+                        onSelectFromDrag={setSelectedTab}
+                        presentation="inline"
+                        width="100%"
+                        height={76}
+                    />
+                    <Text type="footnote2" color={theme.colors.onSurfaceVariantSummary}>
+                        在此条形区域左右快拖 Lens；query case=tab 仅用于记录场景
+                    </Text>
+                </View>
+            ) : null}
+
+            {scene === 'D' ? (
+                <View style={styles.scrollScene}>
+                    <ScrollView
+                        key={scene}
+                        ref={scrollRef}
+                        style={styles.scroll}
+                        contentContainerStyle={styles.rows}
+                        showsVerticalScrollIndicator={false}
+                    >
+                        {rowContent}
+                    </ScrollView>
+                    <GlassSurface
+                        variant="floating"
+                        renderMode="backdrop"
+                        pointerEvents="none"
+                        style={styles.scrollGlass}
+                        placeholderChildren={<View style={styles.scrollGlass} />}
+                    />
+                </View>
+            ) : null}
+
+            {hasScrollScene && scene !== 'D' ? (
+                <ScrollView
+                    key={scene}
+                    ref={scrollRef}
+                    style={styles.scroll}
+                    contentContainerStyle={styles.rows}
+                    showsVerticalScrollIndicator={false}
+                >
+                    {rowContent}
+                </ScrollView>
+            ) : null}
+
+            {scene === 'F' ? (
+                <View style={styles.actions}>
+                    <Button onPress={() => setDialogVisible(true)}>Open Dialog</Button>
+                </View>
+            ) : null}
+            {scene === 'G' ? (
+                <View style={styles.actions}>
+                    <Button onPress={() => setSheetVisible(true)}>Open BottomSheet</Button>
+                </View>
+            ) : null}
+
+            <Dialog visible={dialogVisible} onClose={() => setDialogVisible(false)} title="Glass Dialog" summary="Backdrop stays cached while this glass animates.">
+                <Button onPress={() => setDialogVisible(false)}>Close</Button>
+            </Dialog>
+            <BottomSheet visible={sheetVisible} onClose={() => setSheetVisible(false)} title="Glass BottomSheet">
+                <Button onPress={() => setSheetVisible(false)}>Close</Button>
+            </BottomSheet>
+
+            {telemetry === '1' ? <NativeTelemetryOverlay /> : null}
         </View>
     );
 }
+
+const styles = StyleSheet.create({
+    root: { flex: 1 },
+    titleBlock: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 8, gap: 3 },
+    scroll: { flex: 1 },
+    rows: { paddingHorizontal: 16, paddingBottom: 64 },
+    staticScene: { flex: 1, margin: 16, minHeight: 280, justifyContent: 'center' },
+    colorField: { ...StyleSheet.absoluteFillObject, borderRadius: 28, backgroundColor: '#5778b5' },
+    singleGlass: { width: '88%', height: 160, alignSelf: 'center', borderRadius: 28 },
+    glassLabel: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    threeGlassRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingVertical: 12 },
+    smallGlass: { flex: 1, height: 72, borderRadius: 18 },
+    tabScene: { paddingHorizontal: 16, paddingVertical: 14, gap: 8 },
+    scrollScene: { flex: 1 },
+    scrollGlass: { position: 'absolute', left: 18, right: 18, top: 160, height: 250, borderRadius: 28 },
+    actions: { paddingHorizontal: 16, paddingBottom: 28 },
+    telemetry: { position: 'absolute', top: 120, right: 10, zIndex: 9999, padding: 8, borderRadius: 8, backgroundColor: '#07111ddd' },
+    telemetryText: { color: '#fff', fontSize: 11, lineHeight: 16, fontVariant: ['tabular-nums'] },
+});

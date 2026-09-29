@@ -5,7 +5,7 @@ index 2d487bc..2919d37 100644
 @@ -37,12 +37,21 @@ public object GlassUniforms {
      /** Peak refraction displacement (px). Positive bends inward, negative outward. */
      public const val REFRACTION_AMOUNT: String = "refractionAmount"
-
+ 
 +    /** Broad rounded-rect coordinate remapping across the full lens body (px). */
 +    public const val BODY_REFRACTION_AMOUNT: String = "bodyRefractionAmount"
 +
@@ -14,20 +14,20 @@ index 2d487bc..2919d37 100644
 +
      /** 0..1 dispersion strength; splits RGB along the refraction direction. */
      public const val CHROMATIC_ABERRATION: String = "chromaticAberration"
-
+ 
      /** `float4` straight (non-premultiplied) RGBA tint; alpha is blend strength. */
      public const val TINT: String = "tint"
-
+ 
 +    /** Per-material multiplier for the tint alpha. */
 +    public const val TINT_ALPHA: String = "tintAlpha"
 +
      /** Strength of the banding-prevention grain, typically 0.0..0.05. */
      public const val NOISE_ALPHA: String = "noiseAlpha"
-
+ 
 @@ -52,6 +61,15 @@ public object GlassUniforms {
      /** 0..1 intensity of the specular rim highlight. */
      public const val HIGHLIGHT_ALPHA: String = "highlightAlpha"
-
+ 
 +    /** Strength of the computed 3D specular highlight. */
 +    public const val SPECULAR_STRENGTH: String = "specularStrength"
 +
@@ -39,11 +39,11 @@ index 2d487bc..2919d37 100644
 +
      /** Thickness (px) of the specular rim band. */
      public const val HIGHLIGHT_WIDTH: String = "highlightWidth"
-
+ 
 @@ -61,6 +79,12 @@ public object GlassUniforms {
      /** `float2` press location in shader-local pixels. */
      public const val PRESS_POINT: String = "pressPoint"
-
+ 
 +    /** Normalized screen-space lens velocity, used for subtle shear and light response. */
 +    public const val MOTION: String = "motion"
 +
@@ -119,12 +119,12 @@ index aa67cdf..00a8e9c 100644
  uniform float2 ${GlassUniforms.PRESS_POINT};
 +uniform float2 ${GlassUniforms.MOTION};
 +uniform float ${GlassUniforms.DISPLACEMENT_ONLY};
-
+ 
  float sdRoundedBox(float2 p, float2 halfSize, float radius) {
      float2 q = abs(p) - halfSize + radius;
      return min(max(q.x, q.y), 0.0) + length(max(q, float2(0.0))) - radius;
  }
-
+ 
 +float2 roundedBoxNormal(float2 p, float2 halfSize, float radius) {
 +    float2 q = abs(p) - halfSize + radius;
 +    float2 outside = max(q, float2(0.0));
@@ -139,7 +139,7 @@ index aa67cdf..00a8e9c 100644
      float h = clamp(0.5 + 0.5 * (b - a) / kk, 0.0, 1.0);
 @@ -65,15 +81,34 @@ float sceneSd(float2 p) {
  }
-
+ 
  float2 sceneNormal(float2 p) {
 -    float2 e = float2(1.0, 0.0);
 -    float gx = sceneSd(p + e.xy) - sceneSd(p - e.xy);
@@ -176,12 +176,12 @@ index aa67cdf..00a8e9c 100644
 +    float slope = clamp(inward / height, 0.0, 3.4);
 +    return normalize(float3(sdfNormal * slope, 1.0));
  }
-
+ 
  half4 main(float2 fragCoord) {
 @@ -84,16 +119,45 @@ half4 main(float2 fragCoord) {
          return half4(0.0);
      }
-
+ 
 -    float2 normal = sceneNormal(p);
 +    // The first packed shape is the lens. The tab lens is a single rounded
 +    // rectangle, while the scene SDF still supports merged shapes elsewhere.
@@ -191,7 +191,7 @@ index aa67cdf..00a8e9c 100644
 +    float2 sdfNormal = sceneNormal(p);
 +    float3 surfaceNormal = lensSurfaceNormal(sd, sdfNormal, lensHalfSize);
      float edgeDist = max(-sd, 0.0);
-
+ 
 -    float lens = 0.0;
 -    float2 sampleCoord = p;
 -    if (edgeDist < ${GlassUniforms.REFRACTION_HEIGHT}) {
@@ -229,13 +229,13 @@ index aa67cdf..00a8e9c 100644
 +        * (bodyAmount * (0.18 + edgeField * 0.24) * progress * bodyBoundaryFade);
 +    float2 displacement = bodyWarp + edgeWarp - motionShear;
 +    float2 sampleCoord = p - displacement;
-
+ 
      if (${GlassUniforms.PRESS_AMOUNT} > 0.001) {
          float2 toPress = p - ${GlassUniforms.PRESS_POINT};
 @@ -101,10 +165,25 @@ half4 main(float2 fragCoord) {
          sampleCoord -= toPress * (${GlassUniforms.PRESS_AMOUNT} * 0.08 * falloff);
      }
-
+ 
 -    float caShift = ${GlassUniforms.CHROMATIC_ABERRATION} * lens * abs(${GlassUniforms.REFRACTION_AMOUNT}) * 0.12;
 +    // Debug mode shows only one un-tinted backdrop sample. It intentionally
 +    // skips chromatic separation too, so this view isolates displacement alone.
@@ -263,11 +263,11 @@ index aa67cdf..00a8e9c 100644
 @@ -113,12 +192,29 @@ half4 main(float2 fragCoord) {
          color = float4(${GlassUniforms.CONTENT}.eval(sampleCoord));
      }
-
+ 
 -    color.rgb = mix(color.rgb, ${GlassUniforms.TINT}.rgb, ${GlassUniforms.TINT}.a);
 +    float tintAmount = clamp(${GlassUniforms.TINT}.a * ${GlassUniforms.TINT_ALPHA}, 0.0, 1.0);
 +    color.rgb = mix(color.rgb, ${GlassUniforms.TINT}.rgb, tintAmount);
-
+ 
      float rim = 1.0 - smoothstep(0.0, max(${GlassUniforms.HIGHLIGHT_WIDTH}, 0.0001), edgeDist);
 -    float facing = pow(abs(dot(normal, ${GlassUniforms.LIGHT_DIRECTION})), 1.5);
 -    float pressBoost = 1.0 + ${GlassUniforms.PRESS_AMOUNT} * 0.6;
@@ -291,25 +291,35 @@ index aa67cdf..00a8e9c 100644
 +    color.rgb += float3(specular + rim * fresnel * 0.22 * pressBoost);
 +    color.rgb += float3(fresnel * 0.12);
 +    color.rgb *= 1.0 - innerBand * (0.28 + progress * 0.08);
-
+ 
      float noise = fract(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453) - 0.5;
      color.rgb += float3(noise * ${GlassUniforms.NOISE_ALPHA});
 diff --git a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/BackdropRecorder.kt b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/BackdropRecorder.kt
-index ca69095..3aaf4bc 100644
+index ca69095..859949e 100644
 --- a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/BackdropRecorder.kt
 +++ b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/BackdropRecorder.kt
-@@ -1,6 +1,7 @@
+@@ -1,10 +1,13 @@
  package dev.liquidglass.view
-
+ 
  import android.graphics.Canvas
 +import android.graphics.Rect
  import android.graphics.RenderNode
  import android.os.Build
  import android.view.View
-@@ -27,9 +28,22 @@ public interface LiquidGlassBackdropSource {
+ import androidx.annotation.RequiresApi
++import expo.modules.liquidglass.LiquidGlassPerfTelemetry
++import java.util.IdentityHashMap
+ import java.util.concurrent.CopyOnWriteArrayList
+ 
+ /**
+@@ -27,9 +30,31 @@ public interface LiquidGlassBackdropSource {
      /** True once a hardware recording of the backdrop exists. */
      public val hasRecording: Boolean
-
+ 
++    /** Changes when the provider's window-space origin or transform changes. */
++    public val geometryVersion: Long
++        get() = 0L
++
 +    /** Crop origin of the current recording in source-view-local pixels. */
 +    public val recordedOriginX: Int
 +        get() = 0
@@ -317,7 +327,7 @@ index ca69095..3aaf4bc 100644
 +        get() = 0
 +
      public fun registerConsumer(consumer: View)
-
+ 
      public fun unregisterConsumer(consumer: View)
 +
 +    /** Ask the provider to refresh on the next display frame. */
@@ -326,30 +336,44 @@ index ca69095..3aaf4bc 100644
 +    /** Whether moving a glass consumer requires a new backdrop recording. */
 +    public val requiresCaptureOnConsumerMovement: Boolean
 +        get() = true
++
++    /** Called when sampling geometry moves; providers may refresh if stale source dirt now overlaps. */
++    public fun onConsumerGeometryChanged(consumer: View) {
++        if (requiresCaptureOnConsumerMovement) requestCaptureFrame()
++    }
  }
-
+ 
  /**
-@@ -43,6 +57,16 @@ public interface LiquidGlassBackdropSource {
+@@ -43,6 +68,25 @@ public interface LiquidGlassBackdropSource {
  public class BackdropRecorder {
-
+ 
      private val consumers = CopyOnWriteArrayList<View>()
 +    // Reused scratch objects: capture runs on the UI thread and may execute every
 +    // display frame, so avoid coordinate-array/Rect allocation per consumer.
-+    private val sourceLocation = IntArray(2)
-+    private val consumerLocation = IntArray(2)
-+    private val scratchBounds = Rect()
-+    private val unionBounds = Rect()
 +    private val clampedCaptureBounds = Rect()
++    private val staleSourceRegions = Array(16) { Rect() }
++    private var staleSourceRegionCount = 0
++    private val geometryByConsumer = IdentityHashMap<View, ConsumerGeometry>()
++    private val geometryMapper = ViewGeometryMapper()
++
++    private class ConsumerGeometry {
++        val bounds = Rect()
++        var version = Long.MIN_VALUE
++        var sourceVersion = Long.MIN_VALUE
++        var width = -1
++        var height = -1
++        var marginPx = -1
++    }
 +
 +    public val hasConsumers: Boolean
 +        get() = consumers.isNotEmpty()
-
+ 
      /** The live recording, exposed through [LiquidGlassBackdropSource]. */
      public var contentNode: RenderNode? = null
-@@ -51,6 +75,12 @@ public class BackdropRecorder {
+@@ -51,12 +95,19 @@ public class BackdropRecorder {
      public val hasRecording: Boolean
          get() = Build.VERSION.SDK_INT >= 29 && contentNode?.hasDisplayList() == true
-
+ 
 +    /** Crop origin of [contentNode] in provider-local pixels. */
 +    public var originX: Int = 0
 +        private set
@@ -357,9 +381,17 @@ index ca69095..3aaf4bc 100644
 +        private set
 +
      public fun register(consumer: View) {
-         consumers.addIfAbsent(consumer)
+-        consumers.addIfAbsent(consumer)
++        if (consumers.addIfAbsent(consumer)) geometryByConsumer[consumer] = ConsumerGeometry()
      }
-@@ -68,26 +98,63 @@ public class BackdropRecorder {
+ 
+     public fun unregister(consumer: View) {
+         consumers.remove(consumer)
++        geometryByConsumer.remove(consumer)
+     }
+ 
+     /**
+@@ -68,26 +119,63 @@ public class BackdropRecorder {
          canvas: Canvas,
          width: Int,
          height: Int,
@@ -428,59 +460,125 @@ index ca69095..3aaf4bc 100644
 +            }
          }
      }
-
-@@ -96,5 +163,34 @@ public class BackdropRecorder {
+ 
+@@ -96,5 +184,86 @@ public class BackdropRecorder {
              contentNode?.discardDisplayList()
          }
          contentNode = null
 +        originX = 0
 +        originY = 0
++        staleSourceRegionCount = 0
+     }
++
++    /** True only when a changed source region reaches an active optical sample. */
++    public fun intersectsConsumerSampling(source: LiquidGlassBackdropSource, dirtyRegion: Rect): Boolean {
++        if (consumers.isEmpty() || dirtyRegion.isEmpty) return false
++        for (consumer in consumers) {
++            if (Rect.intersects(consumerSamplingBounds(source, consumer), dirtyRegion)) return true
++        }
++        return false
 +    }
 +
-+    /** Union of active consumer bounds plus a small optical sampling margin. */
-+    public fun consumerBounds(source: View, width: Int, height: Int, marginPx: Int): Rect? {
-+        if (consumers.isEmpty()) return null
-+        source.getLocationInWindow(sourceLocation)
-+        var hasUnion = false
-+        for (consumer in consumers) {
-+            if (!consumer.isAttachedToWindow || consumer.width <= 0 || consumer.height <= 0) continue
-+            consumer.getLocationInWindow(consumerLocation)
-+            val left = consumerLocation[0] - sourceLocation[0] - marginPx
-+            val top = consumerLocation[1] - sourceLocation[1] - marginPx
-+            scratchBounds.set(
-+                left,
-+                top,
-+                left + consumer.width + marginPx * 2,
-+                top + consumer.height + marginPx * 2,
-+            )
-+            if (!scratchBounds.intersect(0, 0, width, height) || scratchBounds.isEmpty) continue
-+            if (!hasUnion) {
-+                unionBounds.set(scratchBounds)
-+                hasUnion = true
-+            } else {
-+                unionBounds.union(scratchBounds)
++    /** Retain out-of-sample changes so a glass moved there later never sees stale pixels. */
++    public fun recordSourceDirtyRegion(region: Rect) {
++        if (region.isEmpty) return
++        for (index in 0 until staleSourceRegionCount) {
++            val current = staleSourceRegions[index]
++            if (touches(current, region)) {
++                current.union(region)
++                return
 +            }
 +        }
-+        return if (hasUnion) unionBounds else null
-     }
++        if (staleSourceRegionCount < staleSourceRegions.size) {
++            staleSourceRegions[staleSourceRegionCount++].set(region)
++            return
++        }
++        // Bounded reusable storage: overflow becomes one conservative union.
++        for (index in 1 until staleSourceRegionCount) staleSourceRegions[0].union(staleSourceRegions[index])
++        staleSourceRegions[0].union(region)
++        staleSourceRegionCount = 1
++    }
++
++    public fun clearSourceDirtyRegions() {
++        staleSourceRegionCount = 0
++    }
++
++    public val hasStaleSourceRegions: Boolean
++        get() = staleSourceRegionCount > 0
++
++    public fun hasStaleSourceIntersection(source: LiquidGlassBackdropSource, consumer: View): Boolean {
++        if (staleSourceRegionCount == 0 || !consumer.isAttachedToWindow) return false
++        val bounds = consumerSamplingBounds(source, consumer)
++        for (index in 0 until staleSourceRegionCount) {
++            if (Rect.intersects(bounds, staleSourceRegions[index])) return true
++        }
++        return false
++    }
++
++    public fun hasStaleSourceIntersection(source: LiquidGlassBackdropSource): Boolean {
++        for (consumer in consumers) {
++            if (hasStaleSourceIntersection(source, consumer)) return true
++        }
++        return false
++    }
++
++    private fun consumerSamplingBounds(source: LiquidGlassBackdropSource, consumer: View): Rect {
++        if (!consumer.isAttachedToWindow || consumer.width <= 0 || consumer.height <= 0) return emptyBounds
++        val opticalConsumer = consumer as? LiquidGlassSamplingConsumer
++        val version = opticalConsumer?.geometryVersion ?: 0L
++        val marginPx = opticalConsumer?.opticalSamplingMarginPx ?: 0
++        val geometry = geometryByConsumer[consumer] ?: return emptyBounds
++        if (geometry.version != version || geometry.sourceVersion != source.geometryVersion ||
++            geometry.width != consumer.width || geometry.height != consumer.height || geometry.marginPx != marginPx
++        ) {
++            LiquidGlassPerfTelemetry.geometryLookup()
++            if (!geometryMapper.mapBounds(consumer, source.sourceView, geometry.bounds)) return emptyBounds
++            geometry.bounds.inset(-marginPx, -marginPx)
++            geometry.version = version
++            geometry.sourceVersion = source.geometryVersion
++            geometry.width = consumer.width
++            geometry.height = consumer.height
++            geometry.marginPx = marginPx
++        }
++        return geometry.bounds
++    }
++
++    private fun touches(a: Rect, b: Rect): Boolean =
++        a.left <= b.right && b.left <= a.right && a.top <= b.bottom && b.top <= a.bottom
++
++    private val emptyBounds = Rect()
  }
 diff --git a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/GlassViewController.kt b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/GlassViewController.kt
-index e5ad81f..b9ea2e6 100644
+index e5ad81f..9d867a2 100644
 --- a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/GlassViewController.kt
 +++ b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/GlassViewController.kt
-@@ -13,6 +13,7 @@ import androidx.annotation.ColorInt
+@@ -13,8 +13,19 @@ import androidx.annotation.ColorInt
  import dev.liquidglass.core.GlassRenderTier
  import dev.liquidglass.view.internal.GlassFrame
  import dev.liquidglass.view.internal.GlassViewRenderer
++import expo.modules.liquidglass.LiquidGlassPerfTelemetry
 +import kotlin.math.abs
++import kotlin.math.ceil
++import kotlin.math.max
  import kotlin.math.min
-
+ 
++internal enum class GlassDirtyKind {
++    SOURCE_CONTENT_DIRTY,
++    CONSUMER_GEOMETRY_DIRTY,
++    OPTICS_DIRTY,
++    MATERIAL_DIRTY,
++}
++
  /** Sentinel corner radius: fully rounded capsule/circle. */
-@@ -45,10 +46,19 @@ public class GlassViewController(private val host: View) {
+ public const val CORNER_RADIUS_CAPSULE: Float = -1f
+ 
+@@ -45,10 +56,39 @@ public class GlassViewController(private val host: View) {
      private val renderer = GlassViewRenderer()
      private val locationSelf = IntArray(2)
      private val locationProvider = IntArray(2)
 +    private val relativePosition = FloatArray(2)
++    private val geometryVersionTracker = ViewGeometryVersion(host)
++    private val geometryMapper = ViewGeometryMapper()
 +    private val frame = GlassFrame()
      private var pressAmount = 0f
      private var pressX = 0f
@@ -493,28 +591,46 @@ index e5ad81f..b9ea2e6 100644
 +    private var derivedMotionY = 0f
 +    private var explicitMotionX: Float? = null
 +    private var explicitMotionY: Float? = null
-
++    private var cachedConsumerGeometryVersion = Long.MIN_VALUE
++    private var cachedProviderGeometryVersion = Long.MIN_VALUE
++    private var cachedProvider: LiquidGlassBackdropSource? = null
++
++    public val geometryVersion: Long
++        get() = geometryVersionTracker.current()
++
++    /** Includes the RenderEffect outset, refraction, chromatic spread and safety margin. */
++    public val opticalSamplingMarginPx: Int
++        get() {
++            val density = host.resources.displayMetrics.density
++            val blurExtent = max(blurRadiusDp, 0f) * 2f +
++                abs(refractionAmountDp) * 1.38f + abs(bodyRefractionAmountDp) * 1.35f
++            val edgeExtent = abs(refractionHeightDp) * 1.42f
++            val chromaticExtent = abs(chromaticAberration) * 1.85f *
++                (abs(refractionHeightDp) * 0.12f + abs(bodyRefractionAmountDp) * 0.08f)
++            return ceil((max(blurExtent, edgeExtent) + chromaticExtent + 8f) * density).toInt()
++        }
+ 
      /** The backdrop this glass refracts. Must be drawn below the host. */
      public var provider: LiquidGlassBackdropSource? = null
-@@ -76,6 +86,14 @@ public class GlassViewController(private val host: View) {
+@@ -76,6 +116,14 @@ public class GlassViewController(private val host: View) {
      public var refractionAmountDp: Float = 12f
          set(value) = invalidating(field, value) { field = it }
-
+ 
 +    /** Full-body rounded-rect coordinate remapping in dp, separate from the rim bend. */
 +    public var bodyRefractionAmountDp: Float = 2.5f
 +        set(value) = invalidating(field, value) { field = it }
 +
 +    /** 0..1 animated material morph from idle to pressed/dragged optics. */
 +    public var interactionProgress: Float = 0f
-+        set(value) = invalidating(field, value.coerceIn(0f, 1f)) { field = it }
++        set(value) = invalidating(field, value.coerceIn(0f, 1f), GlassDirtyKind.OPTICS_DIRTY) { field = it }
 +
      /** Backdrop saturation boost; 1 leaves color untouched. */
      public var saturation: Float = 1.5f
          set(value) = invalidating(field, value) { field = it }
-@@ -85,6 +103,10 @@ public class GlassViewController(private val host: View) {
+@@ -85,6 +133,10 @@ public class GlassViewController(private val host: View) {
      public var glassTintColor: Int = Color.TRANSPARENT
          set(value) = invalidating(field, value) { field = it }
-
+ 
 +    /** Material-specific multiplier applied to the RGBA tint alpha. */
 +    public var tintAlpha: Float = 1f
 +        set(value) = invalidating(field, value.coerceIn(0f, 1f)) { field = it }
@@ -522,10 +638,10 @@ index e5ad81f..b9ea2e6 100644
      /** 0..1 RGB dispersion along the lens edge. */
      public var chromaticAberration: Float = 0f
          set(value) = invalidating(field, value) { field = it }
-@@ -97,6 +119,18 @@ public class GlassViewController(private val host: View) {
+@@ -97,6 +149,18 @@ public class GlassViewController(private val host: View) {
      public var highlightAlpha: Float = 0.45f
          set(value) = invalidating(field, value) { field = it }
-
+ 
 +    /** Gain for the half-vector specular lobe. */
 +    public var specularStrength: Float = 1f
 +        set(value) = invalidating(field, value) { field = it }
@@ -541,10 +657,10 @@ index e5ad81f..b9ea2e6 100644
      /** Thickness of the specular rim in dp. */
      public var highlightWidthDp: Float = 2f
          set(value) = invalidating(field, value) { field = it }
-@@ -113,6 +147,25 @@ public class GlassViewController(private val host: View) {
+@@ -113,6 +177,25 @@ public class GlassViewController(private val host: View) {
      /** When true the glass answers touch with the gel press response. */
      public var isGlassInteractive: Boolean = false
-
+ 
 +    /** Keep a cropped backdrop region current while an interactive lens is mounted. */
 +    public var continuousBackdrop: Boolean = false
 +        set(value) {
@@ -556,29 +672,31 @@ index e5ad81f..b9ea2e6 100644
 +
 +    /** Optional UI-thread velocity overrides, normalized to -1..1. */
 +    public var motionX: Float? = null
-+        set(value) = invalidating(field, value?.coerceIn(-1f, 1f)) { field = it }
++        set(value) = invalidating(field, value?.coerceIn(-1f, 1f), GlassDirtyKind.OPTICS_DIRTY) { field = it }
 +    public var motionY: Float? = null
-+        set(value) = invalidating(field, value?.coerceIn(-1f, 1f)) { field = it }
++        set(value) = invalidating(field, value?.coerceIn(-1f, 1f), GlassDirtyKind.OPTICS_DIRTY) { field = it }
 +
 +    /** Development-only view of the displaced backdrop without material lighting. */
 +    public var displacementOnlyDebug: Boolean = false
-+        set(value) = invalidating(field, value) { field = it }
++        set(value) = invalidating(field, value, GlassDirtyKind.OPTICS_DIRTY) { field = it }
 +
      /** Optional fidelity cap (accessibility, battery, tests). */
      public var tierOverride: GlassRenderTier? = null
          set(value) = invalidating(field, value) { field = it }
-@@ -144,6 +197,7 @@ public class GlassViewController(private val host: View) {
+@@ -144,6 +227,8 @@ public class GlassViewController(private val host: View) {
      /** Draws the glass into [canvas]; call before the host's children draw. */
      public fun draw(canvas: Canvas) {
          if (host.width < 1 || host.height < 1) return
++        LiquidGlassPerfTelemetry.consumerDraw()
 +        if (continuousBackdrop) provider?.requestCaptureFrame()
          val frame = buildFrame()
          val backdrop = provider
          val providerNode =
-@@ -176,36 +230,83 @@ public class GlassViewController(private val host: View) {
+@@ -175,37 +260,107 @@ public class GlassViewController(private val host: View) {
+         } else {
              min(cornerRadiusDp * density, maxRadius)
          }
-         val relative = relativeToProvider()
+-        val relative = relativeToProvider()
 -        return GlassFrame(
 -            widthPx = width,
 -            heightPx = height,
@@ -599,6 +717,7 @@ index e5ad81f..b9ea2e6 100644
 -            relativeX = relative[0],
 -            relativeY = relative[1],
 -        )
++        val relative = relativeToProvider(geometryVersion)
 +        updateMotion(relative)
 +        val backdrop = provider
 +        val recordedOriginX = backdrop?.recordedOriginX ?: 0
@@ -631,8 +750,16 @@ index e5ad81f..b9ea2e6 100644
 +        frame.motionX = motionX ?: derivedMotionX
 +        frame.motionY = motionY ?: derivedMotionY
 +        return frame
-+    }
-+
+     }
+ 
+-    private fun relativeToProvider(): FloatArray {
+-        val backdrop = provider ?: return floatArrayOf(0f, 0f)
+-        host.getLocationInWindow(locationSelf)
+-        backdrop.sourceView.getLocationInWindow(locationProvider)
+-        return floatArrayOf(
+-            (locationSelf[0] - locationProvider[0]).toFloat(),
+-            (locationSelf[1] - locationProvider[1]).toFloat(),
+-        )
 +    private fun updateMotion(relative: FloatArray) {
 +        val now = System.nanoTime()
 +        val previousX = previousRelativeX
@@ -662,33 +789,250 @@ index e5ad81f..b9ea2e6 100644
 +        previousRelativeX = relative[0]
 +        previousRelativeY = relative[1]
 +        previousMotionAtNanos = now
-     }
-
-     private fun relativeToProvider(): FloatArray {
--        val backdrop = provider ?: return floatArrayOf(0f, 0f)
++    }
++
++    private fun relativeToProvider(consumerGeometryVersion: Long): FloatArray {
 +        val backdrop = provider
 +        if (backdrop == null) {
 +            relativePosition[0] = 0f
 +            relativePosition[1] = 0f
++            cachedProvider = null
++            cachedConsumerGeometryVersion = consumerGeometryVersion
++            cachedProviderGeometryVersion = Long.MIN_VALUE
 +            return relativePosition
 +        }
-         host.getLocationInWindow(locationSelf)
-         backdrop.sourceView.getLocationInWindow(locationProvider)
--        return floatArrayOf(
--            (locationSelf[0] - locationProvider[0]).toFloat(),
--            (locationSelf[1] - locationProvider[1]).toFloat(),
--        )
-+        relativePosition[0] = (locationSelf[0] - locationProvider[0]).toFloat()
-+        relativePosition[1] = (locationSelf[1] - locationProvider[1]).toFloat()
++        val providerGeometryVersion = backdrop.geometryVersion
++        if (cachedProvider !== backdrop || cachedConsumerGeometryVersion != consumerGeometryVersion ||
++            cachedProviderGeometryVersion != providerGeometryVersion
++        ) {
++            val previousX = relativePosition[0]
++            val previousY = relativePosition[1]
++            if (!geometryMapper.mapOrigin(host, backdrop.sourceView, relativePosition)) {
++                LiquidGlassPerfTelemetry.geometryLookup()
++                host.getLocationInWindow(locationSelf)
++                LiquidGlassPerfTelemetry.geometryLookup()
++                backdrop.sourceView.getLocationInWindow(locationProvider)
++                relativePosition[0] = (locationSelf[0] - locationProvider[0]).toFloat()
++                relativePosition[1] = (locationSelf[1] - locationProvider[1]).toFloat()
++            }
++            val x = relativePosition[0]
++            val y = relativePosition[1]
++            if (previousX != x || previousY != y) {
++                LiquidGlassPerfTelemetry.consumerGeometryDirty()
++            }
++            if (!continuousBackdrop) backdrop.onConsumerGeometryChanged(host)
++            cachedProvider = backdrop
++            cachedConsumerGeometryVersion = consumerGeometryVersion
++            cachedProviderGeometryVersion = providerGeometryVersion
++        }
 +        return relativePosition
      }
-
+ 
      private fun resolveScrimColor(): Int =
+@@ -218,6 +373,7 @@ public class GlassViewController(private val host: View) {
+             this.interpolator = interpolator
+             addUpdateListener {
+                 pressAmount = it.animatedValue as Float
++                LiquidGlassPerfTelemetry.opticsDirty()
+                 val scale = 1f + 0.025f * pressAmount
+                 host.scaleX = scale
+                 host.scaleY = scale
+@@ -227,9 +383,20 @@ public class GlassViewController(private val host: View) {
+         }
+     }
+ 
+-    private inline fun <T> invalidating(old: T, new: T, assign: (T) -> Unit) {
++    private inline fun <T> invalidating(
++        old: T,
++        new: T,
++        kind: GlassDirtyKind = GlassDirtyKind.MATERIAL_DIRTY,
++        assign: (T) -> Unit,
++    ) {
+         if (old != new) {
+             assign(new)
++            when (kind) {
++                GlassDirtyKind.SOURCE_CONTENT_DIRTY -> Unit
++                GlassDirtyKind.CONSUMER_GEOMETRY_DIRTY -> LiquidGlassPerfTelemetry.consumerGeometryDirty()
++                GlassDirtyKind.OPTICS_DIRTY -> LiquidGlassPerfTelemetry.opticsDirty()
++                GlassDirtyKind.MATERIAL_DIRTY -> LiquidGlassPerfTelemetry.materialDirty()
++            }
+             host.invalidate()
+         }
+     }
+diff --git a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/LiquidGlassProviderLayout.kt b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/LiquidGlassProviderLayout.kt
+index 19d1dfc..b64f2fa 100644
+--- a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/LiquidGlassProviderLayout.kt
++++ b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/LiquidGlassProviderLayout.kt
+@@ -23,10 +23,14 @@ public open class LiquidGlassProviderLayout @JvmOverloads constructor(
+ ) : FrameLayout(context, attrs, defStyleAttr), LiquidGlassBackdropSource {
+ 
+     private val recorder = BackdropRecorder()
++    private val geometryVersionTracker = ViewGeometryVersion(this)
+ 
+     override val sourceView: View
+         get() = this
+ 
++    override val geometryVersion: Long
++        get() = geometryVersionTracker.current()
++
+     override val contentRenderNode: RenderNode?
+         get() = recorder.contentNode
+ 
+diff --git a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/LiquidGlassView.kt b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/LiquidGlassView.kt
+index fbc0b4d..4d02077 100644
+--- a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/LiquidGlassView.kt
++++ b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/LiquidGlassView.kt
+@@ -24,11 +24,17 @@ public open class LiquidGlassView @JvmOverloads constructor(
+     context: Context,
+     attrs: AttributeSet? = null,
+     defStyleAttr: Int = 0,
+-) : FrameLayout(context, attrs, defStyleAttr) {
++) : FrameLayout(context, attrs, defStyleAttr), LiquidGlassSamplingConsumer {
+ 
+     /** The full glass engine; advanced callers may tune it directly. */
+     public val controller: GlassViewController = GlassViewController(this)
+ 
++    override val geometryVersion: Long
++        get() = controller.geometryVersion
++
++    override val opticalSamplingMarginPx: Int
++        get() = controller.opticalSamplingMarginPx
++
+     /** The backdrop this glass refracts. Must be a sibling drawn below. */
+     public var provider: LiquidGlassBackdropSource? by controller::provider
+ 
+diff --git a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/ViewGeometryMapper.kt b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/ViewGeometryMapper.kt
+new file mode 100644
+index 0000000..d4630dd
+--- /dev/null
++++ b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/ViewGeometryMapper.kt
+@@ -0,0 +1,65 @@
++package dev.liquidglass.view
++
++import android.graphics.Matrix
++import android.graphics.Rect
++import android.graphics.RectF
++import android.view.View
++import kotlin.math.ceil
++import kotlin.math.floor
++
++/** Reusable window-space mapping helpers; all scratch storage is retained per owner. */
++internal class ViewGeometryMapper {
++
++    private val sourceToGlobal = Matrix()
++    private val globalToSource = Matrix()
++    private val targetToGlobal = Matrix()
++    private val bounds = RectF()
++
++    fun mapOrigin(target: View, source: View, output: FloatArray): Boolean {
++        if (!prepareSource(source)) return false
++        targetToGlobal.reset()
++        target.transformMatrixToGlobal(targetToGlobal)
++        output[0] = 0f
++        output[1] = 0f
++        targetToGlobal.mapPoints(output)
++        globalToSource.mapPoints(output)
++        return true
++    }
++
++    fun mapBounds(target: View, source: View, output: Rect): Boolean {
++        return mapLocalBounds(target, source, 0f, 0f, target.width.toFloat(), target.height.toFloat(), output)
++    }
++
++    fun mapLocalBounds(
++        target: View,
++        source: View,
++        left: Float,
++        top: Float,
++        right: Float,
++        bottom: Float,
++        output: Rect,
++    ): Boolean {
++        if (right <= left || bottom <= top || !prepareSource(source)) {
++            output.setEmpty()
++            return false
++        }
++        targetToGlobal.reset()
++        target.transformMatrixToGlobal(targetToGlobal)
++        bounds.set(left, top, right, bottom)
++        targetToGlobal.mapRect(bounds)
++        globalToSource.mapRect(bounds)
++        output.set(
++            floor(bounds.left).toInt(),
++            floor(bounds.top).toInt(),
++            ceil(bounds.right).toInt(),
++            ceil(bounds.bottom).toInt(),
++        )
++        return !output.isEmpty
++    }
++
++    private fun prepareSource(source: View): Boolean {
++        sourceToGlobal.reset()
++        source.transformMatrixToGlobal(sourceToGlobal)
++        return sourceToGlobal.invert(globalToSource)
++    }
++}
+diff --git a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/ViewGeometryVersion.kt b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/ViewGeometryVersion.kt
+new file mode 100644
+index 0000000..74f2e40
+--- /dev/null
++++ b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/ViewGeometryVersion.kt
+@@ -0,0 +1,50 @@
++package dev.liquidglass.view
++
++import android.view.View
++
++/** Tracks layout and animated transform changes without allocating per draw. */
++internal class ViewGeometryVersion(private val view: View) {
++
++    private var initialized = false
++    private var fingerprint = 0L
++    private var version = 0L
++
++    fun current(): Long {
++        var next = -0x340d631b7bdddcdbL
++        var current: View? = view
++        while (current != null) {
++            next = mix(next, System.identityHashCode(current).toLong())
++            next = mix(next, current.left.toLong())
++            next = mix(next, current.top.toLong())
++            next = mix(next, current.width.toLong())
++            next = mix(next, current.height.toLong())
++            next = mix(next, current.scrollX.toLong())
++            next = mix(next, current.scrollY.toLong())
++            next = mix(next, bits(current.translationX))
++            next = mix(next, bits(current.translationY))
++            next = mix(next, bits(current.scaleX))
++            next = mix(next, bits(current.scaleY))
++            next = mix(next, bits(current.rotation))
++            next = mix(next, bits(current.rotationX))
++            next = mix(next, bits(current.rotationY))
++            next = mix(next, bits(current.pivotX))
++            next = mix(next, bits(current.pivotY))
++            current = current.parent as? View
++        }
++        if (!initialized || fingerprint != next) {
++            initialized = true
++            fingerprint = next
++            version += 1L
++        }
++        return version
++    }
++
++    private fun mix(seed: Long, value: Long): Long = (seed xor value) * 0x100000001b3L
++    private fun bits(value: Float): Long = java.lang.Float.floatToIntBits(value).toLong()
++}
++
++/** Geometry and optical sampling extent for a registered glass view. */
++public interface LiquidGlassSamplingConsumer {
++    public val geometryVersion: Long
++    public val opticalSamplingMarginPx: Int
++}
 diff --git a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/internal/GlassViewRenderer.kt b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/internal/GlassViewRenderer.kt
-index 4874b15..936322b 100644
+index 4874b15..42af277 100644
 --- a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/internal/GlassViewRenderer.kt
 +++ b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/internal/GlassViewRenderer.kt
-@@ -13,13 +13,12 @@ import android.graphics.RenderNode
+@@ -13,13 +13,13 @@ import android.graphics.RenderNode
  import android.graphics.RuntimeShader
  import android.graphics.Shader
  import androidx.annotation.RequiresApi
@@ -696,15 +1040,16 @@ index 4874b15..936322b 100644
  import dev.liquidglass.core.GlassUniforms
  import dev.liquidglass.core.LiquidGlassShaders
 -import dev.liquidglass.core.PackedGlassShape
++import expo.modules.liquidglass.LiquidGlassPerfTelemetry
  import kotlin.math.abs
  import kotlin.math.cos
  import kotlin.math.max
 +import kotlin.math.min
  import kotlin.math.sin
-
+ 
  private const val MIN_BLUR_RADIUS_PX = 0.05f
-@@ -27,24 +26,33 @@ private const val SATURATION_EPSILON = 0.01f
-
+@@ -27,24 +27,33 @@ private const val SATURATION_EPSILON = 0.01f
+ 
  /** Everything the renderer needs for one frame, resolved to pixels. */
  internal class GlassFrame(
 -    val widthPx: Float,
@@ -753,9 +1098,9 @@ index 4874b15..936322b 100644
 +    var motionX: Float = 0f,
 +    var motionY: Float = 0f,
  )
-
+ 
  /**
-@@ -60,6 +68,27 @@ internal class GlassViewRenderer {
+@@ -60,6 +69,27 @@ internal class GlassViewRenderer {
      private val scrimPaint = Paint()
      private val rimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
      private val rectF = RectF()
@@ -780,10 +1125,10 @@ index 4874b15..936322b 100644
 +    private var cachedLightAngle = Float.NaN
 +    private var cachedLightDirX = 0f
 +    private var cachedLightDirY = 0f
-
+ 
      fun release() {
          if (android.os.Build.VERSION.SDK_INT >= 29) {
-@@ -67,6 +96,15 @@ internal class GlassViewRenderer {
+@@ -67,6 +97,15 @@ internal class GlassViewRenderer {
          }
          glassNode = null
          runtimeShader = null
@@ -797,9 +1142,9 @@ index 4874b15..936322b 100644
 +        appliedRenderEffect = null
 +        cachedLightAngle = Float.NaN
      }
-
+ 
      /** SHADER (33+) and BLUR (31+) tiers: backdrop slice + RenderEffect. */
-@@ -91,13 +129,15 @@ internal class GlassViewRenderer {
+@@ -91,13 +130,15 @@ internal class GlassViewRenderer {
          } finally {
              node.endRecording()
          }
@@ -819,13 +1164,14 @@ index 4874b15..936322b 100644
 +            node.setRenderEffect(effect)
 +            appliedRenderEffect = effect
 +        }
-
+ 
          canvas.save()
          if (!useShader) {
-@@ -142,21 +182,27 @@ internal class GlassViewRenderer {
+@@ -141,22 +182,31 @@ internal class GlassViewRenderer {
+     @RequiresApi(33)
      private fun buildShaderEffect(frame: GlassFrame, inflate: Float): RenderEffect {
          val shader = runtimeShader
-             ?: RuntimeShader(LiquidGlassShaders.LIQUID_GLASS).also { runtimeShader = it }
+-            ?: RuntimeShader(LiquidGlassShaders.LIQUID_GLASS).also { runtimeShader = it }
 -        val shape = PackedGlassShape(
 -            centerX = frame.widthPx / 2f + inflate,
 -            centerY = frame.heightPx / 2f + inflate,
@@ -835,6 +1181,10 @@ index 4874b15..936322b 100644
 -        )
 -        val shapes = listOf(shape)
 -        val angleRadians = Math.toRadians(frame.lightAngleDegrees.toDouble())
++            ?: RuntimeShader(LiquidGlassShaders.LIQUID_GLASS).also {
++                runtimeShader = it
++                LiquidGlassPerfTelemetry.effectBuild()
++            }
 +        val halfWidth = frame.widthPx / 2f
 +        val halfHeight = frame.heightPx / 2f
 +        packedShapes[0] = halfWidth + inflate
@@ -861,7 +1211,7 @@ index 4874b15..936322b 100644
              setFloatUniform(GlassUniforms.CHROMATIC_ABERRATION, frame.chromaticAberration)
              setFloatUniform(
                  GlassUniforms.TINT,
-@@ -165,46 +211,70 @@ internal class GlassViewRenderer {
+@@ -165,46 +215,77 @@ internal class GlassViewRenderer {
                  Color.blue(frame.tintColor) / 255f,
                  Color.alpha(frame.tintColor) / 255f,
              )
@@ -894,7 +1244,10 @@ index 4874b15..936322b 100644
 -            ?: return shaderEffect
 -        return RenderEffect.createChainEffect(shaderEffect, prep)
 +        val runtimeEffect = shaderEffect
-+            ?: RenderEffect.createRuntimeShaderEffect(shader, GlassUniforms.CONTENT).also { shaderEffect = it }
++            ?: RenderEffect.createRuntimeShaderEffect(shader, GlassUniforms.CONTENT).also {
++                shaderEffect = it
++                LiquidGlassPerfTelemetry.effectBuild()
++            }
 +        val prep = if (frame.displacementOnlyDebug) {
 +            null
 +        } else {
@@ -902,18 +1255,23 @@ index 4874b15..936322b 100644
 +        } ?: return runtimeEffect
 +        if (cachedChainEffect == null || cachedChainPrep !== prep) {
 +            cachedChainPrep = prep
-+            cachedChainEffect = RenderEffect.createChainEffect(runtimeEffect, prep)
++            cachedChainEffect = RenderEffect.createChainEffect(runtimeEffect, prep).also {
++                LiquidGlassPerfTelemetry.effectBuild()
++            }
 +        }
 +        return cachedChainEffect!!
      }
-
+ 
      @RequiresApi(31)
      private fun buildBackdropPrepEffect(blurRadiusPx: Float, saturation: Float): RenderEffect? {
 +        if (cachedPrepValid && cachedPrepBlur == blurRadiusPx && cachedPrepSaturation == saturation) {
 +            return cachedPrepEffect
 +        }
          val blur = if (blurRadiusPx > MIN_BLUR_RADIUS_PX) {
-             RenderEffect.createBlurEffect(blurRadiusPx, blurRadiusPx, Shader.TileMode.CLAMP)
+-            RenderEffect.createBlurEffect(blurRadiusPx, blurRadiusPx, Shader.TileMode.CLAMP)
++            RenderEffect.createBlurEffect(blurRadiusPx, blurRadiusPx, Shader.TileMode.CLAMP).also {
++                LiquidGlassPerfTelemetry.effectBuild()
++            }
          } else {
              null
          }
@@ -927,9 +1285,9 @@ index 4874b15..936322b 100644
 -            RenderEffect.createColorFilterEffect(filter)
 +            val filter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(saturation) })
 +            if (blur != null) {
-+                RenderEffect.createColorFilterEffect(filter, blur)
++                RenderEffect.createColorFilterEffect(filter, blur).also { LiquidGlassPerfTelemetry.effectBuild() }
 +            } else {
-+                RenderEffect.createColorFilterEffect(filter)
++                RenderEffect.createColorFilterEffect(filter).also { LiquidGlassPerfTelemetry.effectBuild() }
 +            }
          }
 +        cachedPrepBlur = blurRadiusPx
@@ -938,18 +1296,250 @@ index 4874b15..936322b 100644
 +        cachedPrepValid = true
 +        return effect
      }
-
+ 
      private fun inflateMargin(frame: GlassFrame): Float =
 -        frame.blurRadiusPx * 2f + abs(frame.refractionAmountPx) + 4f
 +        frame.blurRadiusPx * 2f + abs(frame.refractionAmountPx) + abs(frame.bodyRefractionAmountPx) + 4f
-
+ 
      private fun shapePath(frame: GlassFrame): Path {
          clipPath.rewind()
+diff --git a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/CaptureScheduler.kt b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/CaptureScheduler.kt
+new file mode 100644
+index 0000000..50ade3f
+--- /dev/null
++++ b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/CaptureScheduler.kt
+@@ -0,0 +1,97 @@
++package expo.modules.liquidglass
++
++import android.graphics.Rect
++import android.view.Choreographer
++import kotlin.math.min
++
++/** Coalesces source dirties and schedules at most one capture per display frame. */
++internal class CaptureScheduler(private val provider: LiquidGlassProviderExpoView) {
++
++    private val dirtyRegions = Rect()
++    private var hasDirtyRegion = false
++    private var scheduled = false
++    private var nextCaptureFrameTimeNanos = Long.MIN_VALUE
++    private var frameTimeNanos = Long.MIN_VALUE
++    private var frameCallbackPosted = false
++
++    val hasPendingCapture: Boolean
++        get() = hasDirtyRegion
++
++    private val frameCallback = Choreographer.FrameCallback { frameTime ->
++        frameTimeNanos = frameTime
++        frameCallbackPosted = false
++        if (hasDirtyRegion) provider.postInvalidateOnAnimation()
++    }
++
++    fun request(region: Rect? = null, schedule: Boolean = true) {
++        LiquidGlassPerfTelemetry.backdropRequest()
++        if (hasDirtyRegion) {
++            LiquidGlassPerfTelemetry.captureSkippedAlreadyDirty()
++        }
++        if (region == null) {
++            dirtyRegions.set(0, 0, provider.width, provider.height)
++            hasDirtyRegion = true
++        } else if (!hasDirtyRegion) {
++            dirtyRegions.set(region)
++            hasDirtyRegion = true
++        } else {
++            dirtyRegions.union(region)
++        }
++        requestFrameTime()
++        if (schedule) scheduleNextFrame()
++    }
++
++    fun shouldCaptureThisFrame(): Boolean {
++        if (!hasDirtyRegion) {
++            scheduled = false
++            return false
++        }
++        val displayRate = (provider.display?.refreshRate ?: 60f).coerceIn(1f, 120f)
++        val captureRate = min(displayRate, provider.maxCaptureRateHz)
++        val minimumIntervalNanos = (1_000_000_000.0 / captureRate).toLong()
++        if (frameTimeNanos == Long.MIN_VALUE) {
++            requestFrameTime()
++            scheduleNextFrame()
++            return false
++        }
++        if (nextCaptureFrameTimeNanos != Long.MIN_VALUE &&
++            frameTimeNanos < nextCaptureFrameTimeNanos
++        ) {
++            requestFrameTime()
++            scheduleNextFrame()
++            return false
++        }
++        hasDirtyRegion = false
++        dirtyRegions.setEmpty()
++        scheduled = false
++        nextCaptureFrameTimeNanos = if (nextCaptureFrameTimeNanos == Long.MIN_VALUE) {
++            frameTimeNanos + minimumIntervalNanos
++        } else {
++            nextCaptureFrameTimeNanos + minimumIntervalNanos
++        }
++        return true
++    }
++
++    fun clear() {
++        if (frameCallbackPosted) Choreographer.getInstance().removeFrameCallback(frameCallback)
++        dirtyRegions.setEmpty()
++        hasDirtyRegion = false
++        scheduled = false
++        nextCaptureFrameTimeNanos = Long.MIN_VALUE
++        frameTimeNanos = Long.MIN_VALUE
++        frameCallbackPosted = false
++    }
++
++    private fun requestFrameTime() {
++        if (frameCallbackPosted) return
++        frameCallbackPosted = true
++        Choreographer.getInstance().postFrameCallback(frameCallback)
++    }
++
++    private fun scheduleNextFrame() {
++        if (scheduled) return
++        scheduled = true
++        LiquidGlassPerfTelemetry.captureScheduled()
++        provider.postInvalidateOnAnimation()
++    }
++}
+diff --git a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/DirtyRegionTracker.kt b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/DirtyRegionTracker.kt
+new file mode 100644
+index 0000000..38eceff
+--- /dev/null
++++ b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/DirtyRegionTracker.kt
+@@ -0,0 +1,112 @@
++package expo.modules.liquidglass
++
++import android.graphics.Rect
++import android.view.View
++import android.view.ViewGroup
++import dev.liquidglass.view.BackdropRecorder
++import dev.liquidglass.view.ViewGeometryVersion
++import dev.liquidglass.view.ViewGeometryMapper
++import java.util.IdentityHashMap
++import kotlin.math.ceil
++import kotlin.math.max
++
++/** Rejects source invalidations that cannot affect any registered glass sample. */
++internal class DirtyRegionTracker(
++    private val source: LiquidGlassProviderExpoView,
++    private val recorder: BackdropRecorder,
++) {
++
++    private val dirtyRect = Rect()
++    private val clipRect = Rect()
++    private val geometryMapper = ViewGeometryMapper()
++    private val targetGeometry = IdentityHashMap<View, TargetGeometry>()
++
++    private class TargetGeometry(view: View) {
++        val versionTracker = ViewGeometryVersion(view)
++        val bounds = Rect()
++        var version = Long.MIN_VALUE
++        var width = -1
++        var height = -1
++        var scaleX = Float.NaN
++        var scaleY = Float.NaN
++        var elevation = Float.NaN
++    }
++
++    val region: Rect
++        get() = dirtyRect
++
++    fun intersectsConsumerSampling(target: View): Boolean {
++        dirtyRect.setEmpty()
++        if (!recorder.hasConsumers || !source.isAttachedToWindow || !target.isAttachedToWindow) return false
++
++        if (target === source) {
++            dirtyRect.set(0, 0, source.width, source.height)
++        } else {
++            val targetCache = geometryFor(target)
++            val version = targetCache.versionTracker.current()
++            if (targetCache.version != version || targetCache.width != target.width ||
++                targetCache.height != target.height || targetCache.scaleX != target.scaleX ||
++                targetCache.scaleY != target.scaleY || targetCache.elevation != target.elevation
++            ) {
++                if (!geometryMapper.mapBounds(target, source, targetCache.bounds)) return false
++                targetCache.version = version
++                targetCache.width = target.width
++                targetCache.height = target.height
++                targetCache.scaleX = target.scaleX
++                targetCache.scaleY = target.scaleY
++                targetCache.elevation = target.elevation
++            }
++            dirtyRect.set(targetCache.bounds)
++        }
++
++        val density = source.resources.displayMetrics.density
++        val safetyMargin = ceil(max(2f, target.elevation * 1.5f + 2f * density)).toInt()
++        dirtyRect.inset(-safetyMargin, -safetyMargin)
++        if (!clipToAncestors(target)) {
++            dirtyRect.setEmpty()
++            return false
++        }
++        if (!dirtyRect.intersect(0, 0, source.width, source.height)) dirtyRect.setEmpty()
++        return !dirtyRect.isEmpty && recorder.intersectsConsumerSampling(source, dirtyRect)
++    }
++
++    private fun clipToAncestors(target: View): Boolean {
++        var ancestor = target.parent as? View
++        while (ancestor != null && ancestor !== source) {
++            if (ancestor is ViewGroup && (ancestor.clipChildren || ancestor.clipToPadding)) {
++                val mapped = if (ancestor.clipToPadding) {
++                    geometryMapper.mapLocalBounds(
++                        ancestor,
++                        source,
++                        ancestor.paddingLeft.toFloat(),
++                        ancestor.paddingTop.toFloat(),
++                        (ancestor.width - ancestor.paddingRight).toFloat(),
++                        (ancestor.height - ancestor.paddingBottom).toFloat(),
++                        clipRect,
++                    )
++                } else {
++                    geometryMapper.mapBounds(ancestor, source, clipRect)
++                }
++                if (!mapped || !Rect.intersects(dirtyRect, clipRect)) return false
++                dirtyRect.intersect(clipRect)
++            }
++            ancestor = ancestor.parent as? View
++        }
++        return !dirtyRect.isEmpty
++    }
++
++    private fun geometryFor(target: View): TargetGeometry {
++        targetGeometry[target]?.let { return it }
++        if (targetGeometry.size >= MAX_CACHED_TARGETS) {
++            val iterator = targetGeometry.keys.iterator()
++            if (iterator.hasNext()) {
++                targetGeometry.remove(iterator.next())
++            }
++        }
++        return TargetGeometry(target).also { targetGeometry[target] = it }
++    }
++
++    private companion object {
++        const val MAX_CACHED_TARGETS = 256
++    }
++}
 diff --git a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassModule.kt b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassModule.kt
-index fdbc794..fbfd92f 100644
+index fdbc794..385bcc4 100644
 --- a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassModule.kt
 +++ b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassModule.kt
-@@ -36,12 +36,21 @@ class ExpoLiquidGlassModule : Module() {
+@@ -5,6 +5,10 @@ import android.graphics.Canvas
+ import android.view.MotionEvent
+ import dev.liquidglass.view.CORNER_RADIUS_CAPSULE
+ import dev.liquidglass.view.GlassViewController
++import dev.liquidglass.view.LiquidGlassSamplingConsumer
++import kotlin.math.abs
++import kotlin.math.ceil
++import kotlin.math.max
+ import expo.modules.kotlin.AppContext
+ import expo.modules.kotlin.modules.Module
+ import expo.modules.kotlin.modules.ModuleDefinition
+@@ -36,12 +40,21 @@ class ExpoLiquidGlassModule : Module() {
              Prop("refractionAmount") { view: LiquidGlassExpoView, amount: Float? ->
                  view.glass.refractionAmountDp = amount ?: 12f
              }
@@ -971,7 +1561,7 @@ index fdbc794..fbfd92f 100644
              Prop("chromaticAberration") { view: LiquidGlassExpoView, amount: Float? ->
                  view.glass.chromaticAberration = (amount ?: 0f).coerceIn(0f, 1f)
              }
-@@ -51,6 +60,15 @@ class ExpoLiquidGlassModule : Module() {
+@@ -51,6 +64,15 @@ class ExpoLiquidGlassModule : Module() {
              Prop("highlightAlpha") { view: LiquidGlassExpoView, alpha: Float? ->
                  view.glass.highlightAlpha = (alpha ?: 0.45f).coerceIn(0f, 1f)
              }
@@ -987,7 +1577,7 @@ index fdbc794..fbfd92f 100644
              Prop("highlightWidth") { view: LiquidGlassExpoView, width: Float? ->
                  view.glass.highlightWidthDp = width ?: 2f
              }
-@@ -60,6 +78,18 @@ class ExpoLiquidGlassModule : Module() {
+@@ -60,6 +82,18 @@ class ExpoLiquidGlassModule : Module() {
              Prop("interactive") { view: LiquidGlassExpoView, interactive: Boolean? ->
                  view.glass.isGlassInteractive = interactive ?: false
              }
@@ -1006,41 +1596,92 @@ index fdbc794..fbfd92f 100644
          }
      }
  }
+@@ -67,11 +101,17 @@ class ExpoLiquidGlassModule : Module() {
+ class LiquidGlassExpoView(
+     context: Context,
+     appContext: AppContext,
+-) : ExpoView(context, appContext) {
++) : ExpoView(context, appContext), LiquidGlassSamplingConsumer {
+ 
+     /** The embedded glass engine; props from JS are applied to it directly. */
+     val glass = GlassViewController(this)
+ 
++    override val geometryVersion: Long
++        get() = glass.geometryVersion
++
++    override val opticalSamplingMarginPx: Int
++        get() = glass.opticalSamplingMarginPx
++
+     var providerId: String = "default"
+         set(value) {
+             if (field == value && glass.provider != null) return
 diff --git a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassProviderModule.kt b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassProviderModule.kt
-index f1f9584..faf3e60 100644
+index f1f9584..b5f467b 100644
 --- a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassProviderModule.kt
 +++ b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassProviderModule.kt
-@@ -24,6 +24,9 @@ class ExpoLiquidGlassProviderModule : Module() {
+@@ -4,8 +4,10 @@ import android.content.Context
+ import android.graphics.Canvas
+ import android.graphics.RenderNode
+ import android.view.View
++import android.view.ViewTreeObserver
+ import dev.liquidglass.view.BackdropRecorder
+ import dev.liquidglass.view.LiquidGlassBackdropSource
++import dev.liquidglass.view.ViewGeometryVersion
+ import expo.modules.kotlin.AppContext
+ import expo.modules.kotlin.modules.Module
+ import expo.modules.kotlin.modules.ModuleDefinition
+@@ -24,6 +26,20 @@ class ExpoLiquidGlassProviderModule : Module() {
              Prop("providerId") { view: LiquidGlassProviderExpoView, id: String ->
                  view.providerId = id
              }
 +            Prop("maxCaptureRateHz") { view: LiquidGlassProviderExpoView, rate: Float? ->
-+                view.maxCaptureRateHz = rate ?: 60f
++                view.maxCaptureRateHz = rate ?: 120f
 +            }
++        }
++
++        Function("setPerformanceTelemetryEnabled") { enabled: Boolean ->
++            LiquidGlassPerfTelemetry.setEnabled(enabled)
++            if (enabled) {
++                val refreshRate = appContext.currentActivity?.window?.decorView?.display?.refreshRate ?: 0f
++                LiquidGlassPerfTelemetry.displayRefreshRate(refreshRate)
++            }
++        }
++        AsyncFunction("getPerformanceStats") {
++            LiquidGlassPerfTelemetry.snapshot()
          }
      }
  }
-@@ -34,6 +37,16 @@ class LiquidGlassProviderExpoView(
+@@ -34,6 +50,17 @@ class LiquidGlassProviderExpoView(
  ) : ExpoView(context, appContext), LiquidGlassBackdropSource {
-
+ 
      private val recorder = BackdropRecorder()
-+    private var backdropDirty = true
-+    private var lastBackdropCaptureAtNanos = 0L
-+    var maxCaptureRateHz: Float = 60f
++    private val geometryVersionTracker = ViewGeometryVersion(this)
++    private val dirtyRegionTracker = DirtyRegionTracker(this, recorder)
++    private val captureScheduler = CaptureScheduler(this)
++    private val drawBackdropContent: (Canvas) -> Unit = { target -> dispatchBackdropContent(target) }
++    private var staleGeometryPreDrawListener: ViewTreeObserver.OnPreDrawListener? = null
++    var maxCaptureRateHz: Float = 120f
 +        set(value) {
-+            val next = value.coerceIn(30f, 120f)
++            val next = value.coerceIn(1f, 120f)
 +            if (field == next) return
 +            field = next
-+            backdropDirty = true
-+            postInvalidateOnAnimation()
 +        }
-
+ 
      var providerId: String = "default"
          set(value) {
-@@ -54,12 +67,75 @@ class LiquidGlassProviderExpoView(
+@@ -48,22 +75,127 @@ class LiquidGlassProviderExpoView(
+     override val sourceView: View
+         get() = this
+ 
++    override val geometryVersion: Long
++        get() = geometryVersionTracker.current()
++
+     override val contentRenderNode: RenderNode?
+         get() = recorder.contentNode
+ 
      override val hasRecording: Boolean
          get() = recorder.hasRecording
-
+ 
 -    override fun registerConsumer(consumer: View) = recorder.register(consumer)
 +    // This provider records the full scene display list, so a glass surface can
 +    // move across it by changing only its sampling coordinates. Consumer
@@ -1055,66 +1696,261 @@ index f1f9584..faf3e60 100644
 +        get() = recorder.originY
 +
 +    override fun registerConsumer(consumer: View) {
++        val hadRecording = recorder.hasRecording
 +        recorder.register(consumer)
-+        backdropDirty = true
-+        postInvalidateOnAnimation()
-+    }
-
-     override fun unregisterConsumer(consumer: View) = recorder.unregister(consumer)
-
-+    override fun requestCaptureFrame() {
-+        if (!recorder.hasConsumers || backdropDirty) return
-+        backdropDirty = true
-+        postInvalidateOnAnimation()
++        if (!hadRecording || recorder.hasStaleSourceIntersection(this, consumer)) captureScheduler.request()
 +    }
 +
++    override fun unregisterConsumer(consumer: View) {
++        recorder.unregister(consumer)
++        if (!recorder.hasConsumers) {
++            captureScheduler.clear()
++            recorder.release()
++            removeStaleGeometryListener()
++        }
++    }
++
++    override fun onConsumerGeometryChanged(consumer: View) {
++        if (recorder.hasStaleSourceIntersection(this, consumer)) {
++            // A source region that was irrelevant to the old sample became
++            // optically visible at the new consumer geometry.
++            captureScheduler.request()
++        }
++    }
++
++    override fun requestCaptureFrame() {
++        if (!recorder.hasConsumers) return
++        // Explicit continuous-source requests are merged once until the next
++        // Choreographer frame. Consumer movement and optical changes never use it.
++        captureScheduler.request()
++    }
+ 
+-    override fun unregisterConsumer(consumer: View) = recorder.unregister(consumer)
 +    override fun onDescendantInvalidated(child: View, target: View) {
-+        backdropDirty = true
++        if (recorder.hasConsumers) {
++            val intersects = dirtyRegionTracker.intersectsConsumerSampling(target)
++            recorder.recordSourceDirtyRegion(dirtyRegionTracker.region)
++            if (intersects) {
++                LiquidGlassPerfTelemetry.sourceContentDirty()
++                captureScheduler.request(dirtyRegionTracker.region, schedule = false)
++            } else {
++                LiquidGlassPerfTelemetry.captureSkippedNoIntersection()
++                updateStaleGeometryListener()
++            }
++        }
 +        super.onDescendantInvalidated(child, target)
 +    }
 +
 +    override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
-+        backdropDirty = true
++        if (recorder.hasConsumers && width > 0 && height > 0) captureScheduler.request()
 +        super.onSizeChanged(width, height, oldWidth, oldHeight)
 +    }
-+
+ 
      override fun dispatchDraw(canvas: Canvas) {
 -        recorder.drawRecorded(canvas, width, height) { target ->
+-            super.dispatchDraw(target)
++        LiquidGlassPerfTelemetry.routeDraw()
 +        if (!recorder.hasConsumers) {
-+            backdropDirty = true
 +            super.dispatchDraw(canvas)
 +            return
 +        }
-+        // Keep the capture aligned with the display cadence. Surface
-+        // invalidations do not re-record the whole route when only the glass
-+        // consumer itself was redrawn.
-+        val now = System.nanoTime()
-+        val displayRate = (display?.refreshRate ?: 60f).coerceIn(30f, 120f)
-+        val refreshRate = minOf(displayRate, maxCaptureRateHz)
-+        val minCaptureIntervalNanos = (1_000_000_000.0 / refreshRate).toLong()
-+        val shouldCaptureBackdrop = backdropDirty &&
-+            (lastBackdropCaptureAtNanos == 0L || now - lastBackdropCaptureAtNanos >= minCaptureIntervalNanos)
-+        if (shouldCaptureBackdrop) {
-+            backdropDirty = false
-+            lastBackdropCaptureAtNanos = now
-+        }
-+        // Record the provider once into a full-scene display list and replay it.
-+        // Region capture required a second dispatchDraw() for the area outside the
-+        // crop, effectively traversing the React Native view tree twice on dirty
-+        // scroll/animation frames. RenderNode is a display list, not a bitmap, so
-+        // keeping the full scene preserves exact sampling while avoiding that
-+        // duplicate traversal; each glass surface still renders only its own layer.
-+        recorder.drawRecorded(
-+            canvas,
-+            width,
-+            height,
-+            shouldCaptureBackdrop,
-+            shouldCaptureBackdrop,
-+            null,
-+        ) { target ->
-             super.dispatchDraw(target)
++        LiquidGlassPerfTelemetry.displayRefreshRate(display?.refreshRate ?: 0f)
++        if (captureScheduler.shouldCaptureThisFrame()) {
++            LiquidGlassPerfTelemetry.backdropCapture()
++            // One provider-tree traversal records a full-scene display list and
++            // the same display list is replayed for the on-screen source.
++            recorder.drawRecorded(canvas, width, height, true, true, null, drawBackdropContent)
++            recorder.clearSourceDirtyRegions()
++            updateStaleGeometryListener()
++        } else {
++            // Out-of-region source changes still draw normally on screen. The
++            // cached display list remains valid wherever each glass samples it.
++            super.dispatchDraw(canvas)
          }
      }
+ 
++    private fun dispatchBackdropContent(target: Canvas) {
++        super.dispatchDraw(target)
++    }
++
++    private fun updateStaleGeometryListener() {
++        if (recorder.hasStaleSourceRegions) {
++            if (staleGeometryPreDrawListener != null || !isAttachedToWindow) return
++            staleGeometryPreDrawListener = ViewTreeObserver.OnPreDrawListener {
++                if (!recorder.hasStaleSourceRegions) {
++                    removeStaleGeometryListener()
++                } else if (!captureScheduler.hasPendingCapture &&
++                    recorder.hasStaleSourceIntersection(this)
++                ) {
++                    captureScheduler.request()
++                }
++                true
++            }
++            viewTreeObserver.addOnPreDrawListener(staleGeometryPreDrawListener)
++        } else {
++            removeStaleGeometryListener()
++        }
++    }
++
++    private fun removeStaleGeometryListener() {
++        val listener = staleGeometryPreDrawListener ?: return
++        if (viewTreeObserver.isAlive) viewTreeObserver.removeOnPreDrawListener(listener)
++        staleGeometryPreDrawListener = null
++    }
++
+     override fun onAttachedToWindow() {
+         super.onAttachedToWindow()
+         LiquidGlassRegistry.registerProvider(providerId, this)
+@@ -71,6 +203,8 @@ class LiquidGlassProviderExpoView(
+ 
+     override fun onDetachedFromWindow() {
+         LiquidGlassRegistry.unregisterProvider(providerId, this)
++        removeStaleGeometryListener()
++        captureScheduler.clear()
+         recorder.release()
+         super.onDetachedFromWindow()
+     }
+diff --git a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/LiquidGlassPerfTelemetry.kt b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/LiquidGlassPerfTelemetry.kt
+new file mode 100644
+index 0000000..fa905ee
+--- /dev/null
++++ b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/LiquidGlassPerfTelemetry.kt
+@@ -0,0 +1,135 @@
++package expo.modules.liquidglass
++
++import android.os.Handler
++import android.os.Looper
++import android.util.Log
++import java.util.concurrent.atomic.AtomicLong
++
++/** Opt-in, low-frequency native counters for the development benchmark route. */
++internal object LiquidGlassPerfTelemetry {
++
++    @Volatile
++    private var enabled = false
++
++    private val requests = AtomicLong()
++    private val sourceContentDirties = AtomicLong()
++    private val consumerGeometryDirties = AtomicLong()
++    private val opticsDirties = AtomicLong()
++    private val materialDirties = AtomicLong()
++    private val captures = AtomicLong()
++    private val skippedNoIntersection = AtomicLong()
++    private val skippedAlreadyDirty = AtomicLong()
++    private val captureSchedules = AtomicLong()
++    private val consumerDraws = AtomicLong()
++    private val effectBuilds = AtomicLong()
++    private val geometryLookups = AtomicLong()
++    private val routeDraws = AtomicLong()
++    @Volatile private var displayRefreshRate = 0f
++
++    private val mainHandler = Handler(Looper.getMainLooper())
++    private var previousLog = counters()
++
++    private val logRunnable = object : Runnable {
++        override fun run() {
++            if (!enabled) return
++            val current = counters()
++            val previous = previousLog
++            Log.i(
++                "LiquidGlassPerf",
++                "hz=${displayRefreshRate.toInt()} requests=${delta(current, previous, "backdropRequestCount")} " +
++                    "captures=${delta(current, previous, "backdropCaptureCount")} " +
++                    "sourceDirty=${delta(current, previous, "sourceContentDirtyCount")} " +
++                    "geometryDirty=${delta(current, previous, "consumerGeometryDirtyCount")} " +
++                    "opticsDirty=${delta(current, previous, "opticsDirtyCount")} " +
++                    "materialDirty=${delta(current, previous, "materialDirtyCount")} " +
++                    "noIntersection=${delta(current, previous, "captureSkippedNoIntersection")} " +
++                    "alreadyDirty=${delta(current, previous, "captureSkippedAlreadyDirty")} " +
++                    "scheduled=${delta(current, previous, "captureScheduledCount")} " +
++                    "glassDraws=${delta(current, previous, "consumerDrawCount")} " +
++                    "effects=${delta(current, previous, "effectBuildCount")} " +
++                    "geometryLookups=${delta(current, previous, "geometryLookupCount")} " +
++                    "uiFrames=${delta(current, previous, "uiFrameCount")}",
++            )
++            previousLog = current
++            mainHandler.postDelayed(this, 1_000L)
++        }
++    }
++
++    fun setEnabled(value: Boolean) {
++        if (enabled == value) {
++            if (value) mainHandler.post {
++                reset()
++                previousLog = counters()
++                mainHandler.removeCallbacks(logRunnable)
++                mainHandler.postDelayed(logRunnable, 1_000L)
++            }
++            return
++        }
++        enabled = value
++        mainHandler.post {
++            if (value) {
++                reset()
++                previousLog = counters()
++                mainHandler.removeCallbacks(logRunnable)
++                mainHandler.postDelayed(logRunnable, 1_000L)
++            } else {
++                mainHandler.removeCallbacks(logRunnable)
++            }
++        }
++    }
++
++    fun snapshot(): Map<String, Number> = counters() + mapOf("displayRefreshRate" to displayRefreshRate)
++
++    fun displayRefreshRate(value: Float) {
++        if (enabled) displayRefreshRate = value
++    }
++
++    fun backdropRequest() { if (enabled) requests.incrementAndGet() }
++    fun sourceContentDirty() { if (enabled) sourceContentDirties.incrementAndGet() }
++    fun consumerGeometryDirty() { if (enabled) consumerGeometryDirties.incrementAndGet() }
++    fun opticsDirty() { if (enabled) opticsDirties.incrementAndGet() }
++    fun materialDirty() { if (enabled) materialDirties.incrementAndGet() }
++    fun backdropCapture() { if (enabled) captures.incrementAndGet() }
++    fun captureSkippedNoIntersection() { if (enabled) skippedNoIntersection.incrementAndGet() }
++    fun captureSkippedAlreadyDirty() { if (enabled) skippedAlreadyDirty.incrementAndGet() }
++    fun captureScheduled() { if (enabled) captureSchedules.incrementAndGet() }
++    fun consumerDraw() { if (enabled) consumerDraws.incrementAndGet() }
++    fun routeDraw() { if (enabled) routeDraws.incrementAndGet() }
++    fun effectBuild() { if (enabled) effectBuilds.incrementAndGet() }
++    fun geometryLookup() { if (enabled) geometryLookups.incrementAndGet() }
++
++    private fun counters(): Map<String, Long> = mapOf(
++        "backdropRequestCount" to requests.get(),
++        "sourceContentDirtyCount" to sourceContentDirties.get(),
++        "consumerGeometryDirtyCount" to consumerGeometryDirties.get(),
++        "opticsDirtyCount" to opticsDirties.get(),
++        "materialDirtyCount" to materialDirties.get(),
++        "backdropCaptureCount" to captures.get(),
++        "captureSkippedNoIntersection" to skippedNoIntersection.get(),
++        "captureSkippedAlreadyDirty" to skippedAlreadyDirty.get(),
++        "captureScheduledCount" to captureSchedules.get(),
++        "consumerDrawCount" to consumerDraws.get(),
++        "effectBuildCount" to effectBuilds.get(),
++        "geometryLookupCount" to geometryLookups.get(),
++        "uiFrameCount" to routeDraws.get(),
++    )
++
++    private fun delta(current: Map<String, Long>, previous: Map<String, Long>, key: String): Long =
++        (current[key] ?: 0L) - (previous[key] ?: 0L)
++
++    private fun reset() {
++        requests.set(0L)
++        sourceContentDirties.set(0L)
++        consumerGeometryDirties.set(0L)
++        opticsDirties.set(0L)
++        materialDirties.set(0L)
++        captures.set(0L)
++        skippedNoIntersection.set(0L)
++        skippedAlreadyDirty.set(0L)
++        captureSchedules.set(0L)
++        consumerDraws.set(0L)
++        effectBuilds.set(0L)
++        geometryLookups.set(0L)
++        routeDraws.set(0L)
++    }
++}
 diff --git a/node_modules/liquid-glass-kit/build/ExpoLiquidGlass.types.d.ts b/node_modules/liquid-glass-kit/build/ExpoLiquidGlass.types.d.ts
 index b15576e..9dafccf 100644
 --- a/node_modules/liquid-glass-kit/build/ExpoLiquidGlass.types.d.ts
@@ -1232,12 +2068,12 @@ index f472480..a840338 100644
 +    /** Cap dirty backdrop refreshes; Balanced uses 60 Hz and High may use 120 Hz. */
 +    maxCaptureRateHz?: number;
  }
-
+ 
  /**
 @@ -37,14 +39,20 @@ export interface LiquidGlassViewProps extends ViewProps {
    /** Width of the refracting band along the rim, in dp. Default 12. */
    refractionHeight?: number;
-
+ 
 -  /** Peak refraction displacement in dp (negative bends outward). Default 16. */
 -  refractionAmount?: number;
 +    /** Peak refraction displacement in dp (negative bends outward). Default 16. */
@@ -1246,23 +2082,23 @@ index f472480..a840338 100644
 +    bodyRefractionAmount?: number;
 +    /** Animated 0..1 transition from idle to interactive optical strength. */
 +    interactionProgress?: number;
-
+ 
    /** Backdrop saturation boost; 1 = unchanged. Default 1.5. */
    saturation?: number;
-
+ 
 -  /** Surface tint; the alpha channel is the blend strength. */
 -  tint?: ColorValue;
 +    /** Surface tint; the alpha channel is the blend strength. */
 +    tint?: ColorValue;
 +    /** Per-material multiplier applied to the tint alpha. */
 +    tintAlpha?: number;
-
+ 
    /** 0..1 RGB dispersion along the lens edge. Default 0. */
    chromaticAberration?: number;
 @@ -52,8 +60,14 @@ export interface LiquidGlassViewProps extends ViewProps {
    /** Strength of the anti-banding grain, 0..1. Default 0.015. */
    noiseAlpha?: number;
-
+ 
 -  /** 0..1 intensity of the specular rim highlight. Default 0.55. */
 -  highlightAlpha?: number;
 +    /** 0..1 intensity of the specular rim highlight. Default 0.55. */
@@ -1273,13 +2109,13 @@ index f472480..a840338 100644
 +    fresnelStrength?: number;
 +    /** Gain for the thin compression shade just inside the rim. */
 +    innerShadowStrength?: number;
-
+ 
    /** Thickness of the specular rim in dp. Default 2.5. */
    highlightWidth?: number;
 @@ -61,6 +75,15 @@ export interface LiquidGlassViewProps extends ViewProps {
    /** Screen-space angle the rim light comes from, in degrees. Default 245. */
    lightAngle?: number;
-
+ 
 -  /** Respond to touch with the gel press (scale, bulge, brighter rim). */
 -  interactive?: boolean;
 +    /** Respond to touch with the gel press (scale, bulge, brighter rim). */
@@ -1301,12 +2137,12 @@ index 7a6f4b9..7f42cb2 100644
 @@ -28,7 +28,7 @@ type NativeGlassProps = Omit<LiquidGlassViewProps, 'tint'> & {
    tint?: ReturnType<typeof processColor>;
  };
-
+ 
 -const NativeGlassView: React.ComponentType<NativeGlassProps> | null = isAndroid
 +const NativeGlassView: React.ComponentType<NativeGlassProps & React.RefAttributes<View>> | null = isAndroid
    ? requireNativeViewManager('ExpoLiquidGlass')
    : null;
-
+ 
 @@ -71,19 +71,19 @@ export function LiquidGlassProvider({
   * platforms it is a plain `View` — children render with no glass effect — so
   * the same component is safe across a cross-platform app.

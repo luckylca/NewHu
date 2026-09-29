@@ -1,10 +1,10 @@
 import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-runtime";
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { LiquidGlassProvider, LiquidGlassView } from 'liquid-glass-kit';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { createAnimatedComponent, runOnJS, useAnimatedProps, useAnimatedStyle, useSharedValue, withSpring, withTiming, } from 'react-native-reanimated';
+import Animated, { cancelAnimation, createAnimatedComponent, runOnJS, useAnimatedProps, useAnimatedReaction, useAnimatedStyle, useSharedValue, withDelay, withSpring, withTiming, } from 'react-native-reanimated';
 import { GlassOverlay, GlassSurface, useGlassAppearance, useGlassReducedMotion } from './GlassSurface';
 const TAB_BAR_HEIGHT = 66;
 const TAB_BAR_BOTTOM_GAP = 8;
@@ -15,12 +15,22 @@ const TAB_BAR_MIN_WIDTH = 208;
 const TAB_BAR_HORIZONTAL_PADDING = 8;
 const SELECTION_LENS_HEIGHT = 48;
 const SELECTION_LENS_MAX_WIDTH = 94;
-const LONG_PRESS_THRESHOLD_MS = 360;
+const LONG_PRESS_THRESHOLD_MS = 300;
+const PRE_HOLD_SLOP = 20;
+const DRAG_START_SLOP = 3;
 const TAB_BAR_PORTAL_Z_INDEX = 80;
 const IDLE_SPRING = { damping: 24, stiffness: 330, mass: 0.68 };
+const TAP_SELECTION_SPRING = { damping: 26, stiffness: 520, mass: 0.56 };
 const EDGE_SPRING_FAST = { damping: 31, stiffness: 620, mass: 0.62 };
 const EDGE_SPRING_SLOW = { damping: 29, stiffness: 260, mass: 0.76 };
 const AnimatedLiquidGlassView = createAnimatedComponent(LiquidGlassView);
+function logGlassTabGesture(event, detail) {
+    if (__DEV__) {
+        const timestamp = globalThis.performance?.now?.();
+        const time = typeof timestamp === 'number' ? timestamp.toFixed(1) : 'n/a';
+        console.info(`[GlassTab ${time}ms] ${event}${detail ? ` ${detail}` : ''}`);
+    }
+}
 /** Extra scroll room below content: bar height + bottom gap + visual clearance. */
 export const GLASS_TAB_BAR_CONTENT_INSET = TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + TAB_BAR_SCROLL_CLEARANCE;
 function emitTargetHaptic(_index) {
@@ -31,7 +41,7 @@ function emitTargetHaptic(_index) {
  * inflation, drag deformation and snap. It is cached while still and requests
  * continuous cropped captures only during the active drag/settle phase.
  */
-export function GlassTabBar({ items, selected, bottomInset, shellBackgroundColor, onSelect, onSelectFromDrag, renderIcon }) {
+export function GlassTabBar({ items, selected, bottomInset = 0, shellBackgroundColor, onSelect, onSelectFromDrag, renderIcon, renderItem, presentation = 'floating', height = TAB_BAR_HEIGHT, width: requestedWidth, horizontalPadding = TAB_BAR_HORIZONTAL_PADDING, shellRadius, lensMaxWidth = SELECTION_LENS_MAX_WIDTH, lensRefractionHeight, accessibilityHint, }) {
     const { width: windowWidth } = useWindowDimensions();
     const appearance = useGlassAppearance();
     const reducedMotion = useGlassReducedMotion();
@@ -40,65 +50,323 @@ export function GlassTabBar({ items, selected, bottomInset, shellBackgroundColor
     const dark = appearance?.dark ?? false;
     const opaqueShellColor = shellBackgroundColor ?? (dark ? '#283547' : '#EAF0F7');
     const providerId = React.useId();
+    const [inlineWidth, setInlineWidth] = useState(0);
     const shellBorderColor = appearance?.tokens.fallbackBorder[dark ? 'dark' : 'light'] ?? 'transparent';
     const shellShadowColor = appearance?.tokens.procedural.outerShadow[dark ? 'dark' : 'light'] ?? 'transparent';
     const itemCount = Math.max(items.length, 1);
     const desiredWidth = itemCount * 100 + TAB_BAR_HORIZONTAL_PADDING * 2;
-    const barWidth = Math.min(Math.min(TAB_BAR_MAX_WIDTH, Math.max(TAB_BAR_MIN_WIDTH, desiredWidth)), Math.max(0, windowWidth - TAB_BAR_SIDE_MARGIN * 2));
-    const itemWidth = Math.max(0, (barWidth - TAB_BAR_HORIZONTAL_PADDING * 2) / itemCount);
-    const lensWidth = Math.max(44, Math.min(SELECTION_LENS_MAX_WIDTH, itemWidth - 8));
-    const selectedCenterX = TAB_BAR_HORIZONTAL_PADDING + itemWidth * (selected + 0.5);
+    const floatingWidth = Math.min(Math.min(TAB_BAR_MAX_WIDTH, Math.max(TAB_BAR_MIN_WIDTH, desiredWidth)), Math.max(0, windowWidth - TAB_BAR_SIDE_MARGIN * 2));
+    const barWidth = presentation === 'inline'
+        ? (typeof requestedWidth === 'number' ? requestedWidth : inlineWidth)
+        : floatingWidth;
+    const itemWidth = Math.max(0, (barWidth - horizontalPadding * 2) / itemCount);
+    const lensWidth = Math.max(44, Math.min(lensMaxWidth, itemWidth - 8));
+    const lensBaseHeight = Math.min(SELECTION_LENS_HEIGHT, height - 8);
+    const verticalInset = (height - lensBaseHeight) / 2;
+    const selectedCenterX = horizontalPadding + itemWidth * (selected + 0.5);
     const selectedLeft = selectedCenterX - lensWidth / 2;
-    const shellScreenLeft = (windowWidth - barWidth) / 2;
+    const [inlineScreenLeft, setInlineScreenLeft] = useState(0);
+    const inlineHostRef = useRef(null);
+    const shellScreenLeft = presentation === 'floating' ? (windowWidth - barWidth) / 2 : inlineScreenLeft;
     const lensLeft = useSharedValue(selectedLeft);
     const lensRight = useSharedValue(selectedLeft + lensWidth);
-    const lensHeight = useSharedValue(SELECTION_LENS_HEIGHT);
+    const lensHeight = useSharedValue(lensBaseHeight);
     const lensOffsetY = useSharedValue(0);
     const interactionProgress = useSharedValue(0);
     const phase = useSharedValue('idle');
     const grabOffsetX = useSharedValue(0);
     const originSelectedIndex = useSharedValue(selected);
-    const releaseTargetIndex = useSharedValue(selected);
-    const snapCallbacksRemaining = useSharedValue(0);
+    const hoveredIndex = useSharedValue(selected);
+    const pendingIndex = useSharedValue(selected);
+    const snapStarted = useSharedValue(false);
+    const interactionActive = useSharedValue(false);
+    const holdCandidate = useSharedValue(false);
+    const holdActivated = useSharedValue(false);
+    const panActivated = useSharedValue(false);
+    const panActivationRequested = useSharedValue(false);
+    const panUpdateLogged = useSharedValue(false);
+    const touchSessionActive = useSharedValue(false);
+    const touchMovedPastSlop = useSharedValue(false);
+    const sessionId = useSharedValue(0);
+    const touchedIndex = useSharedValue(selected);
+    const holdTimerProgress = useSharedValue(0);
+    const touchStartX = useSharedValue(0);
+    const touchStartY = useSharedValue(0);
     const lastHapticIndex = useSharedValue(-1);
     const dragVelocityX = useSharedValue(0);
     const dragVelocityY = useSharedValue(0);
     const [liveBackdropEnabled, setLiveBackdropEnabled] = useState(false);
     const interactionActiveRef = useRef(false);
-    const lastSelectedRef = useRef(selected);
-    useEffect(() => {
-        if (lastSelectedRef.current === selected)
+    const dragCommittedTargetRef = useRef(null);
+    const previousGeometryRef = useRef({ selected, barWidth: 0 });
+    const [gestureDebug, setGestureDebug] = useState({
+        phase: 'idle',
+        holdCandidate: false,
+        holdActivated: false,
+        dragging: false,
+        snapStarted: false,
+        gestureCount: 0,
+        origin: selected,
+        hovered: selected,
+        pending: selected,
+        touchCount: 0,
+    });
+    const noteTabViewTouch = useCallback(() => {
+        if (__DEV__)
+            setGestureDebug((current) => ({ ...current, touchCount: current.touchCount + 1 }));
+    }, []);
+    const noteGestureDown = useCallback(() => {
+        if (__DEV__)
+            setGestureDebug((current) => ({ ...current, gestureCount: current.gestureCount + 1 }));
+    }, []);
+    const updateGestureDebug = useCallback((nextPhase, nextHoldCandidate, nextHoldActivated, nextDragging, nextSnapStarted, origin, hovered, pending) => {
+        if (!__DEV__)
             return;
-        lastSelectedRef.current = selected;
-        if (interactionActiveRef.current)
+        setGestureDebug((current) => ({
+            ...current,
+            phase: nextPhase,
+            holdCandidate: nextHoldCandidate,
+            holdActivated: nextHoldActivated,
+            dragging: nextDragging,
+            snapStarted: nextSnapStarted,
+            origin,
+            hovered,
+            pending,
+        }));
+    }, []);
+    useAnimatedReaction(() => ({
+        phase: phase.value,
+        holdCandidate: holdCandidate.value,
+        holdActivated: holdActivated.value,
+        dragging: panActivated.value,
+        snapStarted: snapStarted.value,
+        origin: originSelectedIndex.value,
+        hovered: hoveredIndex.value,
+        pending: pendingIndex.value,
+    }), (current, previous) => {
+        if (!__DEV__)
             return;
-        const nextCenter = TAB_BAR_HORIZONTAL_PADDING + itemWidth * (selected + 0.5);
-        const nextLeft = nextCenter - lensWidth / 2;
-        if (reducedMotion) {
-            lensLeft.value = withTiming(nextLeft, { duration: 130 });
-            lensRight.value = withTiming(nextLeft + lensWidth, { duration: 130 });
-            lensHeight.value = withTiming(SELECTION_LENS_HEIGHT, { duration: 110 });
+        if (previous == null ||
+            current.phase !== previous.phase ||
+            current.holdCandidate !== previous.holdCandidate ||
+            current.holdActivated !== previous.holdActivated ||
+            current.dragging !== previous.dragging ||
+            current.snapStarted !== previous.snapStarted ||
+            current.origin !== previous.origin ||
+            current.hovered !== previous.hovered ||
+            current.pending !== previous.pending) {
+            runOnJS(updateGestureDebug)(current.phase, current.holdCandidate, current.holdActivated, current.dragging, current.snapStarted, current.origin, current.hovered, current.pending);
         }
-        else {
-            lensLeft.value = withSpring(nextLeft, IDLE_SPRING);
-            lensRight.value = withSpring(nextLeft + lensWidth, IDLE_SPRING);
-            lensHeight.value = withTiming(SELECTION_LENS_HEIGHT - 2, { duration: 90 }, (finished) => {
-                if (finished)
-                    lensHeight.value = withSpring(SELECTION_LENS_HEIGHT, { damping: 19, stiffness: 320 });
-            });
-        }
-        lensOffsetY.value = withTiming(0, { duration: 110 });
-    }, [itemWidth, lensHeight, lensLeft, lensRight, lensWidth, reducedMotion, selected, lensOffsetY]);
+    }, [holdCandidate, holdActivated, hoveredIndex, originSelectedIndex, panActivated, pendingIndex, phase, snapStarted, updateGestureDebug]);
     const beginInteraction = useCallback(() => {
         interactionActiveRef.current = true;
+        dragCommittedTargetRef.current = null;
         if (nativeLiveAvailable)
             setLiveBackdropEnabled(true);
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
     }, [nativeLiveAvailable]);
-    const finishInteraction = useCallback(() => {
+    const activateHoldOnUI = useCallback((expectedSessionId, expectedIndex) => {
+        'worklet';
+        if (!touchSessionActive.value ||
+            sessionId.value !== expectedSessionId ||
+            !holdCandidate.value ||
+            touchMovedPastSlop.value ||
+            expectedIndex !== selected)
+            return;
+        holdCandidate.value = false;
+        holdActivated.value = true;
+        phase.value = 'inflating';
+        interactionActive.value = true;
+        originSelectedIndex.value = selected;
+        hoveredIndex.value = selected;
+        pendingIndex.value = selected;
+        const currentCenter = (lensLeft.value + lensRight.value) / 2;
+        grabOffsetX.value = touchStartX.value - shellScreenLeft - currentCenter;
+        const expandedWidth = lensWidth + (reducedMotion ? 8 : 20);
+        const expandedHeight = lensBaseHeight + (reducedMotion ? 4 : 10);
+        lensLeft.value = withSpring(currentCenter - expandedWidth / 2, reducedMotion ? IDLE_SPRING : { damping: 23, stiffness: 360, mass: 0.7 });
+        lensRight.value = withSpring(currentCenter + expandedWidth / 2, reducedMotion ? IDLE_SPRING : { damping: 23, stiffness: 360, mass: 0.7 });
+        lensHeight.value = withSpring(expandedHeight, reducedMotion ? { damping: 25, stiffness: 390 } : { damping: 23, stiffness: 350, mass: 0.7 });
+        interactionProgress.value = withTiming(1, { duration: reducedMotion ? 85 : 135 });
+        runOnJS(logGlassTabGesture)('HOLD_ACTIVE', `index=${selected}`);
+        runOnJS(beginInteraction)();
+        if (__DEV__) {
+            runOnJS(updateGestureDebug)('inflating', false, true, false, false, selected, selected, selected);
+        }
+    }, [beginInteraction, grabOffsetX, holdActivated, holdCandidate, hoveredIndex, interactionActive, interactionProgress, lensBaseHeight, lensHeight, lensLeft, lensRight, lensWidth, originSelectedIndex, pendingIndex, phase, reducedMotion, selected, sessionId, shellScreenLeft, touchMovedPastSlop, touchSessionActive, touchStartX, updateGestureDebug]);
+    const commitDragSelection = useCallback((targetIndex, startIndex) => {
+        const safeTarget = Math.max(0, Math.min(itemCount - 1, targetIndex));
+        const safeStart = Math.max(0, Math.min(itemCount - 1, startIndex));
+        if (safeTarget === safeStart || dragCommittedTargetRef.current !== null)
+            return;
+        // Mark this as the drag's own page change before notifying navigation.
+        // The selection effect must leave the remaining glass settle intact.
+        dragCommittedTargetRef.current = safeTarget;
+        previousGeometryRef.current = { selected: safeTarget, barWidth };
+        logGlassTabGesture('COMMIT', `target=${safeTarget}`);
+        (onSelectFromDrag ?? onSelect)(safeTarget);
+    }, [barWidth, itemCount, onSelect, onSelectFromDrag]);
+    const finishInteraction = useCallback((targetIndex) => {
+        const safeTarget = Math.max(0, Math.min(itemCount - 1, targetIndex));
         interactionActiveRef.current = false;
         setLiveBackdropEnabled(false);
-    }, []);
+        previousGeometryRef.current = { selected: safeTarget, barWidth };
+        dragCommittedTargetRef.current = null;
+        logGlassTabGesture('BACKDROP_OFF');
+        logGlassTabGesture('RESET');
+    }, [barWidth, itemCount]);
+    const resetInteractionOnUI = useCallback((targetIndex) => {
+        'worklet';
+        const safeTarget = Math.max(0, Math.min(itemCount - 1, targetIndex));
+        if (phase.value === 'idle' && !interactionActive.value && !snapStarted.value)
+            return;
+        // Mark idle before cancelling. A cancelled animation callback can
+        // re-enter this function, where it will now be a harmless no-op.
+        phase.value = 'idle';
+        interactionActive.value = false;
+        snapStarted.value = false;
+        holdCandidate.value = false;
+        holdActivated.value = false;
+        panActivated.value = false;
+        panActivationRequested.value = false;
+        panUpdateLogged.value = false;
+        touchSessionActive.value = false;
+        touchMovedPastSlop.value = false;
+        touchStartX.value = 0;
+        touchStartY.value = 0;
+        touchedIndex.value = safeTarget;
+        cancelAnimation(holdTimerProgress);
+        holdTimerProgress.value = 0;
+        cancelAnimation(lensLeft);
+        cancelAnimation(lensRight);
+        cancelAnimation(lensHeight);
+        cancelAnimation(lensOffsetY);
+        cancelAnimation(interactionProgress);
+        const center = horizontalPadding + itemWidth * (safeTarget + 0.5);
+        const left = center - lensWidth / 2;
+        lensLeft.value = left;
+        lensRight.value = left + lensWidth;
+        lensHeight.value = lensBaseHeight;
+        lensOffsetY.value = 0;
+        interactionProgress.value = 0;
+        dragVelocityX.value = 0;
+        dragVelocityY.value = 0;
+        originSelectedIndex.value = safeTarget;
+        hoveredIndex.value = safeTarget;
+        pendingIndex.value = safeTarget;
+        lastHapticIndex.value = -1;
+        runOnJS(finishInteraction)(safeTarget);
+    }, [dragVelocityX, dragVelocityY, finishInteraction, holdActivated, holdCandidate, holdTimerProgress, horizontalPadding, hoveredIndex, interactionActive, interactionProgress, itemCount, itemWidth, lastHapticIndex, lensBaseHeight, lensHeight, lensLeft, lensOffsetY, lensRight, lensWidth, originSelectedIndex, panActivated, panActivationRequested, panUpdateLogged, pendingIndex, phase, snapStarted, touchMovedPastSlop, touchSessionActive, touchStartX, touchStartY, touchedIndex]);
+    useEffect(() => {
+        if (barWidth <= 0)
+            return;
+        const previous = previousGeometryRef.current;
+        const initialMeasurement = previous.barWidth <= 0;
+        const selectionChanged = previous.selected !== selected;
+        const widthChanged = previous.barWidth > 0 && previous.barWidth !== barWidth;
+        if (dragCommittedTargetRef.current === selected) {
+            // Our drag already placed the lens at this page. Do not cancel its
+            // settling animation or run the normal tap-selection spring again.
+            previousGeometryRef.current = { selected, barWidth };
+            return;
+        }
+        if (interactionActiveRef.current || interactionActive.value || phase.value !== 'idle') {
+            // An external page change during a live gesture takes ownership:
+            // cancel its animations and reconcile once the external selection
+            // is known. A drag's own commit pre-updates previousGeometryRef.
+            if (selectionChanged) {
+                phase.value = 'idle';
+                interactionActive.value = false;
+                snapStarted.value = false;
+                holdCandidate.value = false;
+                holdActivated.value = false;
+                panActivated.value = false;
+                panActivationRequested.value = false;
+                panUpdateLogged.value = false;
+                touchSessionActive.value = false;
+                touchMovedPastSlop.value = false;
+                touchStartX.value = 0;
+                touchStartY.value = 0;
+                touchedIndex.value = selected;
+                sessionId.value += 1;
+                cancelAnimation(holdTimerProgress);
+                holdTimerProgress.value = 0;
+                cancelAnimation(lensLeft);
+                cancelAnimation(lensRight);
+                cancelAnimation(lensHeight);
+                cancelAnimation(lensOffsetY);
+                cancelAnimation(interactionProgress);
+                const safeIndex = Math.max(0, Math.min(itemCount - 1, selected));
+                const center = horizontalPadding + itemWidth * (safeIndex + 0.5);
+                const left = center - lensWidth / 2;
+                lensLeft.value = left;
+                lensRight.value = left + lensWidth;
+                lensHeight.value = lensBaseHeight;
+                lensOffsetY.value = 0;
+                interactionProgress.value = 0;
+                dragVelocityX.value = 0;
+                dragVelocityY.value = 0;
+                hoveredIndex.value = safeIndex;
+                pendingIndex.value = safeIndex;
+                originSelectedIndex.value = safeIndex;
+                lastHapticIndex.value = -1;
+                interactionActiveRef.current = false;
+                setLiveBackdropEnabled(false);
+                dragCommittedTargetRef.current = null;
+                logGlassTabGesture('BACKDROP_OFF');
+                logGlassTabGesture('RESET', 'external_selection');
+                previousGeometryRef.current = { selected, barWidth };
+            }
+            // Keep same-selection and layout changes pending while the
+            // session owns the lens; reconcile them after it finishes.
+            return;
+        }
+        if (!initialMeasurement && !selectionChanged && !widthChanged)
+            return;
+        const safeIndex = Math.max(0, Math.min(itemCount - 1, selected));
+        const nextCenter = horizontalPadding + itemWidth * (safeIndex + 0.5);
+        const nextLeft = nextCenter - lensWidth / 2;
+        if (initialMeasurement) {
+            lensLeft.value = nextLeft;
+            lensRight.value = nextLeft + lensWidth;
+            lensHeight.value = lensBaseHeight;
+        }
+        else if (reducedMotion) {
+            lensLeft.value = withTiming(nextLeft, { duration: 115 });
+            lensRight.value = withTiming(nextLeft + lensWidth, { duration: 115 });
+            lensHeight.value = withTiming(lensBaseHeight, { duration: 95 });
+        }
+        else {
+            lensLeft.value = withSpring(nextLeft, TAP_SELECTION_SPRING);
+            lensRight.value = withSpring(nextLeft + lensWidth, TAP_SELECTION_SPRING);
+            lensHeight.value = withSpring(lensBaseHeight, { damping: 28, stiffness: 500, mass: 0.55 });
+        }
+        lensOffsetY.value = withTiming(0, { duration: 110 });
+        previousGeometryRef.current = { selected, barWidth };
+    }, [barWidth, dragVelocityX, dragVelocityY, holdActivated, holdCandidate, holdTimerProgress, horizontalPadding, hoveredIndex, interactionActive, interactionProgress, itemCount, itemWidth, lastHapticIndex, lensBaseHeight, lensHeight, lensLeft, lensOffsetY, lensRight, lensWidth, originSelectedIndex, panActivated, panActivationRequested, panUpdateLogged, pendingIndex, phase, reducedMotion, selected, sessionId, snapStarted, touchMovedPastSlop, touchSessionActive, touchStartX, touchStartY, touchedIndex]);
+    useEffect(() => () => {
+        cancelAnimation(holdTimerProgress);
+        phase.value = 'idle';
+        interactionActive.value = false;
+        snapStarted.value = false;
+        holdCandidate.value = false;
+        holdActivated.value = false;
+        panActivated.value = false;
+        panActivationRequested.value = false;
+        panUpdateLogged.value = false;
+        touchSessionActive.value = false;
+        touchMovedPastSlop.value = false;
+        sessionId.value += 1;
+        touchedIndex.value = -1;
+        touchStartX.value = 0;
+        touchStartY.value = 0;
+        interactionActiveRef.current = false;
+        cancelAnimation(lensLeft);
+        cancelAnimation(lensRight);
+        cancelAnimation(lensHeight);
+        cancelAnimation(lensOffsetY);
+        cancelAnimation(interactionProgress);
+    }, [holdActivated, holdCandidate, holdTimerProgress, interactionActive, interactionProgress, lensHeight, lensLeft, lensOffsetY, lensRight, panActivated, panActivationRequested, panUpdateLogged, phase, sessionId, snapStarted, touchMovedPastSlop, touchSessionActive, touchStartX, touchStartY, touchedIndex]);
     const onDragUpdate = useCallback((absoluteX, relativeY, velocityX, velocityY, startIndex) => {
         'worklet';
         if (phase.value === 'inflating')
@@ -116,16 +384,17 @@ export function GlassTabBar({ items, selected, bottomInset, shellBackgroundColor
         let nearestIndex = 0;
         let nearestDistance = Number.MAX_VALUE;
         for (let index = 0; index < itemCount; index += 1) {
-            const tabCenter = TAB_BAR_HORIZONTAL_PADDING + itemWidth * (index + 0.5);
+            const tabCenter = horizontalPadding + itemWidth * (index + 0.5);
             const distance = Math.abs(center - tabCenter);
             if (distance < nearestDistance) {
                 nearestIndex = index;
                 nearestDistance = distance;
             }
         }
+        hoveredIndex.value = nearestIndex;
         const magneticRange = Math.max(itemWidth * 0.9, 1);
         const magneticStrength = 0.075 * (1 - Math.min(nearestDistance / magneticRange, 1));
-        center += (TAB_BAR_HORIZONTAL_PADDING + itemWidth * (nearestIndex + 0.5) - center) * magneticStrength;
+        center += (horizontalPadding + itemWidth * (nearestIndex + 0.5) - center) * magneticStrength;
         const speed = Math.min(Math.abs(velocityX) / 1800, 1);
         const stretch = reducedMotion ? 0 : speed * 16;
         const activeWidth = lensWidth + (reducedMotion ? 0 : 20) + stretch;
@@ -134,11 +403,11 @@ export function GlassTabBar({ items, selected, bottomInset, shellBackgroundColor
         const trailingExtra = stretch * 0.14;
         const targetLeft = center - activeWidth / 2 - (direction < 0 ? leadingExtra : trailingExtra);
         const targetRight = center + activeWidth / 2 + (direction > 0 ? leadingExtra : trailingExtra);
-        const yOffset = reducedMotion ? 0 : Math.max(-8, Math.min(8, relativeY - TAB_BAR_HEIGHT / 2));
+        const yOffset = reducedMotion ? 0 : Math.max(-8, Math.min(8, relativeY - height / 2));
         dragVelocityX.value = velocityX;
         dragVelocityY.value = velocityY;
         lensOffsetY.value = yOffset;
-        lensHeight.value = SELECTION_LENS_HEIGHT + interactionProgress.value * 10 - (reducedMotion ? 0 : speed * 3);
+        lensHeight.value = lensBaseHeight + interactionProgress.value * 10 - (reducedMotion ? 0 : speed * 3);
         // Keep the leading edge locked to the finger. Only the trailing edge
         // chases it with a spring, so the lens translates continuously while
         // still stretching like a viscous surface.
@@ -160,63 +429,234 @@ export function GlassTabBar({ items, selected, bottomInset, shellBackgroundColor
             if (hapticIndex >= 0)
                 runOnJS(emitTargetHaptic)(hapticIndex);
         }
-    }, [barWidth, dragVelocityX, dragVelocityY, grabOffsetX, interactionProgress, itemCount, itemWidth, lastHapticIndex, lensHeight, lensLeft, lensRight, lensWidth, phase, reducedMotion, shellScreenLeft, lensOffsetY]);
-    const onBeginSnap = useCallback((velocityX, startIndex) => {
+    }, [barWidth, dragVelocityX, dragVelocityY, grabOffsetX, height, horizontalPadding, hoveredIndex, interactionProgress, itemCount, itemWidth, lastHapticIndex, lensBaseHeight, lensHeight, lensLeft, lensRight, lensWidth, phase, reducedMotion, shellScreenLeft, lensOffsetY]);
+    const onBeginSnap = useCallback((velocityX, startIndex, cancelled = false) => {
         'worklet';
+        if (snapStarted.value || (phase.value !== 'inflating' && phase.value !== 'dragging'))
+            return;
+        snapStarted.value = true;
         phase.value = 'snapping';
+        const originIndex = cancelled ? startIndex : originSelectedIndex.value;
         const currentCenter = (lensLeft.value + lensRight.value) / 2;
         const projectedCenter = currentCenter + velocityX * 0.075;
         let targetIndex = 0;
         let nearestDistance = Number.MAX_VALUE;
-        for (let index = 0; index < itemCount; index += 1) {
-            const tabCenter = TAB_BAR_HORIZONTAL_PADDING + itemWidth * (index + 0.5);
-            const distance = Math.abs(projectedCenter - tabCenter);
-            if (distance < nearestDistance) {
-                nearestDistance = distance;
-                targetIndex = index;
+        if (cancelled) {
+            targetIndex = originIndex;
+        }
+        else {
+            for (let index = 0; index < itemCount; index += 1) {
+                const tabCenter = horizontalPadding + itemWidth * (index + 0.5);
+                const distance = Math.abs(projectedCenter - tabCenter);
+                if (distance < nearestDistance) {
+                    nearestDistance = distance;
+                    targetIndex = index;
+                }
             }
         }
-        const targetCenter = TAB_BAR_HORIZONTAL_PADDING + itemWidth * (targetIndex + 0.5);
+        const targetCenter = horizontalPadding + itemWidth * (targetIndex + 0.5);
         const targetLeft = targetCenter - lensWidth / 2;
-        releaseTargetIndex.value = targetIndex;
-        originSelectedIndex.value = startIndex;
-        if (targetIndex !== startIndex)
-            runOnJS(onSelectFromDrag ?? onSelect)(targetIndex);
+        pendingIndex.value = targetIndex;
+        runOnJS(logGlassTabGesture)('SNAP_START', `target=${targetIndex}${cancelled ? ' rollback' : ''}`);
+        // Page ownership changes as soon as the finger is released and the
+        // destination is known. The glass snap/settle continues independently,
+        // so navigation never waits for the trailing spring to finish.
+        if (!cancelled && targetIndex !== originIndex) {
+            runOnJS(commitDragSelection)(targetIndex, originIndex);
+        }
         lensOffsetY.value = withSpring(0, { damping: 24, stiffness: 300 });
         lensHeight.value = reducedMotion
-            ? withTiming(SELECTION_LENS_HEIGHT, { duration: 100 })
-            : withSpring(SELECTION_LENS_HEIGHT, { damping: 25, stiffness: 320, mass: 0.7 });
-        snapCallbacksRemaining.value = 2;
-        const finishEdge = (finished) => {
+            ? withTiming(lensBaseHeight, { duration: 100 })
+            : withSpring(lensBaseHeight, { damping: 25, stiffness: 320, mass: 0.7 });
+        const finishSnap = (finished) => {
             'worklet';
-            if (!finished)
+            if (phase.value !== 'snapping')
                 return;
-            snapCallbacksRemaining.value -= 1;
-            if (snapCallbacksRemaining.value !== 0)
+            if (!finished) {
+                resetInteractionOnUI(originIndex);
                 return;
+            }
             phase.value = 'settling';
+            runOnJS(logGlassTabGesture)('SNAP_END', `target=${targetIndex}`);
             interactionProgress.value = withTiming(0, { duration: reducedMotion ? 95 : 145 }, (settled) => {
-                if (!settled)
-                    return;
-                phase.value = 'idle';
-                dragVelocityX.value = 0;
-                dragVelocityY.value = 0;
-                lastHapticIndex.value = -1;
-                runOnJS(finishInteraction)();
+                if (settled) {
+                    runOnJS(logGlassTabGesture)('SETTLE_END');
+                    resetInteractionOnUI(targetIndex);
+                }
+                else {
+                    resetInteractionOnUI(originIndex);
+                }
             });
         };
         if (reducedMotion) {
-            lensLeft.value = withTiming(targetLeft, { duration: 120 }, finishEdge);
-            lensRight.value = withTiming(targetLeft + lensWidth, { duration: 120 }, finishEdge);
+            lensLeft.value = withTiming(targetLeft, { duration: 120 });
+            // One trailing edge owns completion. This avoids a two-callback
+            // counter getting stranded if either independent animation cancels.
+            lensRight.value = withTiming(targetLeft + lensWidth, { duration: 120 }, finishSnap);
         }
         else {
-            // Both edges settle independently; the edge trailing the drag has a
-            // slightly lower stiffness and catches up last.
+            // The trailing edge is the sole completion signal. It uses the
+            // slower spring, while the leading edge reaches the target first.
             const wasMovingRight = velocityX >= 0;
-            lensLeft.value = withSpring(targetLeft, wasMovingRight ? EDGE_SPRING_SLOW : EDGE_SPRING_FAST, finishEdge);
-            lensRight.value = withSpring(targetLeft + lensWidth, wasMovingRight ? EDGE_SPRING_FAST : EDGE_SPRING_SLOW, finishEdge);
+            lensLeft.value = withSpring(targetLeft, wasMovingRight ? EDGE_SPRING_SLOW : EDGE_SPRING_FAST, wasMovingRight ? finishSnap : undefined);
+            lensRight.value = withSpring(targetLeft + lensWidth, wasMovingRight ? EDGE_SPRING_FAST : EDGE_SPRING_SLOW, wasMovingRight ? undefined : finishSnap);
         }
-    }, [dragVelocityX, dragVelocityY, finishInteraction, interactionProgress, itemCount, itemWidth, lastHapticIndex, lensHeight, lensLeft, lensOffsetY, lensRight, lensWidth, onSelect, onSelectFromDrag, originSelectedIndex, phase, reducedMotion, releaseTargetIndex, snapCallbacksRemaining]);
+    }, [commitDragSelection, horizontalPadding, interactionProgress, itemCount, itemWidth, lensBaseHeight, lensHeight, lensLeft, lensOffsetY, lensRight, lensWidth, originSelectedIndex, pendingIndex, phase, reducedMotion, resetInteractionOnUI, snapStarted]);
+    const tabBarGesture = React.useMemo(() => Gesture.Pan()
+        .manualActivation(true)
+        .shouldCancelWhenOutside(false)
+        .maxPointers(1)
+        .onTouchesDown((event, manager) => {
+        'worklet';
+        const touch = event.changedTouches[0] ?? event.allTouches[0];
+        if (!touch) {
+            manager.fail();
+            return;
+        }
+        runOnJS(noteGestureDown)();
+        if (touchSessionActive.value || phase.value !== 'idle') {
+            runOnJS(logGlassTabGesture)('INTERACTION_DOWN_BLOCKED', `phase=${phase.value}`);
+            manager.fail();
+            return;
+        }
+        const localX = touch.absoluteX - shellScreenLeft;
+        const rawIndex = Math.floor((localX - horizontalPadding) / Math.max(itemWidth, 1));
+        const hitIndex = Math.max(0, Math.min(itemCount - 1, rawIndex));
+        const nextSessionId = sessionId.value + 1;
+        sessionId.value = nextSessionId;
+        touchSessionActive.value = true;
+        touchMovedPastSlop.value = false;
+        touchedIndex.value = hitIndex;
+        touchStartX.value = touch.absoluteX;
+        touchStartY.value = touch.absoluteY;
+        originSelectedIndex.value = selected;
+        hoveredIndex.value = hitIndex;
+        pendingIndex.value = hitIndex;
+        holdCandidate.value = hitIndex === selected;
+        holdActivated.value = false;
+        panActivated.value = false;
+        panActivationRequested.value = false;
+        panUpdateLogged.value = false;
+        snapStarted.value = false;
+        interactionActive.value = false;
+        lastHapticIndex.value = -1;
+        phase.value = 'pressing';
+        manager.begin();
+        runOnJS(logGlassTabGesture)('INTERACTION_DOWN', `hit=${hitIndex} selected=${selected}`);
+        if (hitIndex === selected) {
+            runOnJS(logGlassTabGesture)('HOLD_BEGIN', `index=${selected}`);
+            holdTimerProgress.value = withDelay(LONG_PRESS_THRESHOLD_MS, withTiming(1, { duration: 1 }, (finished) => {
+                if (finished)
+                    activateHoldOnUI(nextSessionId, selected);
+            }));
+        }
+    })
+        .onTouchesMove((event, manager) => {
+        'worklet';
+        if (!touchSessionActive.value)
+            return;
+        const touch = event.changedTouches[0] ?? event.allTouches[0];
+        if (!touch)
+            return;
+        const dx = touch.absoluteX - touchStartX.value;
+        const dy = touch.absoluteY - touchStartY.value;
+        const distanceSquared = dx * dx + dy * dy;
+        if (!holdActivated.value) {
+            if (distanceSquared > PRE_HOLD_SLOP * PRE_HOLD_SLOP) {
+                touchMovedPastSlop.value = true;
+                holdCandidate.value = false;
+                cancelAnimation(holdTimerProgress);
+                holdTimerProgress.value = 0;
+                manager.fail();
+            }
+            return;
+        }
+        if (distanceSquared >= DRAG_START_SLOP * DRAG_START_SLOP && !panActivationRequested.value) {
+            panActivationRequested.value = true;
+            runOnJS(logGlassTabGesture)('PAN_REQUEST_ACTIVATE');
+            manager.activate();
+        }
+    })
+        .onTouchesUp((event, manager) => {
+        'worklet';
+        if (!touchSessionActive.value)
+            return;
+        runOnJS(logGlassTabGesture)('RELEASE');
+        cancelAnimation(holdTimerProgress);
+        holdTimerProgress.value = 0;
+        if (panActivated.value) {
+            // Pan's normal END event owns snap/commit after activation.
+            touchSessionActive.value = false;
+            return;
+        }
+        const touch = event.changedTouches[0] ?? event.allTouches[0];
+        const localX = touch ? touch.absoluteX - shellScreenLeft : touchStartX.value - shellScreenLeft;
+        const rawIndex = Math.floor((localX - horizontalPadding) / Math.max(itemWidth, 1));
+        const releaseIndex = Math.max(0, Math.min(itemCount - 1, rawIndex));
+        const origin = originSelectedIndex.value;
+        const didHold = holdActivated.value;
+        const wasCancelledByMovement = touchMovedPastSlop.value;
+        touchSessionActive.value = false;
+        if (didHold) {
+            runOnJS(logGlassTabGesture)('HOLD_RELEASE', 'without_drag');
+            onBeginSnap(0, origin, true);
+        }
+        else if (!wasCancelledByMovement) {
+            phase.value = 'idle';
+            holdCandidate.value = false;
+            holdActivated.value = false;
+            interactionActive.value = false;
+            touchedIndex.value = releaseIndex;
+            runOnJS(logGlassTabGesture)('TAP', `target=${releaseIndex}`);
+            runOnJS(onSelect)(releaseIndex);
+        }
+        manager.fail();
+    })
+        .onStart(() => {
+        'worklet';
+        if (!holdActivated.value || phase.value !== 'inflating')
+            return;
+        panActivated.value = true;
+        phase.value = 'dragging';
+        // Keep the finger offset captured when the hold inflated the lens;
+        // that preserves the initial 3dp of movement instead of jumping.
+        runOnJS(logGlassTabGesture)('PAN_ACTIVE');
+    })
+        .onUpdate((event) => {
+        'worklet';
+        if (phase.value !== 'dragging')
+            return;
+        if (!panUpdateLogged.value) {
+            panUpdateLogged.value = true;
+            runOnJS(logGlassTabGesture)('PAN_UPDATE_FIRST');
+        }
+        onDragUpdate(event.absoluteX, event.y, event.velocityX, event.velocityY, originSelectedIndex.value);
+    })
+        .onEnd((event, success) => {
+        'worklet';
+        if (!success || !panActivated.value)
+            return;
+        touchSessionActive.value = false;
+        cancelAnimation(holdTimerProgress);
+        holdTimerProgress.value = 0;
+        runOnJS(logGlassTabGesture)('PAN_END');
+        onBeginSnap(event.velocityX, originSelectedIndex.value, false);
+    })
+        .onFinalize((_event, success) => {
+        'worklet';
+        if (success)
+            return;
+        cancelAnimation(holdTimerProgress);
+        holdTimerProgress.value = 0;
+        touchSessionActive.value = false;
+        if (phase.value === 'pressing') {
+            resetInteractionOnUI(originSelectedIndex.value);
+        }
+        else if (phase.value === 'inflating' || phase.value === 'dragging') {
+            runOnJS(logGlassTabGesture)('PAN_END', 'cancel');
+            onBeginSnap(0, originSelectedIndex.value, true);
+        }
+    }), [activateHoldOnUI, horizontalPadding, holdActivated, holdCandidate, holdTimerProgress, interactionActive, itemCount, itemWidth, lastHapticIndex, noteGestureDown, onBeginSnap, onDragUpdate, onSelect, originSelectedIndex, panActivated, panActivationRequested, panUpdateLogged, pendingIndex, phase, resetInteractionOnUI, selected, sessionId, shellScreenLeft, snapStarted, touchMovedPastSlop, touchSessionActive, touchStartX, touchStartY, touchedIndex, hoveredIndex]);
     const localLensStyle = useAnimatedStyle(() => {
         const width = Math.max(lensRight.value - lensLeft.value, 1);
         const center = (lensLeft.value + lensRight.value) / 2;
@@ -226,37 +666,51 @@ export function GlassTabBar({ items, selected, bottomInset, shellBackgroundColor
                 { translateX: center - selectedCenterX },
                 { translateY: lensOffsetY.value },
                 { scaleX: width / lensWidth },
-                { scaleY: lensHeight.value / SELECTION_LENS_HEIGHT },
+                { scaleY: lensHeight.value / lensBaseHeight },
             ],
         };
-    }, [lensWidth, selectedCenterX]);
+    }, [lensBaseHeight, lensWidth, selectedCenterX]);
     const liveLensStyle = useAnimatedStyle(() => ({
         left: lensLeft.value,
-        top: (TAB_BAR_HEIGHT - lensHeight.value) / 2 + lensOffsetY.value,
+        top: (height - lensHeight.value) / 2 + lensOffsetY.value,
         width: Math.max(lensRight.value - lensLeft.value, 1),
         height: lensHeight.value,
         borderRadius: Math.min(lensHeight.value, lensRight.value - lensLeft.value) / 2,
-    }));
+    }), [height]);
     const liveLensAnimatedProps = useAnimatedProps(() => ({
         interactionProgress: interactionProgress.value,
         motionX: Math.max(-1, Math.min(1, dragVelocityX.value / 1800)),
         motionY: Math.max(-1, Math.min(1, dragVelocityY.value / 1800)),
     }));
-    const tabItems = items.map((item, index) => (_jsx(GlassTabItem, { item: item, index: index, selected: index === selected, itemWidth: itemWidth, renderIcon: renderIcon, onSelect: onSelect, reducedMotion: reducedMotion, shellScreenLeft: shellScreenLeft, lensWidth: lensWidth, lensLeft: lensLeft, lensRight: lensRight, lensHeight: lensHeight, phase: phase, interactionProgress: interactionProgress, grabOffsetX: grabOffsetX, originSelectedIndex: originSelectedIndex, releaseTargetIndex: releaseTargetIndex, lastHapticIndex: lastHapticIndex, onBeginSnap: onBeginSnap, onDragUpdate: onDragUpdate, onBeginInteraction: beginInteraction }, `${item.label}-${index}`)));
-    return (_jsx(GlassOverlay, { zIndex: TAB_BAR_PORTAL_Z_INDEX + 1, children: _jsx(View, { pointerEvents: "box-none", style: [
-                styles.host,
-                {
-                    left: shellScreenLeft,
-                    bottom: bottomInset + TAB_BAR_BOTTOM_GAP,
-                    width: barWidth,
-                    height: TAB_BAR_HEIGHT,
-                },
-            ], children: nativeLiveAvailable ? (_jsxs(_Fragment, { children: [_jsx(LiquidGlassProvider, { providerId: providerId, maxCaptureRateHz: appearance?.tokens.quality === 'high' ? 120 : 60, style: [
+    const renderVisual = renderItem ?? renderIcon ?? ((item) => item.label);
+    const tabItems = items.map((item, index) => (_jsx(GlassTabItem, { item: item, index: index, selected: index === selected, itemWidth: itemWidth, horizontalPadding: horizontalPadding, barHeight: height, renderVisual: renderVisual, customContent: renderItem != null, lensLeft: lensLeft, lensRight: lensRight }, `${item.label}-${index}`)));
+    const accessibilityTargets = items.map((item, index) => (_jsx(View, { accessible: true, accessibilityRole: "tab", accessibilityLabel: item.label, accessibilityHint: accessibilityHint ?? '长按并拖动当前选中页签可切换页面', accessibilityState: { selected: index === selected }, accessibilityActions: [{ name: 'activate', label: item.label }], onAccessibilityAction: () => onSelect(index), style: styles.interactionTarget }, `tab-accessibility-${item.label}-${index}`)));
+    const resolvedShellRadius = shellRadius ?? height / 2;
+    const shellStyle = {
+        width: barWidth,
+        height,
+        borderRadius: resolvedShellRadius,
+        borderColor: shellBorderColor,
+        backgroundColor: opaqueShellColor,
+        shadowColor: shellShadowColor,
+        shadowOpacity: tabBarMaterial?.shadowOpacity ?? 0,
+        shadowRadius: tabBarMaterial?.shadowRadius ?? 0,
+        shadowOffset: { width: 0, height: tabBarMaterial?.shadowOffsetY ?? 0 },
+        elevation: tabBarMaterial?.elevation ?? 0,
+    };
+    const barContents = (_jsxs(View, { ref: inlineHostRef, onLayout: presentation === 'inline' && typeof requestedWidth !== 'number'
+            ? (event) => {
+                setInlineWidth(event.nativeEvent.layout.width);
+                inlineHostRef.current?.measureInWindow((left) => setInlineScreenLeft(left));
+            }
+            : undefined, pointerEvents: "box-none", style: presentation === 'floating'
+            ? [styles.host, { left: shellScreenLeft, bottom: bottomInset + TAB_BAR_BOTTOM_GAP, width: barWidth, height }]
+            : [styles.inlineHost, { width: requestedWidth ?? '100%', height }], children: [nativeLiveAvailable ? (_jsxs(_Fragment, { children: [_jsx(LiquidGlassProvider, { providerId: providerId, pointerEvents: "none", maxCaptureRateHz: 120, style: [
                             styles.localBackdropProvider,
                             {
                                 width: barWidth,
-                                height: TAB_BAR_HEIGHT,
-                                borderRadius: TAB_BAR_HEIGHT / 2,
+                                height,
+                                borderRadius: resolvedShellRadius,
                                 backgroundColor: opaqueShellColor,
                                 shadowColor: shellShadowColor,
                                 shadowOpacity: tabBarMaterial?.shadowOpacity ?? 0,
@@ -264,116 +718,59 @@ export function GlassTabBar({ items, selected, bottomInset, shellBackgroundColor
                                 shadowOffset: { width: 0, height: tabBarMaterial?.shadowOffsetY ?? 0 },
                                 elevation: tabBarMaterial?.elevation ?? 0,
                             },
-                        ], children: _jsx(View, { style: [
-                                styles.shell,
-                                {
-                                    width: barWidth,
-                                    height: TAB_BAR_HEIGHT,
-                                    borderRadius: TAB_BAR_HEIGHT / 2,
-                                    borderColor: shellBorderColor,
-                                    backgroundColor: opaqueShellColor,
-                                },
-                            ], children: _jsx(View, { style: styles.row, children: tabItems }) }) }), _jsx(AnimatedLiquidGlassView, { pointerEvents: "none", providerId: providerId, cornerRadius: appearance?.tokens.materials.tabSelectionLens.radius ?? SELECTION_LENS_HEIGHT / 2, blurRadius: (appearance?.tokens.materials.tabSelectionLens.blurRadius ?? 0.35) * (appearance?.tokens.quality === 'high' ? 1.2 : 1), refractionHeight: appearance?.tokens.materials.tabSelectionLens.refractionHeight ?? 12, refractionAmount: appearance?.tokens.materials.tabSelectionLens.refractionAmount ?? 5.5, bodyRefractionAmount: appearance?.tokens.materials.tabSelectionLens.refractionBodyAmount ?? 1.5, saturation: appearance?.tokens.materials.tabSelectionLens.saturation ?? 1.02, chromaticAberration: appearance?.tokens.materials.tabSelectionLens.chromaticAberration ?? 0.3, highlightAlpha: appearance?.tokens.materials.tabSelectionLens.highlightAlpha ?? 0.62, highlightWidth: appearance?.tokens.materials.tabSelectionLens.highlightWidth ?? 1.3, tintAlpha: appearance?.tokens.materials.tabSelectionLens.tintAlpha ?? 0.08, specularStrength: appearance?.tokens.materials.tabSelectionLens.specularStrength ?? 0.95, fresnelStrength: appearance?.tokens.materials.tabSelectionLens.fresnelStrength ?? 0.72, innerShadowStrength: appearance?.tokens.materials.tabSelectionLens.innerShadowStrength ?? 0.2, tint: appearance?.tokens.tint[dark ? 'dark' : 'light'], continuous: liveBackdropEnabled, animatedProps: liveLensAnimatedProps, style: [styles.nativeLens, liveLensStyle] })] })) : (_jsxs(View, { style: [
-                    styles.shell,
-                    {
-                        width: barWidth,
-                        height: TAB_BAR_HEIGHT,
-                        borderRadius: TAB_BAR_HEIGHT / 2,
-                        borderColor: shellBorderColor,
-                        backgroundColor: opaqueShellColor,
-                        shadowColor: shellShadowColor,
-                        shadowOpacity: tabBarMaterial?.shadowOpacity ?? 0,
-                        shadowRadius: tabBarMaterial?.shadowRadius ?? 0,
-                        shadowOffset: { width: 0, height: tabBarMaterial?.shadowOffsetY ?? 0 },
-                        elevation: tabBarMaterial?.elevation ?? 0,
-                    },
-                ], children: [_jsx(GlassSurface, { variant: "tabSelectionLens", renderMode: "local", pointerEvents: "none", style: {
+                        ], children: _jsx(View, { pointerEvents: "none", style: [styles.shell, shellStyle], children: _jsx(View, { pointerEvents: "none", style: [styles.row, { paddingHorizontal: horizontalPadding }], children: tabItems }) }) }), _jsx(AnimatedLiquidGlassView, { pointerEvents: "none", providerId: providerId, cornerRadius: appearance?.tokens.materials.tabSelectionLens.radius ?? lensBaseHeight / 2, blurRadius: (appearance?.tokens.materials.tabSelectionLens.blurRadius ?? 0.35) * (appearance?.tokens.quality === 'high' ? 1.2 : 1), refractionHeight: lensRefractionHeight ?? appearance?.tokens.materials.tabSelectionLens.refractionHeight ?? 12, refractionAmount: appearance?.tokens.materials.tabSelectionLens.refractionAmount ?? 5.5, bodyRefractionAmount: appearance?.tokens.materials.tabSelectionLens.refractionBodyAmount ?? 1.5, saturation: appearance?.tokens.materials.tabSelectionLens.saturation ?? 1.02, chromaticAberration: appearance?.tokens.materials.tabSelectionLens.chromaticAberration ?? 0.3, highlightAlpha: appearance?.tokens.materials.tabSelectionLens.highlightAlpha ?? 0.62, highlightWidth: appearance?.tokens.materials.tabSelectionLens.highlightWidth ?? 1.3, tintAlpha: appearance?.tokens.materials.tabSelectionLens.tintAlpha ?? 0.08, specularStrength: appearance?.tokens.materials.tabSelectionLens.specularStrength ?? 0.95, fresnelStrength: appearance?.tokens.materials.tabSelectionLens.fresnelStrength ?? 0.72, innerShadowStrength: appearance?.tokens.materials.tabSelectionLens.innerShadowStrength ?? 0.2, tint: appearance?.tokens.tint[dark ? 'dark' : 'light'], continuous: liveBackdropEnabled, animatedProps: liveLensAnimatedProps, style: [styles.nativeLens, liveLensStyle] })] })) : (_jsxs(View, { pointerEvents: "none", style: [styles.shell, shellStyle], children: [_jsx(GlassSurface, { variant: "tabSelectionLens", renderMode: "local", pointerEvents: "none", style: {
                             position: 'absolute',
                             left: selectedLeft,
-                            top: (TAB_BAR_HEIGHT - SELECTION_LENS_HEIGHT) / 2,
+                            top: verticalInset,
                             width: lensWidth,
-                            height: SELECTION_LENS_HEIGHT,
-                            borderRadius: SELECTION_LENS_HEIGHT / 2,
-                        }, animatedStyle: localLensStyle }), _jsx(View, { style: styles.row, children: tabItems })] })) }) }));
+                            height: lensBaseHeight,
+                            borderRadius: lensBaseHeight / 2,
+                        }, animatedStyle: localLensStyle }), _jsx(View, { pointerEvents: "none", style: [styles.row, { paddingHorizontal: horizontalPadding }], children: tabItems })] })), __DEV__ && (_jsx(View, { pointerEvents: "none", accessibilityElementsHidden: true, importantForAccessibility: "no-hide-descendants", style: [styles.gestureDebugOverlay, { width: Math.max(barWidth, TAB_BAR_MIN_WIDTH) }], children: _jsx(Text, { style: styles.gestureDebugText, children: `view DOWN ${gestureDebug.touchCount} · gesture DOWN ${gestureDebug.gestureCount}\nphase ${gestureDebug.phase} · hold candidate ${gestureDebug.holdCandidate ? 'ON' : 'off'} · hold ${gestureDebug.holdActivated ? 'ON' : 'off'} · drag ${gestureDebug.dragging ? 'ON' : 'off'} · snap ${gestureDebug.snapStarted ? 'ON' : 'off'}\norigin ${gestureDebug.origin} · hovered ${gestureDebug.hovered} · pending ${gestureDebug.pending}` }) })), _jsx(GestureDetector, { gesture: tabBarGesture, children: _jsx(View, { pointerEvents: "auto", onTouchStart: __DEV__ ? noteTabViewTouch : undefined, collapsable: false, style: [styles.interactionLayer, { width: barWidth, height }], children: accessibilityTargets }) })] }));
+    return presentation === 'floating'
+        ? _jsx(GlassOverlay, { zIndex: TAB_BAR_PORTAL_Z_INDEX + 1, children: barContents })
+        : barContents;
 }
-function GlassTabItem({ item, index, selected, itemWidth, renderIcon, onSelect, reducedMotion, shellScreenLeft, lensWidth, lensLeft, lensRight, lensHeight, phase, interactionProgress, grabOffsetX, originSelectedIndex, releaseTargetIndex, lastHapticIndex, onBeginSnap, onDragUpdate, onBeginInteraction, }) {
-    const pressed = useSharedValue(0);
-    const interactionHandledRef = useRef(false);
-    const notifyInteractionStart = useCallback(() => {
-        interactionHandledRef.current = true;
-        onBeginInteraction();
-    }, [onBeginInteraction]);
+function GlassTabItem({ item, index, selected, itemWidth, horizontalPadding, barHeight, renderVisual, customContent, lensLeft, lensRight, }) {
     const itemFocusStyle = useAnimatedStyle(() => {
         const center = (lensLeft.value + lensRight.value) / 2;
-        const tabCenter = TAB_BAR_HORIZONTAL_PADDING + itemWidth * (index + 0.5);
+        const tabCenter = horizontalPadding + itemWidth * (index + 0.5);
         const strength = Math.max(0, Math.min(1, 1 - Math.abs(center - tabCenter) / Math.max(itemWidth * 0.92, 1)));
         return {
-            opacity: 1 - pressed.value * 0.05,
-            transform: [{ scale: 1 - pressed.value * 0.025 + strength * 0.025 }],
+            transform: [{ scale: 1 + strength * 0.025 }],
         };
-    }, [index, itemWidth]);
+    }, [horizontalPadding, index, itemWidth]);
     const activeIconStyle = useAnimatedStyle(() => {
         const center = (lensLeft.value + lensRight.value) / 2;
-        const tabCenter = TAB_BAR_HORIZONTAL_PADDING + itemWidth * (index + 0.5);
+        const tabCenter = horizontalPadding + itemWidth * (index + 0.5);
         const strength = Math.max(0, Math.min(1, 1 - Math.abs(center - tabCenter) / Math.max(itemWidth * 0.92, 1)));
         return { opacity: strength };
-    }, [index, itemWidth]);
-    const gesture = React.useMemo(() => Gesture.Pan()
-        .enabled(selected)
-        .activateAfterLongPress(LONG_PRESS_THRESHOLD_MS)
-        .onBegin(() => {
-        phase.value = 'pressing';
-    })
-        .onStart((event) => {
-        phase.value = 'inflating';
-        originSelectedIndex.value = index;
-        releaseTargetIndex.value = index;
-        lastHapticIndex.value = -1;
-        const currentCenter = (lensLeft.value + lensRight.value) / 2;
-        grabOffsetX.value = event.absoluteX - shellScreenLeft - currentCenter;
-        const expandedWidth = lensWidth + (reducedMotion ? 8 : 20);
-        const expandedHeight = SELECTION_LENS_HEIGHT + (reducedMotion ? 4 : 10);
-        lensLeft.value = withSpring(currentCenter - expandedWidth / 2, reducedMotion ? IDLE_SPRING : { damping: 23, stiffness: 360, mass: 0.7 });
-        lensRight.value = withSpring(currentCenter + expandedWidth / 2, reducedMotion ? IDLE_SPRING : { damping: 23, stiffness: 360, mass: 0.7 });
-        lensHeight.value = withSpring(expandedHeight, reducedMotion ? { damping: 25, stiffness: 390 } : { damping: 23, stiffness: 350, mass: 0.7 });
-        interactionProgress.value = withTiming(1, { duration: reducedMotion ? 85 : 135 }, (finished) => {
-            if (finished && phase.value === 'inflating')
-                phase.value = 'dragging';
-        });
-        runOnJS(notifyInteractionStart)();
-    })
-        .onUpdate((event) => {
-        onDragUpdate(event.absoluteX, event.y, event.velocityX, event.velocityY, index);
-    })
-        .onEnd((event, success) => {
-        if (success)
-            onBeginSnap(event.velocityX, index);
-    })
-        .onFinalize((_event, success) => {
-        if (!success && phase.value === 'pressing') {
-            phase.value = 'idle';
-        }
-        else if (!success && (phase.value === 'inflating' || phase.value === 'dragging')) {
-            onBeginSnap(0, index);
-        }
-    }), [selected, phase, index, originSelectedIndex, releaseTargetIndex, lastHapticIndex, lensLeft, lensRight, lensHeight, lensWidth, shellScreenLeft, grabOffsetX, interactionProgress, reducedMotion, notifyInteractionStart, onDragUpdate, onBeginSnap]);
-    return (_jsx(GestureDetector, { gesture: gesture, children: _jsx(Pressable, { accessibilityRole: "tab", accessibilityLabel: item.label, accessibilityHint: "\u957F\u6309\u5E76\u62D6\u52A8\u5F53\u524D\u9009\u4E2D\u9875\u7B7E\u53EF\u5207\u6362\u9875\u9762", accessibilityState: { selected }, onPress: () => {
-                if (interactionHandledRef.current) {
-                    interactionHandledRef.current = false;
-                    return;
-                }
-                onSelect(index);
-            }, onPressIn: () => {
-                interactionHandledRef.current = false;
-                pressed.value = reducedMotion ? withTiming(1, { duration: 60 }) : withSpring(1, { damping: 20, stiffness: 420 });
-            }, onPressOut: () => {
-                pressed.value = reducedMotion ? withTiming(0, { duration: 80 }) : withSpring(0, { damping: 20, stiffness: 420 });
-            }, style: styles.item, children: _jsx(Animated.View, { style: [styles.itemContent, itemFocusStyle], children: _jsxs(View, { style: styles.icon, children: [_jsx(View, { style: styles.baseIcon, children: renderIcon(item, index, false) }), _jsx(Animated.View, { pointerEvents: "none", style: [styles.activeIcon, activeIconStyle], children: renderIcon(item, index, true) })] }) }) }) }));
+    }, [horizontalPadding, index, itemWidth]);
+    const baseVisual = renderVisual(item, index, false);
+    const activeVisual = renderVisual(item, index, true);
+    return (_jsx(View, { pointerEvents: "none", accessible: false, accessibilityElementsHidden: true, importantForAccessibility: "no-hide-descendants", style: [styles.item, { height: barHeight }], children: _jsx(Animated.View, { style: [customContent ? styles.itemContentInline : styles.itemContent, itemFocusStyle], children: customContent ? (_jsxs(View, { style: styles.customContent, children: [_jsx(View, { style: styles.baseIcon, children: baseVisual }), _jsx(Animated.View, { pointerEvents: "none", accessible: false, accessibilityElementsHidden: true, importantForAccessibility: "no-hide-descendants", style: [styles.customActive, activeIconStyle], children: activeVisual })] })) : (_jsxs(View, { style: styles.icon, children: [_jsx(View, { style: styles.baseIcon, children: baseVisual }), _jsx(Animated.View, { pointerEvents: "none", style: [styles.activeIcon, activeIconStyle], children: activeVisual })] })) }) }));
 }
 const styles = StyleSheet.create({
     host: {
         position: 'absolute',
         zIndex: 1,
+    },
+    inlineHost: {
+        position: 'relative',
+        alignSelf: 'stretch',
+        zIndex: 1,
+    },
+    interactionLayer: {
+        ...StyleSheet.absoluteFillObject,
+        flexDirection: 'row',
+        zIndex: 100,
+        elevation: 100,
+        backgroundColor: 'transparent',
+    },
+    interactionTarget: {
+        flex: 1,
+        minWidth: 44,
+        minHeight: 44,
+        backgroundColor: 'transparent',
     },
     localBackdropProvider: {
         position: 'absolute',
@@ -388,6 +785,24 @@ const styles = StyleSheet.create({
         elevation: 8,
         backgroundColor: 'transparent',
         overflow: 'hidden',
+    },
+    gestureDebugOverlay: {
+        position: 'absolute',
+        left: 0,
+        top: -46,
+        zIndex: 99,
+        elevation: 99,
+        alignSelf: 'flex-start',
+        paddingHorizontal: 8,
+        paddingVertical: 5,
+        borderRadius: 6,
+        backgroundColor: 'rgba(12, 18, 28, 0.86)',
+    },
+    gestureDebugText: {
+        color: '#FFFFFF',
+        fontSize: 10,
+        lineHeight: 13,
+        fontVariant: ['tabular-nums'],
     },
     shell: {
         overflow: 'hidden',
@@ -406,7 +821,6 @@ const styles = StyleSheet.create({
         flex: 1,
         minWidth: 44,
         minHeight: 44,
-        height: TAB_BAR_HEIGHT,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -423,5 +837,20 @@ const styles = StyleSheet.create({
     },
     baseIcon: { alignItems: 'center', justifyContent: 'center' },
     activeIcon: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+    itemContentInline: {
+        flex: 1,
+        width: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    customContent: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    customActive: {
+        ...StyleSheet.absoluteFillObject,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
 });
 //# sourceMappingURL=GlassTabBar.js.map

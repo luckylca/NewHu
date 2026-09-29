@@ -10,8 +10,8 @@ export interface GlassRuntime {
 export declare function useGlassReducedMotion(): boolean;
 export declare function useGlassAppearance(): GlassRuntime | null;
 /**
- * A route-scoped host for backdrop-mode surfaces. Balanced mode renders every
- * mounted glass surface and caps dirty captures at 60 Hz.
+ * A route-scoped host for backdrop-mode surfaces. All mounted glass surfaces
+ * use the active display cadence, up to the native renderer's 120 Hz ceiling.
  */
 export interface GlassMaterialProviderProps {
     children: React.ReactNode;
@@ -27,7 +27,7 @@ export interface GlassSurfaceProps {
     renderMode?: 'local' | 'backdrop';
     pointerEvents?: ViewProps['pointerEvents'];
     interactive?: boolean;
-    /** Request a fresh, region-limited backdrop frame while this surface is mounted. */
+    /** Request fresh backdrop frames while this surface is mounted. */
     continuous?: boolean;
     /** UI-thread optical morph shared with native AGSL uniforms. */
     opticalProgress?: SharedValue<number>;

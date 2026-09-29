@@ -13,7 +13,8 @@ import { ScrollView, View } from 'react-native';
 
 export default function SettingsScreen() {
     const theme = useTheme();
-    const user = useUserStore();
+    const isLoggedIn = useUserStore((state) => state.isLoggedIn);
+    const username = useUserStore((state) => state.username);
     const filterAds = useSettingStore((state) => state.isAds);
     const filterPaid = useSettingStore((state) => state.isPaid);
     const setFilterAds = useSettingStore((state) => state.setAds);
@@ -40,9 +41,9 @@ export default function SettingsScreen() {
                     <SettingRow
                         icon="account-circle-outline"
                         title="账号管理"
-                        summary={user.isLoggedIn ? `已登录 · ${user.username}` : '未登录'}
+                        summary={isLoggedIn ? `已登录 · ${username}` : '未登录'}
                         trailing={trailingChevron}
-                        onPress={() => router.push(user.isLoggedIn ? '/userinfo' : '/webview')}
+                        onPress={() => router.push(isLoggedIn ? '/userinfo' : '/webview')}
                     />
                 </SettingsGroup>
 

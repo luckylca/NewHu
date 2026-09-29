@@ -862,7 +862,7 @@ export function GlassTabBar({
                     <LiquidGlassProvider
                         providerId={providerId}
                         pointerEvents="none"
-                        maxCaptureRateHz={appearance?.tokens.quality === 'high' ? 120 : 60}
+                        maxCaptureRateHz={120}
                         style={[
                             styles.localBackdropProvider,
                             {

@@ -65,9 +65,8 @@ function entryZIndex(entry: HostEntry) {
 }
 
 function selectBalancedShaderSurfaces(entries: Record<string, HostEntry>) {
-    // Backdrop glass is the default on Android 13+. Balanced limits refresh
-    // cadence at the provider, rather than silently turning all but one
-    // visible glass surface back into a tint overlay.
+    // Every mounted backdrop surface keeps the same renderer regardless of
+    // quality preset; display cadence is selected by the native provider.
     return new Set(Object.entries(entries)
         .filter((entry) => entry[1].kind === 'surface')
         .map(([id]) => id));
@@ -84,8 +83,8 @@ interface GlassHostContextValue {
 const GlassHostContext = createContext<GlassHostContextValue | null>(null);
 
 /**
- * A route-scoped host for backdrop-mode surfaces. Balanced mode renders every
- * mounted glass surface and caps dirty captures at 60 Hz.
+ * A route-scoped host for backdrop-mode surfaces. All mounted glass surfaces
+ * use the active display cadence, up to the native renderer's 120 Hz ceiling.
  */
 export interface GlassMaterialProviderProps {
     children: React.ReactNode;
@@ -151,7 +150,7 @@ export function GlassMaterialProvider({ children, style, tokens, dark, reducedMo
                 <View ref={hostRef} collapsable={false} style={[styles.root, style]}>
                     <LiquidGlassProvider
                         providerId={providerId}
-                        maxCaptureRateHz={tokens.quality === 'high' ? 120 : 60}
+                        maxCaptureRateHz={120}
                         style={StyleSheet.absoluteFill}
                     >
                         {children}
@@ -348,7 +347,7 @@ export interface GlassSurfaceProps {
     renderMode?: 'local' | 'backdrop';
     pointerEvents?: ViewProps['pointerEvents'];
     interactive?: boolean;
-    /** Request a fresh, region-limited backdrop frame while this surface is mounted. */
+    /** Request fresh backdrop frames while this surface is mounted. */
     continuous?: boolean;
     /** UI-thread optical morph shared with native AGSL uniforms. */
     opticalProgress?: SharedValue<number>;
