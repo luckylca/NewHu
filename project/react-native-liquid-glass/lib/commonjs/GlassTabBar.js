@@ -56,13 +56,14 @@ const LONG_PRESS_THRESHOLD_MS = 300;
 const PRE_HOLD_SLOP = 20;
 const DRAG_START_SLOP = 3;
 const TAB_BAR_PORTAL_Z_INDEX = 80;
+const GESTURE_DEBUG_ENABLED = __DEV__ && process.env.EXPO_PUBLIC_GLASS_TAB_DEBUG === '1';
 const IDLE_SPRING = { damping: 24, stiffness: 330, mass: 0.68 };
 const TAP_SELECTION_SPRING = { damping: 26, stiffness: 520, mass: 0.56 };
 const EDGE_SPRING_FAST = { damping: 31, stiffness: 620, mass: 0.62 };
 const EDGE_SPRING_SLOW = { damping: 29, stiffness: 260, mass: 0.76 };
 const AnimatedLiquidGlassView = (0, react_native_reanimated_1.createAnimatedComponent)(liquid_glass_kit_1.LiquidGlassView);
 function logGlassTabGesture(event, detail) {
-    if (__DEV__) {
+    if (GESTURE_DEBUG_ENABLED) {
         const timestamp = globalThis.performance?.now?.();
         const time = typeof timestamp === 'number' ? timestamp.toFixed(1) : 'n/a';
         console.info(`[GlassTab ${time}ms] ${event}${detail ? ` ${detail}` : ''}`);
@@ -149,15 +150,15 @@ function GlassTabBar({ items, selected, bottomInset = 0, shellBackgroundColor, o
         touchCount: 0,
     });
     const noteTabViewTouch = (0, react_1.useCallback)(() => {
-        if (__DEV__)
+        if (GESTURE_DEBUG_ENABLED)
             setGestureDebug((current) => ({ ...current, touchCount: current.touchCount + 1 }));
     }, []);
     const noteGestureDown = (0, react_1.useCallback)(() => {
-        if (__DEV__)
+        if (GESTURE_DEBUG_ENABLED)
             setGestureDebug((current) => ({ ...current, gestureCount: current.gestureCount + 1 }));
     }, []);
     const updateGestureDebug = (0, react_1.useCallback)((nextPhase, nextHoldCandidate, nextHoldActivated, nextDragging, nextSnapStarted, origin, hovered, pending) => {
-        if (!__DEV__)
+        if (!GESTURE_DEBUG_ENABLED)
             return;
         setGestureDebug((current) => ({
             ...current,
@@ -181,7 +182,7 @@ function GlassTabBar({ items, selected, bottomInset = 0, shellBackgroundColor, o
         hovered: hoveredIndex.value,
         pending: pendingIndex.value,
     }), (current, previous) => {
-        if (!__DEV__)
+        if (!GESTURE_DEBUG_ENABLED)
             return;
         if (previous == null ||
             current.phase !== previous.phase ||
@@ -227,7 +228,7 @@ function GlassTabBar({ items, selected, bottomInset = 0, shellBackgroundColor, o
         interactionProgress.value = (0, react_native_reanimated_1.withTiming)(1, { duration: reducedMotion ? 85 : 135 });
         (0, react_native_reanimated_1.runOnJS)(logGlassTabGesture)('HOLD_ACTIVE', `index=${selected}`);
         (0, react_native_reanimated_1.runOnJS)(beginInteraction)();
-        if (__DEV__) {
+        if (GESTURE_DEBUG_ENABLED) {
             (0, react_native_reanimated_1.runOnJS)(updateGestureDebug)('inflating', false, true, false, false, selected, selected, selected);
         }
     }, [beginInteraction, grabOffsetX, holdActivated, holdCandidate, hoveredIndex, interactionActive, interactionProgress, lensBaseHeight, lensHeight, lensLeft, lensRight, lensWidth, originSelectedIndex, pendingIndex, phase, reducedMotion, selected, sessionId, shellScreenLeft, touchMovedPastSlop, touchSessionActive, touchStartX, updateGestureDebug]);
@@ -742,7 +743,7 @@ function GlassTabBar({ items, selected, bottomInset = 0, shellBackgroundColor, o
             }
             : undefined, pointerEvents: "box-none", style: presentation === 'floating'
             ? [styles.host, { left: shellScreenLeft, bottom: bottomInset + TAB_BAR_BOTTOM_GAP, width: barWidth, height }]
-            : [styles.inlineHost, { width: requestedWidth ?? '100%', height }], children: [nativeLiveAvailable ? ((0, jsx_runtime_1.jsxs)(jsx_runtime_1.Fragment, { children: [(0, jsx_runtime_1.jsx)(liquid_glass_kit_1.LiquidGlassProvider, { providerId: providerId, pointerEvents: "none", maxCaptureRateHz: 120, style: [
+            : [styles.inlineHost, { width: requestedWidth ?? '100%', height }], children: [nativeLiveAvailable ? ((0, jsx_runtime_1.jsxs)(jsx_runtime_1.Fragment, { children: [(0, jsx_runtime_1.jsx)(liquid_glass_kit_1.LiquidGlassProvider, { providerId: providerId, pointerEvents: "none", style: [
                             styles.localBackdropProvider,
                             {
                                 width: barWidth,
@@ -755,14 +756,14 @@ function GlassTabBar({ items, selected, bottomInset = 0, shellBackgroundColor, o
                                 shadowOffset: { width: 0, height: tabBarMaterial?.shadowOffsetY ?? 0 },
                                 elevation: tabBarMaterial?.elevation ?? 0,
                             },
-                        ], children: (0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "none", style: [styles.shell, shellStyle], children: (0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "none", style: [styles.row, { paddingHorizontal: horizontalPadding }], children: tabItems }) }) }), (0, jsx_runtime_1.jsx)(AnimatedLiquidGlassView, { pointerEvents: "none", providerId: providerId, cornerRadius: appearance?.tokens.materials.tabSelectionLens.radius ?? lensBaseHeight / 2, blurRadius: (appearance?.tokens.materials.tabSelectionLens.blurRadius ?? 0.35) * (appearance?.tokens.quality === 'high' ? 1.2 : 1), refractionHeight: lensRefractionHeight ?? appearance?.tokens.materials.tabSelectionLens.refractionHeight ?? 12, refractionAmount: appearance?.tokens.materials.tabSelectionLens.refractionAmount ?? 5.5, bodyRefractionAmount: appearance?.tokens.materials.tabSelectionLens.refractionBodyAmount ?? 1.5, saturation: appearance?.tokens.materials.tabSelectionLens.saturation ?? 1.02, chromaticAberration: appearance?.tokens.materials.tabSelectionLens.chromaticAberration ?? 0.3, highlightAlpha: appearance?.tokens.materials.tabSelectionLens.highlightAlpha ?? 0.62, highlightWidth: appearance?.tokens.materials.tabSelectionLens.highlightWidth ?? 1.3, tintAlpha: appearance?.tokens.materials.tabSelectionLens.tintAlpha ?? 0.08, specularStrength: appearance?.tokens.materials.tabSelectionLens.specularStrength ?? 0.95, fresnelStrength: appearance?.tokens.materials.tabSelectionLens.fresnelStrength ?? 0.72, innerShadowStrength: appearance?.tokens.materials.tabSelectionLens.innerShadowStrength ?? 0.2, tint: appearance?.tokens.tint[dark ? 'dark' : 'light'], continuous: liveBackdropEnabled, animatedProps: liveLensAnimatedProps, style: [styles.nativeLens, liveLensStyle] })] })) : ((0, jsx_runtime_1.jsxs)(react_native_1.View, { pointerEvents: "none", style: [styles.shell, shellStyle], children: [(0, jsx_runtime_1.jsx)(GlassSurface_1.GlassSurface, { variant: "tabSelectionLens", renderMode: "local", pointerEvents: "none", style: {
+                        ], children: (0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "none", style: [styles.shell, shellStyle], children: (0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "none", style: [styles.row, { paddingHorizontal: horizontalPadding }], children: tabItems }) }) }), (0, jsx_runtime_1.jsx)(AnimatedLiquidGlassView, { pointerEvents: "none", providerId: providerId, cornerRadius: appearance?.tokens.materials.tabSelectionLens.radius ?? lensBaseHeight / 2, blurRadius: (appearance?.tokens.materials.tabSelectionLens.blurRadius ?? 0.35) * (appearance?.tokens.quality === 'high' ? 1.2 : 1), refractionHeight: lensRefractionHeight ?? appearance?.tokens.materials.tabSelectionLens.refractionHeight ?? 12, refractionAmount: appearance?.tokens.materials.tabSelectionLens.refractionAmount ?? 5.5, bodyRefractionAmount: appearance?.tokens.materials.tabSelectionLens.refractionBodyAmount ?? 1.5, saturation: appearance?.tokens.materials.tabSelectionLens.saturation ?? 1.02, chromaticAberration: appearance?.tokens.materials.tabSelectionLens.chromaticAberration ?? 0.3, highlightAlpha: appearance?.tokens.materials.tabSelectionLens.highlightAlpha ?? 0.62, highlightWidth: appearance?.tokens.materials.tabSelectionLens.highlightWidth ?? 1.3, tintAlpha: appearance?.tokens.materials.tabSelectionLens.tintAlpha ?? 0.08, specularStrength: appearance?.tokens.materials.tabSelectionLens.specularStrength ?? 0.95, fresnelStrength: appearance?.tokens.materials.tabSelectionLens.fresnelStrength ?? 0.72, innerShadowStrength: appearance?.tokens.materials.tabSelectionLens.innerShadowStrength ?? 0.2, tint: appearance?.tokens.tint[dark ? 'dark' : 'light'], continuous: liveBackdropEnabled, animatedProps: liveLensAnimatedProps, style: [styles.nativeLens, liveLensStyle] })] })) : ((0, jsx_runtime_1.jsxs)(react_native_1.View, { pointerEvents: "none", style: [styles.shell, shellStyle], children: [(0, jsx_runtime_1.jsx)(GlassSurface_1.GlassSurface, { variant: "tabSelectionLens", positioning: "inFlow", sampling: "local", pointerEvents: "none", style: {
                             position: 'absolute',
                             left: selectedLeft,
                             top: verticalInset,
                             width: lensWidth,
                             height: lensBaseHeight,
                             borderRadius: lensBaseHeight / 2,
-                        }, animatedStyle: localLensStyle }), (0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "none", style: [styles.row, { paddingHorizontal: horizontalPadding }], children: tabItems })] })), __DEV__ && ((0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "none", accessibilityElementsHidden: true, importantForAccessibility: "no-hide-descendants", style: [styles.gestureDebugOverlay, { width: Math.max(barWidth, TAB_BAR_MIN_WIDTH) }], children: (0, jsx_runtime_1.jsx)(react_native_1.Text, { style: styles.gestureDebugText, children: `view DOWN ${gestureDebug.touchCount} · gesture DOWN ${gestureDebug.gestureCount}\nphase ${gestureDebug.phase} · hold candidate ${gestureDebug.holdCandidate ? 'ON' : 'off'} · hold ${gestureDebug.holdActivated ? 'ON' : 'off'} · drag ${gestureDebug.dragging ? 'ON' : 'off'} · snap ${gestureDebug.snapStarted ? 'ON' : 'off'}\norigin ${gestureDebug.origin} · hovered ${gestureDebug.hovered} · pending ${gestureDebug.pending}` }) })), (0, jsx_runtime_1.jsx)(react_native_gesture_handler_1.GestureDetector, { gesture: tabBarGesture, children: (0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "auto", onTouchStart: __DEV__ ? noteTabViewTouch : undefined, collapsable: false, style: [styles.interactionLayer, { width: barWidth, height }], children: accessibilityTargets }) })] }));
+                        }, animatedStyle: localLensStyle }), (0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "none", style: [styles.row, { paddingHorizontal: horizontalPadding }], children: tabItems })] })), GESTURE_DEBUG_ENABLED && ((0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "none", accessibilityElementsHidden: true, importantForAccessibility: "no-hide-descendants", style: [styles.gestureDebugOverlay, { width: Math.max(barWidth, TAB_BAR_MIN_WIDTH) }], children: (0, jsx_runtime_1.jsx)(react_native_1.Text, { style: styles.gestureDebugText, children: `view DOWN ${gestureDebug.touchCount} · gesture DOWN ${gestureDebug.gestureCount}\nphase ${gestureDebug.phase} · hold candidate ${gestureDebug.holdCandidate ? 'ON' : 'off'} · hold ${gestureDebug.holdActivated ? 'ON' : 'off'} · drag ${gestureDebug.dragging ? 'ON' : 'off'} · snap ${gestureDebug.snapStarted ? 'ON' : 'off'}\norigin ${gestureDebug.origin} · hovered ${gestureDebug.hovered} · pending ${gestureDebug.pending}` }) })), (0, jsx_runtime_1.jsx)(react_native_gesture_handler_1.GestureDetector, { gesture: tabBarGesture, children: (0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "auto", onTouchStart: GESTURE_DEBUG_ENABLED ? noteTabViewTouch : undefined, collapsable: false, style: [styles.interactionLayer, { width: barWidth, height }], children: accessibilityTargets }) })] }));
     return presentation === 'floating'
         ? (0, jsx_runtime_1.jsx)(GlassSurface_1.GlassOverlay, { zIndex: TAB_BAR_PORTAL_Z_INDEX + 1, children: barContents })
         : barContents;

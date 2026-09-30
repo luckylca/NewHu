@@ -46,7 +46,7 @@ function GlassTabLens({ visible, label, icon, labelColor, style }) {
     }), []);
     if (!mounted)
         return null;
-    return ((0, jsx_runtime_1.jsx)(GlassSurface_1.GlassSurface, { variant: "lens", interactive: true, style: [styles.surface, style], animatedStyle: animatedStyle, placeholderChildren: (0, jsx_runtime_1.jsx)(react_native_1.View, { style: styles.placeholder }), zIndex: 320, children: (0, jsx_runtime_1.jsxs)(react_native_1.View, { style: styles.content, children: [(0, jsx_runtime_1.jsx)(react_native_1.View, { style: styles.icon, children: icon }), (0, jsx_runtime_1.jsx)(react_native_1.Text, { numberOfLines: 1, style: [styles.label, { color: labelColor }], children: label })] }) }));
+    return ((0, jsx_runtime_1.jsx)(GlassSurface_1.GlassSurface, { variant: "lens", positioning: "floating", sampling: "backdrop", interactive: true, style: [styles.surface, style], animatedStyle: animatedStyle, placeholderChildren: (0, jsx_runtime_1.jsx)(react_native_1.View, { style: styles.placeholder }), zIndex: 320, children: (0, jsx_runtime_1.jsxs)(react_native_1.View, { style: styles.content, children: [(0, jsx_runtime_1.jsx)(react_native_1.View, { style: styles.icon, children: icon }), (0, jsx_runtime_1.jsx)(react_native_1.Text, { numberOfLines: 1, style: [styles.label, { color: labelColor }], children: label })] }) }));
 }
 const styles = react_native_1.StyleSheet.create({
     surface: {

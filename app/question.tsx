@@ -1,12 +1,12 @@
 import { getQuestion, getQuestionAnswers } from "@/src/api/ZhihuApi";
-import { Divider, Icon, ListRow, TopAppBar } from "@/src/ui";
+import { Card, Divider, Icon, ListRow, PageContent, PageFlatList, PageScaffold, TopAppBar } from "@/src/ui";
 import { Text } from "@/src/ui/primitives";
 import { useTheme } from "@/src/ui/theme";
 import { formatProfileText } from '@/src/utils/profileText';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
-import { FlatList, Image, View } from "react-native";
+import { Image, View } from "react-native";
 import { RenderItem } from "./home";
 
 export type QuestionParams = {
@@ -161,10 +161,9 @@ const QuestionScreen = () => {
     );
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
-            <TopAppBar title={visibleQuestionInfo ? visibleQuestionInfo.title : "问题信息"} back={() => router.back()} />
+        <PageScaffold topBar={<TopAppBar title={visibleQuestionInfo ? visibleQuestionInfo.title : "问题信息"} back={() => router.back()} />}>
             {visibleQuestionInfo ? (
-                <FlatList
+                <PageFlatList
                     data={activities}
                     keyExtractor={(item, index) => item.id + index}
                     contentContainerStyle={{ paddingBottom: 40 }}
@@ -212,11 +211,11 @@ const QuestionScreen = () => {
                                 </Text>
                             </View>
                             {!cookies ? (
-                                <View style={{ marginTop: 16, padding: 14, borderRadius: theme.radius.component, backgroundColor: theme.colors.surfaceContainer }}>
+                                <Card feedback="none" style={{ marginTop: 16 }} contentStyle={{ padding: 14 }}>
                                     <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>
                                         游客模式显示 Android 推荐卡片提供的问题摘要。知乎可能限制此问题的匿名回答列表。
                                     </Text>
-                                </View>
+                                </Card>
                             ) : null}
                             <Divider style={{ marginTop: 16 }} />
                         </View>
@@ -251,13 +250,13 @@ const QuestionScreen = () => {
                     )}
                 />
             ) : (
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <PageContent style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                     <Text type="body1" color={theme.colors.onSurfaceVariantSummary}>
                         {cookies ? 'Loading...' : '公开问题摘要不可用，请从首页热榜重新打开。'}
                     </Text>
-                </View>
+                </PageContent>
             )}
-        </View>
+        </PageScaffold>
     )
 }
 

@@ -32,6 +32,7 @@ const LONG_PRESS_THRESHOLD_MS = 300;
 const PRE_HOLD_SLOP = 20;
 const DRAG_START_SLOP = 3;
 const TAB_BAR_PORTAL_Z_INDEX = 80;
+const GESTURE_DEBUG_ENABLED = __DEV__ && process.env.EXPO_PUBLIC_GLASS_TAB_DEBUG === '1';
 const IDLE_SPRING = { damping: 24, stiffness: 330, mass: 0.68 };
 const TAP_SELECTION_SPRING = { damping: 26, stiffness: 520, mass: 0.56 };
 const EDGE_SPRING_FAST = { damping: 31, stiffness: 620, mass: 0.62 };
@@ -54,7 +55,7 @@ interface GestureDebugSnapshot {
 }
 
 function logGlassTabGesture(event: string, detail?: string) {
-    if (__DEV__) {
+    if (GESTURE_DEBUG_ENABLED) {
         const timestamp = globalThis.performance?.now?.();
         const time = typeof timestamp === 'number' ? timestamp.toFixed(1) : 'n/a';
         console.info(`[GlassTab ${time}ms] ${event}${detail ? ` ${detail}` : ''}`);
@@ -194,10 +195,10 @@ export function GlassTabBar({
         touchCount: 0,
     });
     const noteTabViewTouch = useCallback(() => {
-        if (__DEV__) setGestureDebug((current) => ({ ...current, touchCount: current.touchCount + 1 }));
+        if (GESTURE_DEBUG_ENABLED) setGestureDebug((current) => ({ ...current, touchCount: current.touchCount + 1 }));
     }, []);
     const noteGestureDown = useCallback(() => {
-        if (__DEV__) setGestureDebug((current) => ({ ...current, gestureCount: current.gestureCount + 1 }));
+        if (GESTURE_DEBUG_ENABLED) setGestureDebug((current) => ({ ...current, gestureCount: current.gestureCount + 1 }));
     }, []);
 
     const updateGestureDebug = useCallback((
@@ -210,7 +211,7 @@ export function GlassTabBar({
         hovered: number,
         pending: number,
     ) => {
-        if (!__DEV__) return;
+        if (!GESTURE_DEBUG_ENABLED) return;
         setGestureDebug((current) => ({
             ...current,
             phase: nextPhase,
@@ -236,7 +237,7 @@ export function GlassTabBar({
             pending: pendingIndex.value,
         }),
         (current, previous) => {
-            if (!__DEV__) return;
+            if (!GESTURE_DEBUG_ENABLED) return;
             if (
                 previous == null ||
                 current.phase !== previous.phase ||
@@ -297,7 +298,7 @@ export function GlassTabBar({
         interactionProgress.value = withTiming(1, { duration: reducedMotion ? 85 : 135 });
         runOnJS(logGlassTabGesture)('HOLD_ACTIVE', `index=${selected}`);
         runOnJS(beginInteraction)();
-        if (__DEV__) {
+        if (GESTURE_DEBUG_ENABLED) {
             runOnJS(updateGestureDebug)('inflating', false, true, false, false, selected, selected, selected);
         }
     }, [beginInteraction, grabOffsetX, holdActivated, holdCandidate, hoveredIndex, interactionActive, interactionProgress, lensBaseHeight, lensHeight, lensLeft, lensRight, lensWidth, originSelectedIndex, pendingIndex, phase, reducedMotion, selected, sessionId, shellScreenLeft, touchMovedPastSlop, touchSessionActive, touchStartX, updateGestureDebug]);
@@ -862,7 +863,6 @@ export function GlassTabBar({
                     <LiquidGlassProvider
                         providerId={providerId}
                         pointerEvents="none"
-                        maxCaptureRateHz={120}
                         style={[
                             styles.localBackdropProvider,
                             {
@@ -908,7 +908,8 @@ export function GlassTabBar({
                     <View pointerEvents="none" style={[styles.shell, shellStyle]}>
                         <GlassSurface
                         variant="tabSelectionLens"
-                        renderMode="local"
+                        positioning="inFlow"
+                        sampling="local"
                         pointerEvents="none"
                         style={{
                             position: 'absolute',
@@ -923,7 +924,7 @@ export function GlassTabBar({
                     <View pointerEvents="none" style={[styles.row, { paddingHorizontal: horizontalPadding }]}>{tabItems}</View>
                 </View>
             )}
-            {__DEV__ && (
+            {GESTURE_DEBUG_ENABLED && (
                 <View
                     pointerEvents="none"
                     accessibilityElementsHidden
@@ -938,7 +939,7 @@ export function GlassTabBar({
             <GestureDetector gesture={tabBarGesture}>
                 <View
                     pointerEvents="auto"
-                    onTouchStart={__DEV__ ? noteTabViewTouch : undefined}
+                    onTouchStart={GESTURE_DEBUG_ENABLED ? noteTabViewTouch : undefined}
                     collapsable={false}
                     style={[styles.interactionLayer, { width: barWidth, height }]}
                 >

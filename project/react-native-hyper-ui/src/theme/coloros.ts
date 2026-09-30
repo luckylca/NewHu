@@ -1,4 +1,6 @@
 import { hyperosDarkTheme, hyperosLightTheme } from './hyperos';
+import { colorosPresentation } from './presentation';
+import { colorosWallpaperTokens } from './wallpaper';
 import type { AppTheme } from './types';
 
 /**
@@ -13,6 +15,8 @@ import type { AppTheme } from './types';
 const withName = (dark: boolean): AppTheme => ({
     ...(dark ? hyperosDarkTheme : hyperosLightTheme),
     name: 'coloros',
+    presentation: colorosPresentation,
+    wallpaper: colorosWallpaperTokens,
 });
 
 export const colorosLightTheme: AppTheme = withName(false);

@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.GlassSurface = void 0;
 exports.useGlassReducedMotion = useGlassReducedMotion;
 exports.useGlassAppearance = useGlassAppearance;
+exports.GlassAppearanceProvider = GlassAppearanceProvider;
 exports.GlassMaterialProvider = GlassMaterialProvider;
 exports.GlassOverlay = GlassOverlay;
 const jsx_runtime_1 = require("react/jsx-runtime");
@@ -63,7 +64,11 @@ function selectBalancedShaderSurfaces(entries) {
         .map(([id]) => id));
 }
 const GlassHostContext = (0, react_1.createContext)(null);
-function GlassMaterialProvider({ children, style, tokens, dark, reducedMotion = false }) {
+function GlassAppearanceProvider({ children, tokens, dark, reducedMotion = false }) {
+    const runtime = (0, react_1.useMemo)(() => ({ tokens, dark, reducedMotion }), [tokens, dark, reducedMotion]);
+    return (0, jsx_runtime_1.jsx)(GlassRuntimeContext.Provider, { value: runtime, children: children });
+}
+function GlassMaterialProvider({ children, backdrop, style, tokens, dark, reducedMotion = false }) {
     const hostRef = (0, react_1.useRef)(null);
     const providerId = (0, react_1.useId)();
     const [entries, setEntries] = (0, react_1.useState)({});
@@ -75,6 +80,7 @@ function GlassMaterialProvider({ children, style, tokens, dark, reducedMotion = 
             const previous = current[id]?.kind === 'surface' ? current[id].value : undefined;
             if (previous && previous.frame.x === entry.frame.x && previous.frame.y === entry.frame.y &&
                 previous.frame.width === entry.frame.width && previous.frame.height === entry.frame.height &&
+                previous.positioning === entry.positioning &&
                 previous.children === entry.children && previous.variant === entry.variant && previous.interactive === entry.interactive && previous.continuous === entry.continuous &&
                 previous.opticalProgress === entry.opticalProgress && previous.opticalMotionX === entry.opticalMotionX && previous.opticalMotionY === entry.opticalMotionY &&
                 previous.materialOverrides === entry.materialOverrides && previous.displacementOnlyDebug === entry.displacementOnlyDebug &&
@@ -103,10 +109,8 @@ function GlassMaterialProvider({ children, style, tokens, dark, reducedMotion = 
         });
     }, []);
     const context = (0, react_1.useMemo)(() => ({ providerId, hostRef, updateSurface, updateOverlay, remove }), [providerId, updateSurface, updateOverlay, remove]);
-    if (!tokens.enabled) {
-        return (0, jsx_runtime_1.jsx)(react_native_1.View, { style: [styles.root, style], children: children });
-    }
-    return ((0, jsx_runtime_1.jsx)(GlassRuntimeContext.Provider, { value: runtime, children: (0, jsx_runtime_1.jsx)(GlassHostContext.Provider, { value: context, children: (0, jsx_runtime_1.jsxs)(react_native_1.View, { ref: hostRef, collapsable: false, style: [styles.root, style], children: [(0, jsx_runtime_1.jsx)(liquid_glass_kit_1.LiquidGlassProvider, { providerId: providerId, maxCaptureRateHz: 120, style: react_native_1.StyleSheet.absoluteFill, children: children }), (0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "box-none", style: react_native_1.StyleSheet.absoluteFill, children: orderedEntries.map(([id, entry]) => (entry.kind === 'surface'
+    const hasSeparateBackdrop = backdrop !== undefined;
+    return ((0, jsx_runtime_1.jsx)(GlassRuntimeContext.Provider, { value: runtime, children: (0, jsx_runtime_1.jsx)(GlassHostContext.Provider, { value: context, children: (0, jsx_runtime_1.jsxs)(react_native_1.View, { ref: hostRef, collapsable: false, style: [styles.root, style], children: [(0, jsx_runtime_1.jsx)(liquid_glass_kit_1.LiquidGlassProvider, { providerId: providerId, style: react_native_1.StyleSheet.absoluteFill, children: hasSeparateBackdrop ? backdrop : children }), hasSeparateBackdrop ? ((0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "box-none", style: react_native_1.StyleSheet.absoluteFill, children: children })) : null, (0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "box-none", style: react_native_1.StyleSheet.absoluteFill, children: (tokens.enabled ? orderedEntries : []).map(([id, entry]) => (entry.kind === 'surface'
                             ? (0, jsx_runtime_1.jsx)(PortalGlassSurface, { providerId: providerId, entry: entry.value, shaderEnabled: tokens.quality === 'high' || (tokens.quality === 'balanced' && balancedShaderSurfaces.has(id)) }, id)
                             : (0, jsx_runtime_1.jsx)(PortalOverlay, { entry: entry.value }, id))) })] }) }) }));
 }
@@ -157,7 +161,7 @@ const PortalGlassSurface = react_1.default.memo(function PortalGlassSurface({ pr
     return ((0, jsx_runtime_1.jsx)(react_native_reanimated_1.default.View, { pointerEvents: "box-none", style: [
             styles.portalSurface,
             { left: entry.frame.x, top: entry.frame.y, width: entry.frame.width, height: entry.frame.height },
-            entry.animatedStyle,
+            entry.positioning === 'floating' ? entry.animatedStyle : undefined,
             { zIndex: entry.zIndex },
         ], children: nativeSurface }));
 });
@@ -199,12 +203,14 @@ const PortalFallbackSurface = react_1.default.memo(function PortalFallbackSurfac
         ], children: fallbackSurface }));
 });
 /** Theme-driven glass material. Callers select a role; all optical settings live in AppTheme. */
-exports.GlassSurface = react_1.default.memo(function GlassSurface({ variant = 'surface', renderMode, pointerEvents, interactive = false, continuous = false, opticalProgress, opticalMotionX, opticalMotionY, materialOverrides, displacementOnlyDebug = false, style, contentStyle, animatedStyle, placement = 'layout', bottomInset, zIndex = 1, children, placeholderChildren = children, }) {
+exports.GlassSurface = react_1.default.memo(function GlassSurface({ variant = 'surface', positioning, sampling, renderMode, pointerEvents, interactive = false, continuous = false, opticalProgress, opticalMotionX, opticalMotionY, materialOverrides, displacementOnlyDebug = false, style, contentStyle, animatedStyle, placement = 'layout', bottomInset, zIndex = 1, children, placeholderChildren = null, }) {
     const runtime = (0, react_1.useContext)(GlassRuntimeContext);
     const host = (0, react_1.useContext)(GlassHostContext);
-    const resolvedRenderMode = renderMode ?? (react_native_1.Platform.OS === 'android' && host && runtime?.tokens.quality !== 'fallback'
+    const resolvedPositioning = positioning ?? (renderMode === 'backdrop' ? 'floating' : 'inFlow');
+    const resolvedSampling = sampling ?? renderMode ?? (resolvedPositioning === 'floating' ? 'backdrop' : 'local');
+    const resolvedRenderMode = runtime?.tokens.enabled && resolvedSampling === 'backdrop' && react_native_1.Platform.OS === 'android' && host && runtime.tokens.quality !== 'fallback'
         ? 'backdrop'
-        : 'local');
+        : 'local';
     const id = (0, react_1.useId)();
     const viewRef = (0, react_1.useRef)(null);
     const [frame, setFrame] = (0, react_1.useState)(null);
@@ -234,12 +240,13 @@ exports.GlassSurface = react_1.default.memo(function GlassSurface({ variant = 's
     (0, react_1.useEffect)(() => {
         if (!host)
             return;
-        if (resolvedRenderMode !== 'backdrop' || !frame || frame.width <= 0 || frame.height <= 0) {
+        if (!runtime?.tokens.enabled || resolvedRenderMode !== 'backdrop' || !frame || frame.width <= 0 || frame.height <= 0) {
             host.remove(id);
             return;
         }
         host.updateSurface(id, {
             frame,
+            positioning: resolvedPositioning,
             children,
             variant,
             interactive,
@@ -255,14 +262,14 @@ exports.GlassSurface = react_1.default.memo(function GlassSurface({ variant = 's
             bottomInset,
             zIndex,
         });
-    }, [resolvedRenderMode, host, id, frame, children, variant, interactive, continuous, opticalProgress, opticalMotionX, opticalMotionY, materialOverrides, displacementOnlyDebug, contentStyle, animatedStyle, placement, bottomInset, zIndex]);
+    }, [runtime?.tokens.enabled, resolvedRenderMode, host, id, frame, resolvedPositioning, children, variant, interactive, continuous, opticalProgress, opticalMotionX, opticalMotionY, materialOverrides, displacementOnlyDebug, contentStyle, animatedStyle, placement, bottomInset, zIndex]);
     if (!runtime?.tokens.enabled) {
         return (0, jsx_runtime_1.jsx)(react_native_reanimated_1.default.View, { style: [style, animatedStyle], children: (0, jsx_runtime_1.jsx)(react_native_1.View, { style: contentStyle, children: children }) });
     }
     if (resolvedRenderMode === 'local' || !host) {
         return ((0, jsx_runtime_1.jsx)(LocalGlassSurface, { variant: variant, style: style, contentStyle: contentStyle, animatedStyle: animatedStyle, pointerEvents: pointerEvents, children: children }));
     }
-    return ((0, jsx_runtime_1.jsx)(react_native_1.View, { ref: viewRef, collapsable: false, accessible: false, importantForAccessibility: "no-hide-descendants", pointerEvents: "none", onLayout: onLayout, style: [style, styles.measureOnly], children: (0, jsx_runtime_1.jsx)(react_native_1.View, { style: contentStyle, children: placeholderChildren }) }));
+    return ((0, jsx_runtime_1.jsx)(react_native_reanimated_1.default.View, { ref: viewRef, collapsable: false, accessible: false, importantForAccessibility: "no-hide-descendants", pointerEvents: "none", onLayout: onLayout, style: [style, animatedStyle, styles.measureOnly], children: (0, jsx_runtime_1.jsx)(react_native_1.View, { style: [contentStyle, styles.hiddenMeasureContent], children: placeholderChildren }) }));
 });
 function LocalGlassSurface({ variant, style, contentStyle, animatedStyle, pointerEvents, children, }) {
     const runtime = (0, react_1.useContext)(GlassRuntimeContext);
@@ -288,8 +295,12 @@ function GlassOverlay({ children, zIndex = 100 }) {
     const id = (0, react_1.useId)();
     (0, react_1.useEffect)(() => () => host?.remove(id), [host, id]);
     (0, react_1.useEffect)(() => {
-        if (runtime?.tokens.enabled && host)
+        if (!host)
+            return;
+        if (runtime?.tokens.enabled)
             host.updateOverlay(id, { children, zIndex });
+        else
+            host.remove(id);
     }, [runtime?.tokens.enabled, host, id, children, zIndex]);
     if (!runtime?.tokens.enabled || !host)
         return (0, jsx_runtime_1.jsx)(jsx_runtime_1.Fragment, { children: children });
@@ -297,10 +308,12 @@ function GlassOverlay({ children, zIndex = 100 }) {
 }
 const styles = react_native_1.StyleSheet.create({
     root: { flex: 1 },
-    measureOnly: { opacity: 0 },
+    routeContent: { ...react_native_1.StyleSheet.absoluteFillObject },
+    measureOnly: {},
+    hiddenMeasureContent: { opacity: 0 },
     localSurface: { position: 'relative', overflow: 'hidden' },
     localContent: { flex: 1, overflow: 'hidden' },
-    portalSurface: { position: 'absolute' },
+    portalSurface: { position: 'absolute', overflow: 'visible' },
     nativeSurface: { backgroundColor: 'transparent', overflow: 'hidden' },
     fallbackSurface: { backgroundColor: 'transparent', borderWidth: react_native_1.StyleSheet.hairlineWidth, overflow: 'hidden' },
     portalContentLayout: { flex: 1, overflow: 'hidden' },

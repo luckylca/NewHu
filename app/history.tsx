@@ -1,11 +1,11 @@
 import { getReadHistory } from "@/src/api/ZhihuApi";
 import LoadingView from "@/src/components/LoadingView";
-import { TopAppBar } from '@/src/ui';
+import { PageFlatList, PageScaffold, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { useRouter } from "expo-router";
 import React, { useCallback, useRef, useState } from "react";
-import { FlatList, View } from "react-native";
+import { View } from "react-native";
 import { RenderItem } from "./home";
 import { useFocusEffect } from "@react-navigation/native";
 
@@ -109,10 +109,8 @@ export default function HistoryScreen() {
     const theme = useTheme();
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            <TopAppBar title="浏览历史" back={() => router.back()} />
-
-            <FlatList
+        <PageScaffold topBar={<TopAppBar title="浏览历史" back={() => router.back()} />}>
+            <PageFlatList
                 data={historyData}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => <RenderItem item={item} type={item.feedType} needToGet={true} />}
@@ -132,6 +130,6 @@ export default function HistoryScreen() {
                     )
                 }
             />
-        </View>
+        </PageScaffold>
     );
 }

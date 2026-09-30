@@ -43,7 +43,7 @@ export function GlassTabLens({ visible, label, icon, labelColor, style }) {
     }), []);
     if (!mounted)
         return null;
-    return (_jsx(GlassSurface, { variant: "lens", interactive: true, style: [styles.surface, style], animatedStyle: animatedStyle, placeholderChildren: _jsx(View, { style: styles.placeholder }), zIndex: 320, children: _jsxs(View, { style: styles.content, children: [_jsx(View, { style: styles.icon, children: icon }), _jsx(Text, { numberOfLines: 1, style: [styles.label, { color: labelColor }], children: label })] }) }));
+    return (_jsx(GlassSurface, { variant: "lens", positioning: "floating", sampling: "backdrop", interactive: true, style: [styles.surface, style], animatedStyle: animatedStyle, placeholderChildren: _jsx(View, { style: styles.placeholder }), zIndex: 320, children: _jsxs(View, { style: styles.content, children: [_jsx(View, { style: styles.icon, children: icon }), _jsx(Text, { numberOfLines: 1, style: [styles.label, { color: labelColor }], children: label })] }) }));
 }
 const styles = StyleSheet.create({
     surface: {

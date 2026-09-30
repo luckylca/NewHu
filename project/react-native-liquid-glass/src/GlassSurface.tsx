@@ -34,6 +34,7 @@ interface SurfaceFrame {
 
 interface SurfaceEntry {
     frame: SurfaceFrame;
+    positioning: 'inFlow' | 'floating';
     children: React.ReactNode;
     variant: GlassVariant;
     interactive: boolean;
@@ -83,18 +84,36 @@ interface GlassHostContextValue {
 const GlassHostContext = createContext<GlassHostContextValue | null>(null);
 
 /**
- * A route-scoped host for backdrop-mode surfaces. All mounted glass surfaces
- * use the active display cadence, up to the native renderer's 120 Hz ceiling.
+ * A route-scoped host for backdrop-mode surfaces. Keep this boundary mounted
+ * while the route is alive: disabling the theme turns off Glass consumers but
+ * preserves the React parent path for navigation screens and scroll state.
+ * With no consumers, the native provider remains idle. Active surfaces use
+ * display cadence up to the renderer's 120 Hz ceiling.
  */
 export interface GlassMaterialProviderProps {
     children: React.ReactNode;
+    /** Scene layer recorded behind route content. When supplied, route views render as normal siblings. */
+    backdrop?: React.ReactNode;
     style?: StyleProp<ViewStyle>;
     tokens: GlassTokens;
     dark: boolean;
     reducedMotion?: boolean;
 }
 
-export function GlassMaterialProvider({ children, style, tokens, dark, reducedMotion = false }: GlassMaterialProviderProps) {
+/** Supplies preview optics without mounting another native backdrop recorder. */
+export interface GlassAppearanceProviderProps {
+    children: React.ReactNode;
+    tokens: GlassTokens;
+    dark: boolean;
+    reducedMotion?: boolean;
+}
+
+export function GlassAppearanceProvider({ children, tokens, dark, reducedMotion = false }: GlassAppearanceProviderProps) {
+    const runtime = useMemo(() => ({ tokens, dark, reducedMotion }), [tokens, dark, reducedMotion]);
+    return <GlassRuntimeContext.Provider value={runtime}>{children}</GlassRuntimeContext.Provider>;
+}
+
+export function GlassMaterialProvider({ children, backdrop, style, tokens, dark, reducedMotion = false }: GlassMaterialProviderProps) {
     const hostRef = useRef<View>(null);
     const providerId = useId();
     const [entries, setEntries] = useState<Record<string, HostEntry>>({});
@@ -110,6 +129,7 @@ export function GlassMaterialProvider({ children, style, tokens, dark, reducedMo
             const previous = current[id]?.kind === 'surface' ? current[id].value : undefined;
             if (previous && previous.frame.x === entry.frame.x && previous.frame.y === entry.frame.y &&
                 previous.frame.width === entry.frame.width && previous.frame.height === entry.frame.height &&
+                previous.positioning === entry.positioning &&
                 previous.children === entry.children && previous.variant === entry.variant && previous.interactive === entry.interactive && previous.continuous === entry.continuous &&
                 previous.opticalProgress === entry.opticalProgress && previous.opticalMotionX === entry.opticalMotionX && previous.opticalMotionY === entry.opticalMotionY &&
                 previous.materialOverrides === entry.materialOverrides && previous.displacementOnlyDebug === entry.displacementOnlyDebug &&
@@ -139,10 +159,7 @@ export function GlassMaterialProvider({ children, style, tokens, dark, reducedMo
     }, []);
 
     const context = useMemo(() => ({ providerId, hostRef, updateSurface, updateOverlay, remove }), [providerId, updateSurface, updateOverlay, remove]);
-
-    if (!tokens.enabled) {
-        return <View style={[styles.root, style]}>{children}</View>;
-    }
+    const hasSeparateBackdrop = backdrop !== undefined;
 
     return (
         <GlassRuntimeContext.Provider value={runtime}>
@@ -150,13 +167,17 @@ export function GlassMaterialProvider({ children, style, tokens, dark, reducedMo
                 <View ref={hostRef} collapsable={false} style={[styles.root, style]}>
                     <LiquidGlassProvider
                         providerId={providerId}
-                        maxCaptureRateHz={120}
                         style={StyleSheet.absoluteFill}
                     >
-                        {children}
+                        {hasSeparateBackdrop ? backdrop : children}
                     </LiquidGlassProvider>
+                    {hasSeparateBackdrop ? (
+                        <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+                            {children}
+                        </View>
+                    ) : null}
                     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-                        {orderedEntries.map(([id, entry]) => (
+                        {(tokens.enabled ? orderedEntries : []).map(([id, entry]) => (
                             entry.kind === 'surface'
                                 ? <PortalGlassSurface
                                     key={id}
@@ -269,7 +290,7 @@ const PortalGlassSurface = React.memo(function PortalGlassSurface({ providerId, 
             style={[
                 styles.portalSurface,
                 { left: entry.frame.x, top: entry.frame.y, width: entry.frame.width, height: entry.frame.height },
-                entry.animatedStyle,
+                entry.positioning === 'floating' ? entry.animatedStyle : undefined,
                 { zIndex: entry.zIndex },
             ]}
         >
@@ -343,7 +364,11 @@ const PortalFallbackSurface = React.memo(function PortalFallbackSurface({ entry 
 
 export interface GlassSurfaceProps {
     variant?: GlassVariant;
-    /** Local stays in-tree; backdrop portals a live Android surface. Android defaults to backdrop. */
+    /** Semantic placement role. The parent owns actual layout and coordinates. */
+    positioning?: 'inFlow' | 'floating';
+    /** Optical sampling source. Backdrop sampling is explicitly opt-in. */
+    sampling?: 'local' | 'backdrop';
+    /** @deprecated Use sampling; kept for source compatibility. */
     renderMode?: 'local' | 'backdrop';
     pointerEvents?: ViewProps['pointerEvents'];
     interactive?: boolean;
@@ -365,6 +390,7 @@ export interface GlassSurfaceProps {
     placement?: 'layout' | 'bottom' | 'center';
     bottomInset?: number;
     zIndex?: number;
+    /** Lightweight layout-only anchor for backdrop placement; never pass business children here. */
     placeholderChildren?: React.ReactNode;
     children?: React.ReactNode;
 }
@@ -372,6 +398,8 @@ export interface GlassSurfaceProps {
 /** Theme-driven glass material. Callers select a role; all optical settings live in AppTheme. */
 export const GlassSurface = React.memo(function GlassSurface({
     variant = 'surface',
+    positioning,
+    sampling,
     renderMode,
     pointerEvents,
     interactive = false,
@@ -388,15 +416,15 @@ export const GlassSurface = React.memo(function GlassSurface({
     bottomInset,
     zIndex = 1,
     children,
-    placeholderChildren = children,
+    placeholderChildren = null,
 }: GlassSurfaceProps) {
     const runtime = useContext(GlassRuntimeContext);
     const host = useContext(GlassHostContext);
-    const resolvedRenderMode = renderMode ?? (
-        Platform.OS === 'android' && host && runtime?.tokens.quality !== 'fallback'
-            ? 'backdrop'
-            : 'local'
-    );
+    const resolvedPositioning = positioning ?? (renderMode === 'backdrop' ? 'floating' : 'inFlow');
+    const resolvedSampling = sampling ?? renderMode ?? (resolvedPositioning === 'floating' ? 'backdrop' : 'local');
+    const resolvedRenderMode = runtime?.tokens.enabled && resolvedSampling === 'backdrop' && Platform.OS === 'android' && host && runtime.tokens.quality !== 'fallback'
+        ? 'backdrop'
+        : 'local';
     const id = useId();
     const viewRef = useRef<View>(null);
     const [frame, setFrame] = useState<SurfaceFrame | null>(null);
@@ -428,12 +456,13 @@ export const GlassSurface = React.memo(function GlassSurface({
 
     useEffect(() => {
         if (!host) return;
-        if (resolvedRenderMode !== 'backdrop' || !frame || frame.width <= 0 || frame.height <= 0) {
+        if (!runtime?.tokens.enabled || resolvedRenderMode !== 'backdrop' || !frame || frame.width <= 0 || frame.height <= 0) {
             host.remove(id);
             return;
         }
         host.updateSurface(id, {
             frame,
+            positioning: resolvedPositioning,
             children,
             variant,
             interactive,
@@ -449,7 +478,7 @@ export const GlassSurface = React.memo(function GlassSurface({
             bottomInset,
             zIndex,
         });
-    }, [resolvedRenderMode, host, id, frame, children, variant, interactive, continuous, opticalProgress, opticalMotionX, opticalMotionY, materialOverrides, displacementOnlyDebug, contentStyle, animatedStyle, placement, bottomInset, zIndex]);
+    }, [runtime?.tokens.enabled, resolvedRenderMode, host, id, frame, resolvedPositioning, children, variant, interactive, continuous, opticalProgress, opticalMotionX, opticalMotionY, materialOverrides, displacementOnlyDebug, contentStyle, animatedStyle, placement, bottomInset, zIndex]);
 
     if (!runtime?.tokens.enabled) {
         return <Animated.View style={[style, animatedStyle]}><View style={contentStyle}>{children}</View></Animated.View>;
@@ -470,17 +499,17 @@ export const GlassSurface = React.memo(function GlassSurface({
     }
 
     return (
-        <View
+        <Animated.View
             ref={viewRef}
             collapsable={false}
             accessible={false}
             importantForAccessibility="no-hide-descendants"
             pointerEvents="none"
             onLayout={onLayout}
-            style={[style, styles.measureOnly]}
+            style={[style, animatedStyle, styles.measureOnly]}
         >
-            <View style={contentStyle}>{placeholderChildren}</View>
-        </View>
+            <View style={[contentStyle, styles.hiddenMeasureContent]}>{placeholderChildren}</View>
+        </Animated.View>
     );
 });
 
@@ -531,7 +560,9 @@ export function GlassOverlay({ children, zIndex = 100 }: { children: React.React
 
     useEffect(() => () => host?.remove(id), [host, id]);
     useEffect(() => {
-        if (runtime?.tokens.enabled && host) host.updateOverlay(id, { children, zIndex });
+        if (!host) return;
+        if (runtime?.tokens.enabled) host.updateOverlay(id, { children, zIndex });
+        else host.remove(id);
     }, [runtime?.tokens.enabled, host, id, children, zIndex]);
 
     if (!runtime?.tokens.enabled || !host) return <>{children}</>;
@@ -540,10 +571,12 @@ export function GlassOverlay({ children, zIndex = 100 }: { children: React.React
 
 const styles = StyleSheet.create({
     root: { flex: 1 },
-    measureOnly: { opacity: 0 },
+    routeContent: { ...StyleSheet.absoluteFillObject },
+    measureOnly: {},
+    hiddenMeasureContent: { opacity: 0 },
     localSurface: { position: 'relative', overflow: 'hidden' },
     localContent: { flex: 1, overflow: 'hidden' },
-    portalSurface: { position: 'absolute' },
+    portalSurface: { position: 'absolute', overflow: 'visible' },
     nativeSurface: { backgroundColor: 'transparent', overflow: 'hidden' },
     fallbackSurface: { backgroundColor: 'transparent', borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
     portalContentLayout: { flex: 1, overflow: 'hidden' },

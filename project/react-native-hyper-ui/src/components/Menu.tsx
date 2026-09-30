@@ -1,8 +1,9 @@
 import { Icon, PressIndication, Text } from '../primitives';
+import { GlassOverlay, GlassSurface } from '@newhu/react-native-liquid-glass';
 import { menuAlphaIn, menuAlphaOut, menuDimIn, menuDimOut, menuFraction } from '../motion';
 import { useTheme } from '../theme';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { BackHandler, Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 
@@ -54,6 +55,7 @@ type Placement = 'below' | 'above' | 'middle';
 
 export const Menu = React.memo(function Menu({ visible = false, onClose, anchor, items = [], selectedIndex }: AppMenuProps) {
     const theme = useTheme();
+    const usesGlassMaterial = theme.presentation.overlays.menu === 'glass' && theme.glass.enabled;
     const { width: windowW, height: windowH } = useWindowDimensions();
 
     const [rendered, setRendered] = useState(visible);
@@ -99,11 +101,6 @@ export const Menu = React.memo(function Menu({ visible = false, onClose, anchor,
         else setPlacement('middle');
     }, [rendered, anchor, popupHeight, windowH]);
 
-    const popupStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: SCALE_HIDDEN + 0.85 * fraction.value }],
-        opacity: alpha.value,
-    }));
-
     const dimStyle = useAnimatedStyle(() => ({
         opacity: dim.value,
         backgroundColor: theme.colors.windowDimming,
@@ -112,62 +109,122 @@ export const Menu = React.memo(function Menu({ visible = false, onClose, anchor,
     const origin =
         placement === 'below' ? 'top right' : placement === 'above' ? 'bottom right' : 'right center';
 
+    const popupStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: SCALE_HIDDEN + 0.85 * fraction.value }],
+        opacity: alpha.value,
+        transformOrigin: origin,
+    }), [origin]);
+
     const handleClose = useCallback(() => {
         onClose?.();
     }, [onClose]);
 
+    useEffect(() => {
+        if (!usesGlassMaterial || !rendered) return;
+        const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+            handleClose();
+            return true;
+        });
+        return () => subscription.remove();
+    }, [usesGlassMaterial, rendered, handleClose]);
+
+    const popupItems = items.map((item, index) => {
+        const it = typeof item === 'string' ? { label: item } : item;
+        return (
+            <MenuItemRow
+                key={index}
+                item={it}
+                first={index === 0}
+                last={index === items.length - 1}
+                selected={index === selectedIndex}
+                onSelect={() => {
+                    if (it.disabled) return;
+                    it.onPress?.();
+                    handleClose();
+                }}
+            />
+        );
+    });
+    const menuLayer = (
+        <Animated.View style={[{ flex: 1 }, dimStyle]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
+            {anchor != null && (
+                <Animated.View
+                    onLayout={onPopupLayout}
+                    style={[
+                        {
+                            position: 'absolute',
+                            top: pos.top,
+                            left: pos.left,
+                            width: popupWidth,
+                            maxHeight: pos.maxHeight,
+                            borderRadius: theme.radius.component,
+                            backgroundColor: usesGlassMaterial ? 'transparent' : theme.colors.surfaceContainer,
+                            overflow: 'hidden',
+                            shadowColor: '#000000',
+                            shadowOpacity: usesGlassMaterial ? 0 : 0.18,
+                            shadowRadius: usesGlassMaterial ? 0 : 40,
+                            shadowOffset: { width: 0, height: usesGlassMaterial ? 0 : 10 },
+                            elevation: usesGlassMaterial ? 0 : 8,
+                        },
+                        popupStyle,
+                    ]}
+                >
+                    {usesGlassMaterial ? (
+                        <GlassSurface
+                            variant="menu"
+                            positioning="floating"
+                            sampling="backdrop"
+                            animatedStyle={popupStyle}
+                            zIndex={101}
+                            style={{ width: '100%', maxHeight: pos.maxHeight, borderRadius: theme.glass.materials.menu.radius, overflow: 'hidden' }}
+                            placeholderChildren={<MenuMeasureAnchor items={items} />}
+                        >
+                            {popupItems}
+                        </GlassSurface>
+                    ) : popupItems}
+                </Animated.View>
+            )}
+        </Animated.View>
+    );
+
+    if (usesGlassMaterial) return rendered ? <GlassOverlay zIndex={100}>{menuLayer}</GlassOverlay> : null;
     return (
         <Modal transparent statusBarTranslucent animationType="none" visible={rendered} onRequestClose={handleClose}>
-            <Animated.View style={[{ flex: 1 }, dimStyle]}>
-                <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
-                {anchor != null && (
-                    <Animated.View
-                        onLayout={onPopupLayout}
-                        style={[
-                            {
-                                position: 'absolute',
-                                top: pos.top,
-                                left: pos.left,
-                                width: popupWidth,
-                                maxHeight: pos.maxHeight,
-                                borderRadius: theme.radius.component,
-                                backgroundColor: theme.colors.surfaceContainer,
-                                overflow: 'hidden',
-                                shadowColor: '#000000',
-                                shadowOpacity: 0.18,
-                                shadowRadius: 40,
-                                shadowOffset: { width: 0, height: 10 },
-                                elevation: 8,
-                                transformOrigin: origin,
-                            },
-                            popupStyle,
-                        ]}
-                    >
-                        {items.map((item, index) => {
-                            const it = typeof item === 'string' ? { label: item } : item;
-                            const selected = index === selectedIndex;
-                            return (
-                                <MenuItemRow
-                                    key={index}
-                                    item={it}
-                                    first={index === 0}
-                                    last={index === items.length - 1}
-                                    selected={selected}
-                                    onSelect={() => {
-                                        if (it.disabled) return;
-                                        it.onPress?.();
-                                        handleClose();
-                                    }}
-                                />
-                            );
-                        })}
-                    </Animated.View>
-                )}
-            </Animated.View>
+            {menuLayer}
         </Modal>
     );
 });
 Menu.displayName = 'HyperMenu';
+
+/** Mirrors row dimensions without mounting menu actions, press state or icons twice. */
+function MenuMeasureAnchor({ items }: { items: (AppMenuItem | string)[] }) {
+    return (
+        <View style={{ width: '100%' }}>
+            {items.map((item, index) => {
+                const row: AppMenuItem = typeof item === 'string' ? { label: item } : item;
+                return (
+                    <View
+                        key={index}
+                        style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            paddingHorizontal: ITEM_PADDING_HORIZONTAL,
+                            paddingTop: index === 0 ? ITEM_PADDING_VERTICAL_EDGE : ITEM_PADDING_VERTICAL_MIDDLE,
+                            paddingBottom: index === items.length - 1 ? ITEM_PADDING_VERTICAL_EDGE : ITEM_PADDING_VERTICAL_MIDDLE,
+                        }}
+                    >
+                        <View style={{ flex: 1, minWidth: 0, maxWidth: 216 }}>
+                            <Text type="body1" weight="medium" color="transparent" numberOfLines={1}>{row.label}</Text>
+                            {row.summary != null ? <Text type="body2" color="transparent" numberOfLines={1}>{row.summary}</Text> : null}
+                        </View>
+                        <View style={{ width: 20, height: 20, marginLeft: 12 }} />
+                    </View>
+                );
+            })}
+        </View>
+    );
+}
 
 function MenuItemRow({
     item,
@@ -190,12 +247,12 @@ function MenuItemRow({
         ? theme.colors.disabledOnSecondaryVariant
         : selected
             ? theme.colors.primary
-            : theme.colors.onSurfaceContainer;
+            : theme.presentation.overlays.menu === 'glass' && theme.glass.enabled ? theme.colors.onGlass : theme.colors.onSurfaceContainer;
     const summaryColor = item.disabled
         ? theme.colors.disabledOnSecondaryVariant
         : selected
             ? theme.colors.primary
-            : theme.colors.onSurfaceVariantSummary;
+            : theme.presentation.overlays.menu === 'glass' && theme.glass.enabled ? theme.colors.onGlassSecondary : theme.colors.onSurfaceVariantSummary;
 
     return (
         <Pressable
@@ -210,10 +267,10 @@ function MenuItemRow({
                 paddingHorizontal: ITEM_PADDING_HORIZONTAL,
                 paddingTop: first ? ITEM_PADDING_VERTICAL_EDGE : ITEM_PADDING_VERTICAL_MIDDLE,
                 paddingBottom: last ? ITEM_PADDING_VERTICAL_EDGE : ITEM_PADDING_VERTICAL_MIDDLE,
-                backgroundColor: theme.colors.surfaceContainer,
+                backgroundColor: theme.presentation.overlays.menu === 'glass' && theme.glass.enabled ? 'transparent' : theme.colors.surfaceContainer,
             }}
         >
-            {interactive && <PressIndication pressed={pressed} color={theme.colors.onBackground} />}
+            {interactive && <PressIndication pressed={pressed} color={theme.presentation.overlays.menu === 'glass' && theme.glass.enabled ? theme.colors.onGlass : theme.colors.onBackground} />}
             <View style={{ flex: 1, minWidth: 0, maxWidth: 216 }}>
                 <Text type="body1" weight="medium" color={titleColor} numberOfLines={1}>
                     {item.label}

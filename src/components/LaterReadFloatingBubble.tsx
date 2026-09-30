@@ -1,6 +1,6 @@
 import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
 import { useLaterReadStore, type LaterReadItem } from '@/src/stores/useLaterReadStore';
-import { BottomSheet, Button, Icon, Pressable } from '@/src/ui';
+import { BottomSheet, Button, Card, Icon, Pressable } from '@/src/ui';
 import { PressIndication, Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { usePathname, useRouter } from 'expo-router';
@@ -243,25 +243,16 @@ function LaterReadPageRow({ item, pageNumber, onOpen, onRemove }: {
     onRemove: () => void;
 }) {
     const theme = useTheme();
-    const pressed = useSharedValue(0);
     const typeLabel = getTypeLabel(item.type);
     const meta = `${typeLabel} · ${item.authorName} · ${formatAddedAt(item.addedAt)}`;
 
     return (
-        <Pressable
-            showIndication={false}
-            accessibilityRole="button"
+        <Card
+            feedback="none"
+            showIndication
             accessibilityLabel={item.title}
             onPress={onOpen}
-            onPressIn={() => (pressed.value = 1)}
-            onPressOut={() => (pressed.value = 0)}
-            style={{
-                borderRadius: theme.radius.component,
-                backgroundColor: theme.colors.surfaceContainer,
-                overflow: 'hidden',
-                paddingHorizontal: theme.spacing.md,
-                paddingVertical: theme.spacing.md,
-            }}
+            contentStyle={{ paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.md }}
         >
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <View
@@ -309,7 +300,6 @@ function LaterReadPageRow({ item, pageNumber, onOpen, onRemove }: {
                     {item.summary}
                 </Text>
             ) : null}
-            <PressIndication pressed={pressed} color={theme.colors.onBackground} radius={theme.radius.component} />
-        </Pressable>
+        </Card>
     );
 }

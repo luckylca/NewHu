@@ -29,6 +29,7 @@ export const Divider = memo(function Divider({ orientation = 'horizontal', thick
             style={[
                 {
                     backgroundColor: color ?? theme.colors.dividerLine,
+                    opacity: theme.presentation.content.dividerStyle === 'subtle' ? 0.72 : 1,
                 },
                 isHorizontal
                     ? { width: '100%', height: thickness }

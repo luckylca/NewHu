@@ -1,12 +1,11 @@
 import { fetchGuestRecommendPage } from '@/src/services/guestBrowseService';
-import { Button, Card, SearchBar, Text } from '@/src/ui';
+import { Button, Card, PageFlatList, PageScaffold, SearchBar, Text } from '@/src/ui';
 import { useContentStore } from '@/src/stores/useContentStore';
 import type { FeedItemInfo } from '@/src/types/zhihu';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ActivityIndicator, RefreshControl, View } from 'react-native';
 import { MAIN_PAGE_TOP_SPACING, useMainTabBottomContentInset } from '@/src/components/MainTabLayout';
 
 function feedKey(item: FeedItemInfo) {
@@ -46,9 +45,8 @@ function GuestFeedCard({ item, open }: { item: FeedItemInfo; open: (item: FeedIt
     );
 }
 
-export default function GuestHomeFeed() {
+export default function GuestHomeFeed({ active = true }: { active?: boolean }) {
     const theme = useTheme();
-    const insets = useSafeAreaInsets();
     const bottomContentInset = useMainTabBottomContentInset();
     const [items, setItems] = React.useState<FeedItemInfo[]>([]);
     const [loading, setLoading] = React.useState(true);
@@ -124,15 +122,23 @@ export default function GuestHomeFeed() {
         });
     }, []);
 
+    const searchAccessory = (
+        <SearchBar
+            label="搜索本机离线内容"
+            onPress={() => router.push('/search')}
+            glassRenderMode={active ? 'backdrop' : 'local'}
+            inputProps={{ editable: false, showSoftInputOnFocus: false }}
+            style={{ height: theme.components.searchBar.minHeight }}
+        />
+    );
+
     return (
-        <View style={{ flex: 1, paddingTop: insets.top + MAIN_PAGE_TOP_SPACING, backgroundColor: theme.colors.surface }}>
-            <SearchBar
-                label="搜索本机离线内容"
-                onPress={() => router.push('/search')}
-                inputProps={{ editable: false, showSoftInputOnFocus: false }}
-                style={{ height: theme.components.searchBar.minHeight, marginBottom: theme.spacing.sm }}
-            />
-            <FlatList
+        <PageScaffold
+            searchAccessory={searchAccessory}
+            searchAccessoryTopSpacing={MAIN_PAGE_TOP_SPACING}
+            searchAccessoryBottomSpacing={theme.spacing.sm}
+        >
+            <PageFlatList
                 data={items}
                 keyExtractor={feedKey}
                 renderItem={({ item }) => <GuestFeedCard item={item} open={openItem} />}
@@ -175,6 +181,6 @@ export default function GuestHomeFeed() {
                     </View>
                 )}
             />
-        </View>
+        </PageScaffold>
     );
 }

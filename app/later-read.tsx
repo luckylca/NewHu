@@ -15,7 +15,7 @@ import {
     type LaterReadSortMode,
 } from '@/src/stores/useLaterReadStore';
 import { notify } from '@/src/stores/useNotificationStore';
-import { Button, Icon, Pressable, TopAppBar } from '@/src/ui';
+import { Button, Icon, PageContent, PageScaffold, PageScrollView, Pressable, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import {
@@ -162,7 +162,7 @@ export default function LaterReadManagementScreen() {
     }, [busy, exitSelection, removeItems, selectedItems]);
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
+        <PageScaffold topBar={
             <TopAppBar
                 title="稍后阅读"
                 subtitle={items.length > 0 ? `${items.length} 篇` : undefined}
@@ -192,9 +192,10 @@ export default function LaterReadManagementScreen() {
                     </Pressable>
                 ) : null}
             />
+        }>
 
             {items.length === 0 ? (
-                <View style={{
+                <PageContent style={{
                     flex: 1,
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -211,10 +212,10 @@ export default function LaterReadManagementScreen() {
                     >
                         在回答或文章详情页中选择“稍后阅读”，内容会出现在这里。
                     </Text>
-                </View>
+                </PageContent>
             ) : (
                 <>
-                    <ScrollView
+                    <PageScrollView
                         style={{ flex: 1 }}
                         contentContainerStyle={{
                             paddingHorizontal: theme.spacing.lg,
@@ -303,7 +304,7 @@ export default function LaterReadManagementScreen() {
                                 );
                             })}
                         </View>
-                    </ScrollView>
+                    </PageScrollView>
 
                     {selectionMode ? (
                         <View style={{
@@ -348,7 +349,7 @@ export default function LaterReadManagementScreen() {
                     ) : null}
                 </>
             )}
-        </View>
+        </PageScaffold>
     );
 }
 

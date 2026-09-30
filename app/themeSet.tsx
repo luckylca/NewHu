@@ -1,12 +1,13 @@
 import { useSettingStore } from '@/src/stores/useSettingStore';
 import { notify } from '@/src/stores/useNotificationStore';
-import { Button, Card, Icon, ListRow, SegmentedControl, Switch, Text, TopAppBar } from '@/src/ui';
-import { getWallpaperBlurRadius, getWallpaperScrim, type WallpaperBlurLevel, useTheme, wallpaperConfig } from '@/src/ui/theme';
+import { Button, Card, Icon, ListRow, PageScaffold, PageScrollView, SegmentedControl, Switch, Text, TopAppBar } from '@/src/ui';
+import { getWallpaperBlurRadius, resolveBackdropSource, resolveBaseTheme, type AppTheme, type ThemeName, type WallpaperBlurLevel, useTheme, wallpaperConfig } from '../project/react-native-hyper-ui/src/theme';
+import { GlassAppearanceProvider, GlassSurface } from '@newhu/react-native-liquid-glass';
+import { DefaultAmbientBackdrop } from '@/src/components/background/DefaultAmbientBackdrop';
 import { File, Paths } from 'expo-file-system';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler';
 import { launchImageLibrary } from 'react-native-image-picker';
 
 const BLUR_LEVELS: Exclude<WallpaperBlurLevel, 'off'>[] = ['low', 'medium', 'high'];
@@ -25,6 +26,13 @@ const ThemeSetScreen = () => {
     const setWallpaperUri = useSettingStore((state) => state.setWallpaperUri);
     const wallpaperBlurLevel = useSettingStore((state) => state.wallpaperBlurLevel);
     const setWallpaperBlurLevel = useSettingStore((state) => state.setWallpaperBlurLevel);
+    const backdropSource = resolveBackdropSource(theme, Boolean(wallpaperUri));
+    const hasAmbientDefault = backdropSource === 'ambient';
+    const currentBackgroundLabel = wallpaperUri
+        ? '当前背景：自定义壁纸'
+        : hasAmbientDefault
+            ? '当前背景：Liquid Glass 默认背景'
+            : '当前背景：主题默认背景';
 
     const [isPicking, setIsPicking] = useState(false);
 
@@ -75,10 +83,8 @@ const ThemeSetScreen = () => {
     };
 
     return (
-        <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-            <TopAppBar title="主题设置" back={() => router.back()} />
-
-            <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <PageScaffold topBar={<TopAppBar title="主题设置" back={() => router.back()} />} style={styles.container}>
+            <PageScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
                 <View style={styles.section}>
                     <Text type="title4" weight="medium" color={theme.colors.onBackground} style={styles.sectionHeading}>主题风格</Text>
                     <View style={styles.themeChoices}>
@@ -86,13 +92,23 @@ const ThemeSetScreen = () => {
                             name="hyperos"
                             title="HyperOS"
                             summary="轻快、清晰的系统表面"
+                            previewTheme={resolveBaseTheme('hyperos', theme.dark)}
                             selected={themeName === 'hyperos'}
                             onPress={() => setThemeName('hyperos')}
+                        />
+                        <ThemeStyleCard
+                            name="coloros"
+                            title="ColorOS"
+                            summary="ColorOS 兼容主题 · 当前继承 HyperOS 视觉"
+                            previewTheme={resolveBaseTheme('coloros', theme.dark)}
+                            selected={themeName === 'coloros'}
+                            onPress={() => setThemeName('coloros')}
                         />
                         <ThemeStyleCard
                             name="liquidGlass"
                             title="Liquid Glass"
                             summary="折射、柔焦与边缘高光"
+                            previewTheme={resolveBaseTheme('liquidGlass', theme.dark)}
                             selected={themeName === 'liquidGlass'}
                             onPress={() => setThemeName('liquidGlass')}
                         />
@@ -121,9 +137,12 @@ const ThemeSetScreen = () => {
 
                 <View style={styles.section}>
                     <Card contentStyle={styles.wallpaperCard}>
-                        <CardSectionTitle>底层壁纸</CardSectionTitle>
+                        <CardSectionTitle>当前背景</CardSectionTitle>
+                        <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary} style={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.sm }}>
+                            {currentBackgroundLabel}
+                        </Text>
                         <View style={styles.wallpaperContent}>
-                            <View style={[styles.preview, { backgroundColor: theme.colors.surfaceContainerHigh }]}>
+                            <View style={[styles.preview, { backgroundColor: theme.dark ? theme.wallpaper.base.dark : theme.wallpaper.base.light }]}>
                                 {wallpaperUri ? (
                                     <Image
                                         source={{ uri: wallpaperUri }}
@@ -131,36 +150,29 @@ const ThemeSetScreen = () => {
                                         blurRadius={getWallpaperBlurRadius(wallpaperBlurLevel)}
                                         style={[StyleSheet.absoluteFill, { opacity: wallpaperConfig.opacity }]}
                                     />
+                                ) : hasAmbientDefault ? (
+                                    <DefaultAmbientBackdrop dark={theme.dark} />
                                 ) : (
                                     <View style={styles.emptyPreview}>
-                                        <Icon name="image-outline" size={38} color={theme.colors.onSurfaceContainerHigh} />
-                                        <Text type="body2" color={theme.colors.onSurfaceContainerHigh}>还没有选择壁纸</Text>
+                                        <Icon name="palette-outline" size={34} color={theme.colors.onSurfaceVariantSummary} />
+                                        <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>使用当前主题默认背景</Text>
                                     </View>
                                 )}
                                 {wallpaperUri ? (
                                     <View
                                         pointerEvents="none"
-                                        style={[StyleSheet.absoluteFill, { backgroundColor: getWallpaperScrim(theme.dark) }]}
+                                        style={[StyleSheet.absoluteFill, { backgroundColor: theme.dark ? theme.wallpaper.scrim.dark : theme.wallpaper.scrim.light }]}
                                     />
                                 ) : null}
-                                <View
-                                    style={[
-                                        styles.previewSample,
-                                        {
-                                            backgroundColor: theme.dark
-                                                ? 'rgba(28,28,28,0.82)'
-                                                : 'rgba(255,255,255,0.84)',
-                                        },
-                                    ]}
-                                >
-                                    <Text type="headline1" weight="medium" color={theme.colors.onBackground}>壁纸预览</Text>
-                                    <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>主题蒙层与卡片保持内容清晰</Text>
-                                </View>
+                                <Card feedback="none" contentStyle={styles.previewSample}>
+                                    <Text type="headline1" weight="medium" color={theme.presentation.content.cardMaterial === 'glass' ? theme.colors.onGlass : theme.colors.onSurfaceContainer}>壁纸预览</Text>
+                                    <Text type="body2" color={theme.presentation.content.cardMaterial === 'glass' ? theme.colors.onGlassSecondary : theme.colors.onSurfaceVariantSummary}>主题蒙层与卡片保持内容清晰</Text>
+                                </Card>
                             </View>
 
                             <View style={styles.actions}>
                                 <Button type="primary" onPress={importWallpaper} disabled={isPicking} style={styles.primaryAction}>
-                                    {isPicking ? '正在读取…' : wallpaperUri ? '更换图片' : '导入图片'}
+                                    {isPicking ? '正在读取…' : wallpaperUri ? '更换图片' : themeName === 'liquidGlass' ? '自定义背景' : '设置壁纸'}
                                 </Button>
                                 {wallpaperUri ? <Button onPress={clearWallpaper}>移除</Button> : null}
                             </View>
@@ -198,9 +210,8 @@ const ThemeSetScreen = () => {
                 <Text type="footnote1" color={theme.colors.onBackgroundVariant} style={styles.hint}>
                     图片会保存在应用目录中。全局主题蒙层会保持正文清晰，文字颜色不会根据图片内容动态变化。
                 </Text>
-            </ScrollView>
-
-        </View>
+            </PageScrollView>
+        </PageScaffold>
     );
 };
 
@@ -208,60 +219,116 @@ function ThemeStyleCard({
     name,
     title,
     summary,
+    previewTheme,
     selected,
     onPress,
 }: {
-    name: 'hyperos' | 'liquidGlass';
+    name: ThemeName;
     title: string;
     summary: string;
+    previewTheme: AppTheme;
     selected: boolean;
     onPress: () => void;
 }) {
-    const theme = useTheme();
-    const glass = name === 'liquidGlass';
-    const previewBase = glass ? (theme.dark ? '#202A39' : '#DDE8F5') : (theme.dark ? '#303030' : '#E9EDF3');
-    const sample = glass ? (theme.dark ? 'rgba(125,158,205,0.48)' : 'rgba(255,255,255,0.78)') : theme.colors.surfaceContainer;
+    const theme = previewTheme;
+    const glass = theme.presentation.topBar.material === 'glass' && theme.glass.enabled;
+    const previewBase = theme.dark ? theme.wallpaper.base.dark : theme.wallpaper.base.light;
+    const primaryText = glass ? theme.colors.onGlass : theme.colors.onSurface;
+    const secondaryText = glass ? theme.colors.onGlassSecondary : theme.colors.onSurfaceVariantSummary;
 
     return (
-        <Pressable
-            accessibilityRole="radio"
-            accessibilityState={{ selected }}
-            onPress={onPress}
-            style={[
-                styles.themeChoice,
-                {
-                    borderColor: selected ? theme.colors.primary : theme.colors.outline,
-                    backgroundColor: theme.colors.surfaceContainer,
-                },
-            ]}
-        >
-            <View style={[styles.themePreview, { backgroundColor: previewBase }]}>
-                <View style={[styles.previewHeader, { backgroundColor: glass ? (theme.dark ? 'rgba(227,238,255,0.18)' : 'rgba(255,255,255,0.56)') : sample }]}>
-                    <View style={[styles.previewDot, { backgroundColor: theme.colors.primary }]} />
-                    <View style={[styles.previewLine, { width: '45%', backgroundColor: theme.colors.onSurface }]} />
-                    <View style={[styles.previewLine, { width: '20%', backgroundColor: theme.colors.onSurfaceVariantSummary }]} />
+        <GlassAppearanceProvider tokens={theme.glass} dark={theme.dark}>
+            <Pressable
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                onPress={onPress}
+                style={[
+                    styles.themeChoice,
+                    {
+                        borderColor: selected ? theme.colors.primary : theme.colors.outline,
+                        backgroundColor: theme.colors.surfaceContainer,
+                    },
+                ]}
+            >
+                <View style={[styles.themePreview, { backgroundColor: previewBase }]}>
+                    {theme.wallpaper.defaultBackdrop === 'ambient' ? <DefaultAmbientBackdrop dark={theme.dark} /> : null}
+
+                    {glass ? (
+                        <GlassSurface
+                            variant="bar"
+                            positioning="floating"
+                            sampling="local"
+                            style={[styles.previewHeader, { backgroundColor: 'transparent' }]}
+                            contentStyle={styles.previewLineRow}
+                        >
+                            <View style={[styles.previewDot, { backgroundColor: theme.colors.primary }]} />
+                            <View style={[styles.previewLine, { width: '45%', backgroundColor: primaryText }]} />
+                            <View style={[styles.previewLine, { width: '20%', backgroundColor: secondaryText }]} />
+                        </GlassSurface>
+                    ) : (
+                        <View style={[styles.previewHeader, { backgroundColor: theme.colors.surfaceContainer }]}>
+                            <View style={styles.previewLineRow}>
+                                <View style={[styles.previewDot, { backgroundColor: theme.colors.primary }]} />
+                                <View style={[styles.previewLine, { width: '45%', backgroundColor: primaryText }]} />
+                                <View style={[styles.previewLine, { width: '20%', backgroundColor: secondaryText }]} />
+                            </View>
+                        </View>
+                    )}
+
+                    <View style={styles.previewContent}>
+                        {glass ? (
+                            <GlassSurface
+                                variant="card"
+                                positioning="inFlow"
+                                sampling="local"
+                                style={[styles.previewCard, { backgroundColor: 'transparent', borderColor: theme.colors.outline }]}
+                            >
+                                <View style={{ gap: 5 }}>
+                                    <View style={[styles.previewLine, { width: '72%', backgroundColor: primaryText }]} />
+                                    <View style={[styles.previewLine, { width: '48%', backgroundColor: secondaryText }]} />
+                                </View>
+                            </GlassSurface>
+                        ) : (
+                            <View style={[styles.previewCard, { backgroundColor: theme.colors.surfaceContainer, borderColor: theme.colors.outline }]}>
+                                <View style={{ gap: 5 }}>
+                                    <View style={[styles.previewLine, { width: '72%', backgroundColor: primaryText }]} />
+                                    <View style={[styles.previewLine, { width: '48%', backgroundColor: secondaryText }]} />
+                                </View>
+                            </View>
+                        )}
+                    </View>
+
+                    {glass ? (
+                        <GlassSurface
+                            variant="tabBar"
+                            positioning="floating"
+                            sampling="local"
+                            style={[styles.previewBar, { backgroundColor: 'transparent', borderColor: theme.colors.outline }]}
+                            contentStyle={styles.previewLineRow}
+                        >
+                            <View style={[styles.previewLine, { width: '40%', backgroundColor: primaryText }]} />
+                            <View style={[styles.previewLine, { width: '18%', backgroundColor: secondaryText }]} />
+                        </GlassSurface>
+                    ) : (
+                        <View style={[styles.previewBar, { backgroundColor: theme.colors.surfaceContainer, borderColor: theme.colors.outline }]}>
+                            <View style={styles.previewLineRow}>
+                                <View style={[styles.previewLine, { width: '40%', backgroundColor: primaryText }]} />
+                                <View style={[styles.previewLine, { width: '18%', backgroundColor: secondaryText }]} />
+                            </View>
+                        </View>
+                    )}
                 </View>
-                <View style={styles.previewContent}>
-                    <View style={[styles.previewCard, { backgroundColor: sample, borderColor: glass ? 'rgba(255,255,255,0.62)' : theme.colors.outline }]}>
-                        <View style={[styles.previewLine, { width: '72%', backgroundColor: theme.colors.onSurface }]} />
-                        <View style={[styles.previewLine, { width: '48%', backgroundColor: theme.colors.onSurfaceVariantSummary }]} />
+                <View style={styles.themeChoiceText}>
+                    <View style={{ flex: 1 }}>
+                        <Text type="headline2" weight="medium" color={theme.colors.onSurface}>{title}</Text>
+                        <Text type="footnote2" color={theme.colors.onSurfaceVariantSummary} numberOfLines={2}>{summary}</Text>
+                    </View>
+                    <View style={[styles.selectionMark, { backgroundColor: selected ? theme.colors.primary : 'transparent', borderColor: selected ? theme.colors.primary : theme.colors.outline }]}>
+                        {selected ? <Text type="footnote2" weight="bold" color={theme.colors.onPrimary}>✓</Text> : null}
                     </View>
                 </View>
-                <View style={[styles.previewBar, { backgroundColor: glass ? 'rgba(245,249,255,0.34)' : sample, borderColor: glass ? 'rgba(255,255,255,0.78)' : theme.colors.outline }]}>
-                    <View style={[styles.previewLine, { width: '40%', backgroundColor: theme.colors.onSurface }]} />
-                    <View style={[styles.previewLine, { width: '18%', backgroundColor: theme.colors.onSurfaceVariantSummary }]} />
-                </View>
-            </View>
-            <View style={styles.themeChoiceText}>
-                <View style={{ flex: 1 }}>
-                    <Text type="headline2" weight="medium" color={theme.colors.onSurface}>{title}</Text>
-                    <Text type="footnote2" color={theme.colors.onSurfaceVariantSummary} numberOfLines={2}>{summary}</Text>
-                </View>
-                <View style={[styles.selectionMark, { backgroundColor: selected ? theme.colors.primary : 'transparent', borderColor: selected ? theme.colors.primary : theme.colors.outline }]}>
-                    {selected ? <Text type="footnote2" weight="bold" color={theme.colors.onPrimary}>✓</Text> : null}
-                </View>
-            </View>
-        </Pressable>
+            </Pressable>
+        </GlassAppearanceProvider>
     );
 }
 
@@ -291,10 +358,12 @@ const styles = StyleSheet.create({
     },
     themeChoices: {
         flexDirection: 'row',
+        flexWrap: 'wrap',
         gap: 10,
     },
     themeChoice: {
         flex: 1,
+        minWidth: 160,
         borderWidth: 1.5,
         borderRadius: 18,
         padding: 9,
@@ -313,6 +382,12 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 6,
+        gap: 5,
+    },
+    previewLineRow: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
         gap: 5,
     },
     previewDot: {

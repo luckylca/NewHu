@@ -1,11 +1,11 @@
 import { GlassMaterialProvider, GlassSurface } from '@newhu/react-native-liquid-glass';
 import type { GlassMaterialTokens } from '@newhu/react-native-liquid-glass';
-import { Slider, TopAppBar } from '@/src/ui';
+import { PageScaffold, PageScrollView, Slider, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
@@ -159,9 +159,8 @@ function GlassLensDebugContent({
 
     const fallbackVisible = Platform.OS !== 'android';
     return (
-        <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
-            <TopAppBar title="Glass Lens Debug" back={() => router.back()} />
-            <ScrollView contentContainerStyle={styles.scrollContent}>
+        <PageScaffold topBar={<TopAppBar title="Glass Lens Debug" back={() => router.back()} />}>
+            <PageScrollView contentContainerStyle={styles.scrollContent}>
                 <View style={styles.intro}>
                     <Text type="body2" weight="medium">SDF → 高度场 → 背景重采样</Text>
                     <Text type="footnote2" color={theme.colors.onSurfaceVariantSummary}>
@@ -185,7 +184,8 @@ function GlassLensDebugContent({
                         </View>
                         <GlassSurface
                             variant="tabSelectionLens"
-                            renderMode="backdrop"
+                            positioning="floating"
+                            sampling="backdrop"
                             continuous={captureContinuous}
                             opticalProgress={opticalProgress}
                             opticalMotionX={velocityX}
@@ -231,8 +231,8 @@ function GlassLensDebugContent({
                 <OpticalControl title="Fresnel edge" value={optics.fresnelStrength ?? 1.12} minimumValue={0} maximumValue={2} onChange={(value) => updateOpticalValue('fresnelStrength', value)} />
                 <OpticalControl title="Inner compression shade" value={optics.innerShadowStrength ?? 0.3} minimumValue={0} maximumValue={1} onChange={(value) => updateOpticalValue('innerShadowStrength', value)} />
                 <OpticalControl title="Tint alpha" value={optics.tintAlpha ?? 0.24} minimumValue={0} maximumValue={1} onChange={(value) => updateOpticalValue('tintAlpha', value)} />
-            </ScrollView>
-        </View>
+            </PageScrollView>
+        </PageScaffold>
     );
 }
 

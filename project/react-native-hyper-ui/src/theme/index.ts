@@ -1,5 +1,8 @@
 export { ThemeProvider, useTheme } from './ThemeProvider';
 export type { ThemeMode } from './ThemeProvider';
+export { resolveBaseTheme, themeRegistry } from './registry';
+export { resolveThemeVariant } from './registryCore';
+export { applyBackdropPresentation, resolveBackdropSource, colorosWallpaperTokens, hyperosWallpaperTokens, liquidGlassWallpaperTokens } from './wallpaper';
 export { hyperosLightTheme, hyperosDarkTheme } from './hyperos';
 export { colorosLightTheme, colorosDarkTheme } from './coloros';
 export { liquidGlassLightTheme, liquidGlassDarkTheme } from './liquidGlass';
@@ -16,6 +19,10 @@ export type {
     ThemeRadius,
     ThemeOpacity,
     ComponentTokens,
+    ThemePresentation,
+    ThemeWallpaperTokens,
+    PresentationMode,
+    SurfaceMaterial,
     TextStylePreset,
     ThemeFonts,
     FontStyle,

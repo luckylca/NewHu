@@ -52,6 +52,7 @@ export const BottomSheet = React.memo(function BottomSheet({
     children,
 }: AppBottomSheetProps) {
     const theme = useTheme();
+    const usesGlassMaterial = theme.presentation.overlays.sheet === 'glass' && theme.glass.enabled;
     const reducedMotion = useReducedMotionPreference();
     const c = theme.components.bottomSheet;
     const { height: windowH } = useWindowDimensions();
@@ -89,13 +90,13 @@ export const BottomSheet = React.memo(function BottomSheet({
     }, [onClose]);
 
     useEffect(() => {
-        if (!theme.glass.enabled || !rendered) return;
+        if (!usesGlassMaterial || !rendered) return;
         const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
             handleClose();
             return true;
         });
         return () => subscription.remove();
-    }, [theme.glass.enabled, rendered, handleClose]);
+    }, [usesGlassMaterial, rendered, handleClose]);
 
     const pan = Gesture.Pan()
         .enabled(visible && rendered)
@@ -154,7 +155,8 @@ export const BottomSheet = React.memo(function BottomSheet({
                         <Animated.View style={[{ width: '100%', maxWidth: c.maxWidth }, sheetStyle]}>
                             <GlassSurface
                                 variant="sheet"
-                                renderMode="backdrop"
+                                positioning="floating"
+                                sampling="backdrop"
                                 placement="bottom"
                                 animatedStyle={sheetStyle}
                                 zIndex={101}
@@ -187,13 +189,13 @@ export const BottomSheet = React.memo(function BottomSheet({
                         {/* Drag handle area (only this region drags, like the source) */}
                         <GestureDetector gesture={pan}>
                             <View style={{ height: theme.spacing.xl, alignItems: 'center', justifyContent: 'center' }}>
-                                <Animated.View style={[{ height: c.handleHeight, borderRadius: 2, backgroundColor: theme.colors.onSurfaceVariantSummary }, handleStyle]} />
+                                <Animated.View style={[{ height: c.handleHeight, borderRadius: 2, backgroundColor: usesGlassMaterial ? theme.colors.onGlassMuted : theme.colors.onSurfaceVariantSummary }, handleStyle]} />
                             </View>
                         </GestureDetector>
                         {(title != null || startAction != null || endAction != null) && (
                             <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingBottom: 12 }}>
                                 <View style={{ flex: 0, justifyContent: 'flex-start' }}>{startAction}</View>
-                                <Text type="title4" weight="medium" color={theme.colors.onSurface} style={{ flex: 1, textAlign: 'center' }}>
+                                <Text type="title4" weight="medium" color={usesGlassMaterial ? theme.colors.onGlass : theme.colors.onSurface} style={{ flex: 1, textAlign: 'center' }}>
                                     {title}
                                 </Text>
                                 <View style={{ flex: 0, justifyContent: 'flex-end', marginLeft: 'auto' }}>{endAction}</View>
@@ -211,7 +213,7 @@ export const BottomSheet = React.memo(function BottomSheet({
         </GestureHandlerRootView>
     );
 
-    if (theme.glass.enabled) return rendered ? <GlassOverlay>{content}</GlassOverlay> : null;
+    if (usesGlassMaterial) return rendered ? <GlassOverlay>{content}</GlassOverlay> : null;
     return (
         <Modal transparent statusBarTranslucent animationType="none" visible={rendered} onRequestClose={handleClose}>
             {content}

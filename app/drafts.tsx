@@ -1,11 +1,11 @@
 import type { CommentDraft } from '@/src/stores/useDraftStore';
 import { useDraftStore } from '@/src/stores/useDraftStore';
-import { Card, Divider, Icon, ListRow, Pressable, TopAppBar } from '@/src/ui';
+import { Card, Divider, Icon, ListRow, PageFlatList, PageScaffold, Pressable, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import React, { useCallback } from 'react';
-import { FlatList, View } from 'react-native';
+import { View } from 'react-native';
 
 export default function DraftsScreen() {
     const theme = useTheme();
@@ -24,9 +24,8 @@ export default function DraftsScreen() {
     }, []);
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
-            <TopAppBar title="草稿箱" back={() => router.back()} />
-            <FlatList
+        <PageScaffold topBar={<TopAppBar title="草稿箱" back={() => router.back()} />}>
+            <PageFlatList
                 data={drafts}
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={{ padding: theme.spacing.lg, flexGrow: 1 }}
@@ -67,6 +66,6 @@ export default function DraftsScreen() {
                     </View>
                 }
             />
-        </View>
+        </PageScaffold>
     );
 }

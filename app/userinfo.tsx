@@ -1,11 +1,11 @@
 import { notify } from '@/src/stores/useNotificationStore';
 import { useUserStore } from '@/src/stores/useUserStore';
-import { Button, Card, Dialog, Icon, ListRow, TopAppBar } from '@/src/ui';
+import { Button, Card, Dialog, Icon, ListRow, PageScaffold, PageScrollView, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { Image, ScrollView, View } from 'react-native';
+import { Image, View } from 'react-native';
 import { clearAllCookies } from 'expo-cookie-storage';
 
 export default function UserInfoScreen() {
@@ -26,9 +26,8 @@ export default function UserInfoScreen() {
     };
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            <TopAppBar title="账号管理" back={() => router.back()} />
-            <ScrollView contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}>
+        <PageScaffold topBar={<TopAppBar title="账号管理" back={() => router.back()} />}>
+            <PageScrollView contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}>
                 <Card feedback="none" contentStyle={{ padding: theme.spacing.xl, alignItems: 'center' }}>
                     {user.avatar ? (
                         <Image source={{ uri: user.avatar }} style={{ width: 88, height: 88, borderRadius: 44, backgroundColor: theme.colors.surfaceContainerHigh }} />
@@ -56,7 +55,7 @@ export default function UserInfoScreen() {
                 ) : (
                     <Button type="primary" onPress={() => router.replace('/webview')} style={{ marginTop: theme.spacing.xl }}>登录知乎</Button>
                 )}
-            </ScrollView>
+            </PageScrollView>
 
             <Dialog visible={logoutVisible} onClose={() => setLogoutVisible(false)} title="退出登录？">
                 <Text type="body1" color={theme.colors.onBackground}>本地主题和浏览设置会保留，账号 Cookie 将被清除。</Text>
@@ -65,6 +64,6 @@ export default function UserInfoScreen() {
                     <Button type="primary" onPress={() => void logout()}>退出</Button>
                 </View>
             </Dialog>
-        </View>
+        </PageScaffold>
     );
 }

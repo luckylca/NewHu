@@ -1,4 +1,4 @@
-import CustomTabNav, { tabRoute } from '@/src/components/CustomTabNav';
+import CustomTabNav, { tabRoute, useTabContentInset } from '@/src/components/CustomTabNav';
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import PagerView from 'react-native-pager-view';
@@ -6,17 +6,14 @@ import HomeScreen from '../home';
 import UserScreen from '../user';
 import { useContentStore } from '@/src/stores/useContentStore';
 import { MainTabLayoutProvider } from '@/src/components/MainTabLayout';
-import { GLASS_TAB_BAR_CONTENT_INSET } from '@newhu/react-native-liquid-glass';
-import { useTheme } from '@/src/ui/theme';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useIsFocused } from '@react-navigation/native';
 
 const MainScreens = () => {
 
     const [activeIndex, setActiveIndex] = React.useState(0);
+    const focused = useIsFocused();
     const pageViewRef = React.useRef<PagerView>(null);
-    const theme = useTheme();
-    const insets = useSafeAreaInsets();
-    const bottomContentInset = theme.glass.enabled ? insets.bottom + GLASS_TAB_BAR_CONTENT_INSET : 0;
+    const bottomContentInset = useTabContentInset();
     const requestFeedRefresh = useContentStore((state) => state.requestFeedRefresh);
     const requestHomeScrollTop = useContentStore((state) => state.requestHomeScrollTop);
 
@@ -61,12 +58,12 @@ const MainScreens = () => {
             </PagerView>
 
             {/* 9. 遥控器部分：CustomTabBar */}
-            <CustomTabNav
+            {focused ? <CustomTabNav
                 activeIndex={activeIndex}      // 告诉它：现在哪一页是激活的（用来变色）
                 onIndexChange={handleTabPress} // 告诉它：有人按按钮时，执行这个函数
                 onDoubleSelect={handleDoubleSelect}
                 routes={routes}                // 告诉它：有哪些按钮要渲染
-            />
+            /> : null}
         </View>
         </MainTabLayoutProvider>
     )

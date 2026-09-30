@@ -1,9 +1,9 @@
 import { useSettingStore } from '@/src/stores/useSettingStore';
-import { Card, Divider, ListRow, Switch, Text, TopAppBar } from '@/src/ui';
+import { Card, Divider, ListRow, PageScaffold, PageScrollView, Switch, Text, TopAppBar } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import React from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 
 export default function AnimationSettingsScreen() {
     const theme = useTheme();
@@ -13,9 +13,8 @@ export default function AnimationSettingsScreen() {
     const setDisableAnimations = useSettingStore((state) => state.setDisableAnimations);
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            <TopAppBar title="动画设置" back={() => router.back()} />
-            <ScrollView contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}>
+        <PageScaffold topBar={<TopAppBar title="动画设置" back={() => router.back()} />}>
+            <PageScrollView contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}>
                 <SectionCard title="抽屉与全局动画">
                     <ListRow
                         title="子评论抽屉动画"
@@ -31,8 +30,8 @@ export default function AnimationSettingsScreen() {
                         trailing={<Switch value={disableAnimations} interactive={false} />}
                     />
                 </SectionCard>
-            </ScrollView>
-        </View>
+            </PageScrollView>
+        </PageScaffold>
     );
 }
 

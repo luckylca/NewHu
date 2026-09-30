@@ -10,20 +10,37 @@ export interface GlassRuntime {
 export declare function useGlassReducedMotion(): boolean;
 export declare function useGlassAppearance(): GlassRuntime | null;
 /**
- * A route-scoped host for backdrop-mode surfaces. All mounted glass surfaces
- * use the active display cadence, up to the native renderer's 120 Hz ceiling.
+ * A route-scoped host for backdrop-mode surfaces. Keep this boundary mounted
+ * while the route is alive: disabling the theme turns off Glass consumers but
+ * preserves the React parent path for navigation screens and scroll state.
+ * With no consumers, the native provider remains idle. Active surfaces use
+ * display cadence up to the renderer's 120 Hz ceiling.
  */
 export interface GlassMaterialProviderProps {
     children: React.ReactNode;
+    /** Scene layer recorded behind route content. When supplied, route views render as normal siblings. */
+    backdrop?: React.ReactNode;
     style?: StyleProp<ViewStyle>;
     tokens: GlassTokens;
     dark: boolean;
     reducedMotion?: boolean;
 }
-export declare function GlassMaterialProvider({ children, style, tokens, dark, reducedMotion }: GlassMaterialProviderProps): import("react/jsx-runtime").JSX.Element;
+/** Supplies preview optics without mounting another native backdrop recorder. */
+export interface GlassAppearanceProviderProps {
+    children: React.ReactNode;
+    tokens: GlassTokens;
+    dark: boolean;
+    reducedMotion?: boolean;
+}
+export declare function GlassAppearanceProvider({ children, tokens, dark, reducedMotion }: GlassAppearanceProviderProps): import("react/jsx-runtime").JSX.Element;
+export declare function GlassMaterialProvider({ children, backdrop, style, tokens, dark, reducedMotion }: GlassMaterialProviderProps): import("react/jsx-runtime").JSX.Element;
 export interface GlassSurfaceProps {
     variant?: GlassVariant;
-    /** Local stays in-tree; backdrop portals a live Android surface. Android defaults to backdrop. */
+    /** Semantic placement role. The parent owns actual layout and coordinates. */
+    positioning?: 'inFlow' | 'floating';
+    /** Optical sampling source. Backdrop sampling is explicitly opt-in. */
+    sampling?: 'local' | 'backdrop';
+    /** @deprecated Use sampling; kept for source compatibility. */
     renderMode?: 'local' | 'backdrop';
     pointerEvents?: ViewProps['pointerEvents'];
     interactive?: boolean;
@@ -45,6 +62,7 @@ export interface GlassSurfaceProps {
     placement?: 'layout' | 'bottom' | 'center';
     bottomInset?: number;
     zIndex?: number;
+    /** Lightweight layout-only anchor for backdrop placement; never pass business children here. */
     placeholderChildren?: React.ReactNode;
     children?: React.ReactNode;
 }

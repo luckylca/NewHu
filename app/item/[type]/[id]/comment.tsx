@@ -7,7 +7,7 @@ import { useDraftStore } from '@/src/stores/useDraftStore';
 import { useNetworkStore } from '@/src/stores/useNetworkStore';
 import { getCachedComments, getCachedCommentsForContent, getPageState, saveCommentPage } from '@/src/db/repositories/commentRepository';
 import { getContent } from '@/src/db/repositories/contentRepository';
-import { Icon, Menu, Pressable, TopAppBar } from '@/src/ui';
+import { Icon, Menu, PageFlatList, PageScaffold, Pressable, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { readCommentAuthorFlag, type CommentAuthorIdentity } from '@/src/utils/commentAuthor';
@@ -20,7 +20,8 @@ import {
 } from '@/src/utils/commentInsights';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Keyboard, Modal, ScrollView, View } from 'react-native';
+import { Keyboard, Modal, ScrollView, View } from 'react-native';
+import type { FlatList } from 'react-native';
 
 function normalizeComment(item: any): CommentViewModel | null {
     if (!item?.id) return null;
@@ -362,8 +363,51 @@ export default function CommentScreen() {
         });
     }, []);
 
+    const insightFilterHeader = (
+        <View style={{ paddingTop: theme.spacing.sm }}>
+            <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: theme.spacing.sm, paddingBottom: theme.spacing.sm }}
+            >
+                {INSIGHT_FILTERS.map((option) => {
+                    const count = option.value === 'all'
+                        ? insightStats.total
+                        : option.value === 'author'
+                            ? insightStats.author
+                            : option.value === 'high_like'
+                                ? insightStats.highLike
+                                : option.value === 'controversial'
+                                    ? insightStats.controversial
+                                    : insightStats.serious;
+                    return (
+                        <InsightChip
+                            key={option.value}
+                            label={option.label}
+                            count={count}
+                            selected={insightFilter === option.value}
+                            onPress={() => setInsightFilter(option.value)}
+                        />
+                    );
+                })}
+            </ScrollView>
+
+            {insightFilter === 'controversial' ? (
+                <Text type="footnote2" color={theme.colors.onSurfaceVariantSummary} style={{ paddingBottom: theme.spacing.sm }}>
+                    “争议”按回复数与点赞数的结构比例筛选，不代表情绪或立场判断。
+                </Text>
+            ) : null}
+
+            {insightFilter === 'author' && authorLoading ? (
+                <Text type="footnote2" color={theme.colors.onSurfaceVariantSummary} style={{ paddingBottom: theme.spacing.sm }}>
+                    正在聚合已加载范围内的作者回复…
+                </Text>
+            ) : null}
+        </View>
+    );
+
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
+        <PageScaffold topBar={
             <TopAppBar
                 title={`评论 (${commentCount})`}
                 back={() => router.back()}
@@ -375,6 +419,7 @@ export default function CommentScreen() {
                     </View>
                 }
             />
+        }>
 
             <Menu
                 visible={menuVisible}
@@ -388,61 +433,13 @@ export default function CommentScreen() {
                 ]}
             />
 
-            <View style={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm }}>
-                <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={{ gap: theme.spacing.sm, paddingBottom: theme.spacing.sm }}
-                >
-                    {INSIGHT_FILTERS.map((option) => {
-                        const count = option.value === 'all'
-                            ? insightStats.total
-                            : option.value === 'author'
-                                ? insightStats.author
-                                : option.value === 'high_like'
-                                    ? insightStats.highLike
-                                    : option.value === 'controversial'
-                                        ? insightStats.controversial
-                                        : insightStats.serious;
-                        return (
-                            <InsightChip
-                                key={option.value}
-                                label={option.label}
-                                count={count}
-                                selected={insightFilter === option.value}
-                                onPress={() => setInsightFilter(option.value)}
-                            />
-                        );
-                    })}
-                </ScrollView>
-
-                {insightFilter === 'controversial' ? (
-                    <Text
-                        type="footnote2"
-                        color={theme.colors.onSurfaceVariantSummary}
-                        style={{ paddingBottom: theme.spacing.sm }}
-                    >
-                        “争议”按回复数与点赞数的结构比例筛选，不代表情绪或立场判断。
-                    </Text>
-                ) : null}
-
-                {insightFilter === 'author' && authorLoading ? (
-                    <Text
-                        type="footnote2"
-                        color={theme.colors.onSurfaceVariantSummary}
-                        style={{ paddingBottom: theme.spacing.sm }}
-                    >
-                        正在聚合已加载范围内的作者回复…
-                    </Text>
-                ) : null}
-            </View>
-
-            <FlatList
-                ref={listRef}
+            <PageFlatList
+                listRef={listRef}
                 data={visibleComments}
                 keyExtractor={(item) => item.id}
                 renderItem={renderComment}
-                contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm, paddingBottom: theme.spacing.xl, flexGrow: 1 }}
+                contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xl, flexGrow: 1 }}
+                ListHeaderComponent={insightFilterHeader}
                 refreshing={refreshing}
                 onRefresh={() => loadComments(true)}
                 onEndReached={() => loadComments(false)}
@@ -513,6 +510,6 @@ export default function CommentScreen() {
                     onSubmitted={() => loadComments(true)}
                 />
             </Modal>
-        </View>
+        </PageScaffold>
     );
 }

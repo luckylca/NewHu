@@ -1,5 +1,5 @@
 import { HyperGlowBackground } from '@/src/components/effects/HyperGlowBackground';
-import { Card, Text, TopAppBar } from '@/src/ui';
+import { Card, PageContent, PageScaffold, Text, TopAppBar } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import React from 'react';
@@ -11,8 +11,8 @@ export default function HyperGlowDemoScreen() {
     return (
         <View style={styles.root}>
             <HyperGlowBackground />
-            <TopAppBar title="动态柔光预览" back={() => router.back()} />
-            <View style={styles.content}>
+            <PageScaffold topBar={<TopAppBar title="动态柔光预览" back={() => router.back()} />}>
+            <PageContent style={styles.content}>
                 <Card feedback="sink" contentStyle={styles.card}>
                     <Text type="title2" weight="bold" color="#1C1C1E">Hyper Glow</Text>
                     <Text type="body1" color="rgba(28,28,30,0.66)" style={styles.summary}>
@@ -22,7 +22,8 @@ export default function HyperGlowDemoScreen() {
                         系统开启“减少动态效果”后会自动保持静态。
                     </Text>
                 </Card>
-            </View>
+            </PageContent>
+            </PageScaffold>
         </View>
     );
 }

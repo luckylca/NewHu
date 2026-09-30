@@ -1,7 +1,7 @@
 export type GlassVariant =
     | 'surface' | 'card' | 'bar' | 'tabBar' | 'tabBarShell'
     | 'tabSelectionIdle' | 'tabSelectionInteractive' | 'tabSelectionLens' | 'tabPreview'
-    | 'floating' | 'sheet' | 'dialog' | 'control' | 'lens';
+    | 'search' | 'menu' | 'notification' | 'floating' | 'sheet' | 'dialog' | 'control' | 'preferencePanel' | 'lens';
 export type GlassQuality = 'high' | 'balanced' | 'fallback';
 
 export interface GlassMaterialTokens {

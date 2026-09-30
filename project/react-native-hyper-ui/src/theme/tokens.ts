@@ -64,6 +64,9 @@ const lightColors: ThemeColors = {
     background: '#FFFFFF',
     onBackground: '#000000',
     onBackgroundVariant: '#8C93B0',
+    onGlass: '#172438',
+    onGlassSecondary: 'rgba(23,36,56,0.74)',
+    onGlassMuted: 'rgba(23,36,56,0.54)',
 
     surface: '#F7F7F7',
     onSurface: '#000000',
@@ -142,6 +145,9 @@ const darkColors: ThemeColors = {
     background: '#242424',
     onBackground: 'rgba(255,255,255,0.90)',
     onBackgroundVariant: '#787E96',
+    onGlass: '#EDF3FB',
+    onGlassSecondary: 'rgba(237,243,251,0.76)',
+    onGlassMuted: 'rgba(237,243,251,0.55)',
 
     surface: '#000000',
     onSurface: '#F2F2F2',
@@ -320,7 +326,11 @@ export const noGlassTokens: GlassTokens = {
     materials: {
         surface: { radius: 18, blurRadius: 6, refractionHeight: 8, refractionAmount: 10, saturation: 1.1, chromaticAberration: 0.08, highlightAlpha: 0.36, highlightWidth: 1.2 },
         card: { radius: 20, blurRadius: 8, refractionHeight: 10, refractionAmount: 12, saturation: 1.12, chromaticAberration: 0.08, highlightAlpha: 0.4, highlightWidth: 1.3 },
+        preferencePanel: { radius: 22, opacity: 0.9, blurRadius: 4, refractionHeight: 7, refractionAmount: 8, refractionBodyAmount: 1.2, saturation: 1.08, chromaticAberration: 0.06, highlightAlpha: 0.42, highlightWidth: 1.5, tintAlpha: 1, specularStrength: 0.82, fresnelStrength: 0.78, innerShadowStrength: 0.14 },
         bar: { radius: 0, blurRadius: 10, refractionHeight: 12, refractionAmount: 14, saturation: 1.12, chromaticAberration: 0.1, highlightAlpha: 0.46, highlightWidth: 1.3 },
+        search: { radius: 9999, blurRadius: 8, refractionHeight: 8, refractionAmount: 10, saturation: 1.1, chromaticAberration: 0.06, highlightAlpha: 0.4, highlightWidth: 1.2 },
+        menu: { radius: 20, blurRadius: 10, refractionHeight: 10, refractionAmount: 13, saturation: 1.12, chromaticAberration: 0.08, highlightAlpha: 0.44, highlightWidth: 1.4 },
+        notification: { radius: 20, blurRadius: 9, refractionHeight: 9, refractionAmount: 12, saturation: 1.1, chromaticAberration: 0.06, highlightAlpha: 0.42, highlightWidth: 1.3 },
         tabBar: { radius: 32, blurRadius: 8, refractionHeight: 12, refractionAmount: 14, saturation: 1.12, chromaticAberration: 0.1, highlightAlpha: 0.5, highlightWidth: 1.5 },
         tabBarShell: { radius: 32, opacity: 0.7, blurRadius: 7, refractionHeight: 11, refractionAmount: 13, saturation: 1.12, chromaticAberration: 0.1, highlightAlpha: 0.5, highlightWidth: 1.5 },
         tabSelectionIdle: { radius: 24, opacity: 0.7, blurRadius: 4, refractionHeight: 9, refractionAmount: 12, saturation: 1.12, chromaticAberration: 0.12, highlightAlpha: 0.58, highlightWidth: 1.8 },

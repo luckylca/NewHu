@@ -2,9 +2,10 @@ import { PressIndication } from '../primitives';
 import { cardSink, cardTilt } from '../motion';
 import { useReducedMotionPreference } from '../motion/MotionProvider';
 import { useTheme } from '../theme';
-import React, { useCallback, useRef } from 'react';
+import { GlassSurface } from '@newhu/react-native-liquid-glass';
+import React, { useCallback, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { Pressable } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 import type { GestureResponderEvent, LayoutChangeEvent, StyleProp, ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useDerivedValue, useSharedValue, withSpring } from 'react-native-reanimated';
 
@@ -32,6 +33,7 @@ export interface AppCardProps {
     showIndication?: boolean;
     /** Latch the press feedback on (e.g. while a long-press dialog is open). */
     holdDown?: boolean;
+    accessibilityLabel?: string;
     onPress?: () => void;
     onPressIn?: () => void;
     onLongPress?: (event: GestureResponderEvent) => void;
@@ -44,7 +46,7 @@ const SINK_AMOUNT = 0.94;
 const TILT_AMOUNT = 9;
 const TILT_PERSPECTIVE_FACTOR = 1.6;
 
-export const Card = React.memo(function Card({ feedback = 'sink', showIndication, holdDown, onPress, onPressIn, onLongPress, style, contentStyle, children }: AppCardProps) {
+export const Card = React.memo(function Card({ feedback = 'sink', showIndication, holdDown, accessibilityLabel, onPress, onPressIn, onLongPress, style, contentStyle, children }: AppCardProps) {
     const theme = useTheme();
     const reducedMotion = useReducedMotionPreference();
     const radius = theme.components.card.radius;
@@ -60,6 +62,38 @@ export const Card = React.memo(function Card({ feedback = 'sink', showIndication
     const longPressFired = useRef(false);
 
     const interactive = feedback === 'tilt' || !!onPress || !!onLongPress;
+    const usesLocalGlass = theme.presentation.content.cardMaterial === 'glass' && theme.glass.enabled;
+    const glassContentStyle = useMemo(() => {
+        const flattened = StyleSheet.flatten(contentStyle);
+        if (!flattened || !('backgroundColor' in flattened)) return contentStyle;
+        // The Glass material owns the card fill. Preserve content layout while
+        // preventing legacy solid-card paint from covering the local shader.
+        const layoutStyle = { ...flattened };
+        delete layoutStyle.backgroundColor;
+        return layoutStyle;
+    }, [contentStyle]);
+    const glassContainerStyle = useMemo(() => {
+        const flattened = StyleSheet.flatten(contentStyle);
+        if (!flattened) return undefined;
+
+        // Card used to apply contentStyle to its root view. Keep the sizing
+        // part of that contract on the GlassSurface frame so fixed-height
+        // cards still fill their slot; row/padding/alignment stay on content.
+        const containerStyle: ViewStyle = {};
+        const sizingKeys: Array<keyof ViewStyle> = [
+            'flex', 'flexGrow', 'flexShrink', 'flexBasis', 'alignSelf',
+            'width', 'height', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight',
+        ];
+        for (const key of sizingKeys) {
+            const value = flattened[key];
+            if (value !== undefined) {
+                // ViewStyle has heterogeneous value types, but indexed values
+                // are copied back to the same key without changing their type.
+                (containerStyle as Record<string, unknown>)[key] = value;
+            }
+        }
+        return containerStyle;
+    }, [contentStyle]);
 
     const engaged = useDerivedValue(() => (pressed.value === 1 || holdDown ? 1 : 0));
 
@@ -126,29 +160,49 @@ export const Card = React.memo(function Card({ feedback = 'sink', showIndication
     return (
         <Pressable
             accessibilityRole={interactive ? 'button' : undefined}
+            accessibilityLabel={accessibilityLabel}
             onPress={interactive ? handlePress : undefined}
             onPressIn={interactive ? handlePressIn : undefined}
             onPressOut={interactive ? handlePressOut : undefined}
             onLongPress={interactive && !!onLongPress ? handleLongPress : undefined}
+            onLayout={feedback === 'tilt' ? onLayout : undefined}
             style={style}
         >
-            <Animated.View
-                onLayout={feedback === 'tilt' ? onLayout : undefined}
-                style={[
-                    {
-                        backgroundColor: theme.colors.surfaceContainer,
-                        borderRadius: radius,
-                        overflow: 'hidden',
-                        flexDirection: 'column',
-                    },
-                    feedback === 'tilt' ? { transformOrigin: '50% 50%' } : undefined,
-                    contentStyle,
-                    animatedStyle,
-                ]}
-            >
-                {children}
-                {showIndication && <PressIndication pressed={pressed} color={theme.colors.onBackground} radius={radius} />}
-            </Animated.View>
+            {usesLocalGlass ? (
+                <GlassSurface
+                    variant="card"
+                    positioning="inFlow"
+                    sampling="local"
+                    style={[
+                        { width: '100%', borderRadius: radius, overflow: 'hidden' },
+                        glassContainerStyle,
+                        feedback === 'tilt' ? { transformOrigin: '50% 50%' } : undefined,
+                        { backgroundColor: 'transparent' },
+                    ]}
+                    contentStyle={glassContentStyle}
+                    animatedStyle={animatedStyle}
+                >
+                    {children}
+                    {showIndication && <PressIndication pressed={pressed} color={theme.colors.onBackground} radius={radius} />}
+                </GlassSurface>
+            ) : (
+                <Animated.View
+                    style={[
+                        {
+                            backgroundColor: theme.colors.surfaceContainer,
+                            borderRadius: radius,
+                            overflow: 'hidden',
+                            flexDirection: 'column',
+                        },
+                        feedback === 'tilt' ? { transformOrigin: '50% 50%' } : undefined,
+                        contentStyle,
+                        animatedStyle,
+                    ]}
+                >
+                    {children}
+                    {showIndication && <PressIndication pressed={pressed} color={theme.colors.onBackground} radius={radius} />}
+                </Animated.View>
+            )}
         </Pressable>
     );
 });

@@ -13,6 +13,8 @@ import {
     Button,
     Card,
     Dialog,
+    PageScaffold,
+    PageScrollView,
     SegmentedControl,
     TopAppBar,
 } from '@/src/ui';
@@ -22,7 +24,7 @@ import { useTheme } from '@/src/ui/theme';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 
 const FILTER_STATES: (KnowledgeReviewState | null)[] = [
     null,
@@ -84,9 +86,11 @@ export default function KnowledgeCardsScreen() {
     };
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            <TopAppBar title="知识卡片" back={() => router.back()} />
-
+        <PageScaffold topBar={<TopAppBar title="知识卡片" back={() => router.back()} />}>
+            <PageScrollView
+                contentContainerStyle={{ gap: theme.spacing.md, paddingBottom: theme.spacing.xxl }}
+                showsVerticalScrollIndicator={false}
+            >
             <View style={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md }}>
                 <SegmentedControl
                     tabs={['全部', '待复习', '复习中', '已掌握']}
@@ -110,14 +114,7 @@ export default function KnowledgeCardsScreen() {
                 </Card>
             </View>
 
-            <ScrollView
-                contentContainerStyle={{
-                    padding: theme.spacing.lg,
-                    paddingBottom: theme.spacing.xxl,
-                    gap: theme.spacing.md,
-                }}
-                showsVerticalScrollIndicator={false}
-            >
+            <View style={{ padding: theme.spacing.lg, gap: theme.spacing.md }}>
                 {loading ? (
                     <View style={{ paddingVertical: theme.spacing.xxl, alignItems: 'center' }}>
                         <Text type="body1" color={theme.colors.onSurfaceVariantSummary}>
@@ -196,13 +193,10 @@ export default function KnowledgeCardsScreen() {
                             </Text>
 
                             {card.understandingText ? (
-                                <View
-                                    style={{
-                                        marginTop: theme.spacing.md,
-                                        padding: theme.spacing.md,
-                                        borderRadius: theme.radius.component,
-                                        backgroundColor: theme.colors.surfaceContainerHigh,
-                                    }}
+                                <Card
+                                    feedback="none"
+                                    style={{ marginTop: theme.spacing.md }}
+                                    contentStyle={{ padding: theme.spacing.md, backgroundColor: theme.colors.surfaceContainerHigh }}
                                 >
                                     <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
                                         我的理解
@@ -214,7 +208,7 @@ export default function KnowledgeCardsScreen() {
                                     >
                                         {card.understandingText}
                                     </Text>
-                                </View>
+                                </Card>
                             ) : null}
 
                             {card.tags.length ? (
@@ -265,7 +259,8 @@ export default function KnowledgeCardsScreen() {
                         </Card>
                     ))
                 )}
-            </ScrollView>
+            </View>
+            </PageScrollView>
 
             <KnowledgeCardEditorSheet
                 visible={editingCard != null}
@@ -292,6 +287,6 @@ export default function KnowledgeCardsScreen() {
                     </Button>
                 </View>
             </Dialog>
-        </View>
+        </PageScaffold>
     );
 }

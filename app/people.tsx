@@ -1,5 +1,5 @@
 import { followUser, getUserActivities, getUserInfo, unfollowUser } from "@/src/api/ZhihuApi";
-import { Button, Divider, Icon, TopAppBar } from "@/src/ui";
+import { Button, Divider, Icon, PageContent, PageFlatList, PageScaffold, TopAppBar } from "@/src/ui";
 import { notify } from "@/src/stores/useNotificationStore";
 import { Text } from "@/src/ui/primitives";
 import { useTheme } from "@/src/ui/theme";
@@ -7,7 +7,7 @@ import { formatProfileText } from '@/src/utils/profileText';
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
-import { FlatList, View } from "react-native";
+import { View } from "react-native";
 import { RenderItem } from "./home";
 
 export type PeopleParams = {
@@ -285,10 +285,9 @@ const PeopleScreen = () => {
     }, [fetchActivities, urlToken])
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
-            <TopAppBar title={userInfo ? userInfo.name : "人物信息"} back={() => router.back()} />
+        <PageScaffold topBar={<TopAppBar title={userInfo ? userInfo.name : "人物信息"} back={() => router.back()} />}>
             {userInfo ? (
-                <FlatList
+                <PageFlatList
                     data={activities}
                     keyExtractor={(item, index) => item.id + index}
                     contentContainerStyle={{ paddingBottom: 40 }}
@@ -329,11 +328,11 @@ const PeopleScreen = () => {
                     )}
                 />
             ) : (
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <PageContent style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                     <Text type="body1" color={primaryText}>Loading...</Text>
-                </View>
+                </PageContent>
             )}
-        </View>
+        </PageScaffold>
     )
 }
 

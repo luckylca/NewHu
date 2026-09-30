@@ -15,14 +15,14 @@ import {
 } from '@/src/semantic-v2/runtimeAssets';
 import { resetSemanticV2Runtime } from '@/src/semantic-v2/badgeSelector';
 import { notify } from '@/src/stores/useNotificationStore';
-import { Button, Card, Dialog, Divider, Icon, Pressable, TopAppBar } from '@/src/ui';
+import { Button, Card, Dialog, Divider, Icon, PageFlatList, PageScaffold, Pressable, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import type { IconName } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { storageManage } from '@/src/ui/motion';
 import { router } from 'expo-router';
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, InteractionManager, View } from 'react-native';
+import { InteractionManager, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 type CacheSummary = Awaited<ReturnType<typeof getCacheSummary>>;
@@ -254,8 +254,7 @@ export default function StorageManagementScreen() {
     }, [handleItemPress, items.length, managing, selected]);
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            <TopAppBar
+        <PageScaffold topBar={<TopAppBar
                 title="存储管理"
                 back={() => router.back()}
                 actions={items.length > 0 ? (
@@ -263,8 +262,8 @@ export default function StorageManagementScreen() {
                         <Text type="headline1" color={theme.colors.primary}>{managing ? '完成' : '管理'}</Text>
                     </Pressable>
                 ) : null}
-            />
-            <FlatList
+            />}>
+            <PageFlatList
                 data={items}
                 keyExtractor={(item) => `${item.contentType}:${item.contentId}`}
                 renderItem={renderItem}
@@ -326,7 +325,7 @@ export default function StorageManagementScreen() {
                     </Button>
                 </View>
             </Dialog>
-        </View>
+        </PageScaffold>
     );
 }
 

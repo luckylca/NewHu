@@ -1,7 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.setLiquidGlassPerformanceTelemetryEnabled = exports.getLiquidGlassPerformanceStats = exports.GLASS_TAB_BAR_CONTENT_INSET = exports.GlassTabBar = exports.GlassTabLens = exports.useGlassReducedMotion = exports.useGlassAppearance = exports.GlassSurface = exports.GlassOverlay = exports.GlassMaterialProvider = void 0;
+exports.setLiquidGlassPerformanceTelemetryEnabled = exports.getLiquidGlassPerformanceStats = exports.GLASS_TAB_BAR_CONTENT_INSET = exports.GlassTabBar = exports.GlassTabLens = exports.useGlassReducedMotion = exports.useGlassAppearance = exports.GlassSurface = exports.GlassOverlay = exports.GlassMaterialProvider = exports.GlassAppearanceProvider = void 0;
 var GlassSurface_1 = require("./GlassSurface");
+Object.defineProperty(exports, "GlassAppearanceProvider", { enumerable: true, get: function () { return GlassSurface_1.GlassAppearanceProvider; } });
 Object.defineProperty(exports, "GlassMaterialProvider", { enumerable: true, get: function () { return GlassSurface_1.GlassMaterialProvider; } });
 Object.defineProperty(exports, "GlassOverlay", { enumerable: true, get: function () { return GlassSurface_1.GlassOverlay; } });
 Object.defineProperty(exports, "GlassSurface", { enumerable: true, get: function () { return GlassSurface_1.GlassSurface; } });

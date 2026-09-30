@@ -37,6 +37,7 @@ export interface AppButtonProps {
 export const Button = memo(function Button({ type = 'default', onPress, disabled, style, contentStyle, children }: AppButtonProps) {
     const theme = useTheme();
     const c = theme.components.button;
+    const useGlassMaterial = theme.presentation.controls.buttonMaterial === 'glass' && theme.glass.enabled;
     const pressed = useSharedValue(0);
 
     const backgroundColor = disabled
@@ -47,13 +48,16 @@ export const Button = memo(function Button({ type = 'default', onPress, disabled
             ? theme.colors.primary
             : theme.colors.secondaryVariant;
 
-    const textColor = disabled
+    const materialTextColor = disabled
         ? type === 'primary'
             ? theme.colors.disabledOnPrimaryButton
             : theme.colors.disabledOnSecondaryVariant
         : type === 'primary'
             ? theme.colors.onPrimary
             : theme.colors.onSecondaryVariant;
+    const textColor = useGlassMaterial
+        ? disabled ? theme.colors.onGlassMuted : theme.colors.onGlass
+        : materialTextColor;
 
     const isString = typeof children === 'string';
     const placeholderChildren = (
@@ -84,15 +88,20 @@ export const Button = memo(function Button({ type = 'default', onPress, disabled
                     paddingHorizontal: c.paddingHorizontal,
                     paddingVertical: c.paddingVertical,
                     borderRadius: c.radius,
-                    backgroundColor: theme.glass.enabled ? 'transparent' : backgroundColor,
-                    flex: theme.glass.enabled ? 1 : undefined,
+                    backgroundColor: useGlassMaterial ? 'transparent' : backgroundColor,
                     alignItems: 'center',
                     justifyContent: 'center',
                     overflow: 'hidden',
                 },
-                theme.glass.enabled ? undefined : style,
+                useGlassMaterial ? undefined : style,
             ]}
         >
+            {useGlassMaterial && type === 'primary' ? (
+                <View
+                    pointerEvents="none"
+                    style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: c.radius, backgroundColor: theme.colors.primary, opacity: 0.14 }}
+                />
+            ) : null}
             <PressIndication pressed={pressed} color={theme.colors.onBackground} radius={c.radius} />
             <View style={[{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }, contentStyle]}>
                 {isString ? (
@@ -106,9 +115,16 @@ export const Button = memo(function Button({ type = 'default', onPress, disabled
         </Pressable>
     );
 
-    if (theme.glass.enabled) {
+    if (useGlassMaterial) {
         return (
-            <GlassSurface variant="surface" interactive={!disabled} style={style} placeholderChildren={placeholderChildren}>
+            <GlassSurface
+                variant="control"
+                positioning="inFlow"
+                sampling="local"
+                interactive={!disabled}
+                style={style}
+                placeholderChildren={placeholderChildren}
+            >
                 {button}
             </GlassSurface>
         );

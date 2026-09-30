@@ -15,10 +15,11 @@ import { useLaterReadStore } from "@/src/stores/useLaterReadStore";
 import { useNetworkStore } from "@/src/stores/useNetworkStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, FlatList, Image, useWindowDimensions, View } from "react-native";
+import { Animated, Image, useWindowDimensions, View } from "react-native";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useFocusEffect } from "@react-navigation/native";
-import { Divider, Icon, ListRow, Menu, Pressable, TopAppBar } from "@/src/ui";
+import { Card, Divider, Icon, ListRow, Menu, PageContent, PageFlatList, PageScaffold, Pressable, TopAppBar } from "@/src/ui";
 import { notify } from '@/src/stores/useNotificationStore';
 import { PressIndication, Text } from "@/src/ui/primitives";
 import type { IconName } from "@/src/ui/primitives";
@@ -389,6 +390,7 @@ export default function Item() {
     const networkStatus = useNetworkStore((state) => state.status);
     const router = useRouter();
     const theme = useTheme();
+    const insets = useSafeAreaInsets();
     const primaryText = theme.colors.onBackground;
     const secondaryText = theme.colors.onSurfaceSecondary;
 
@@ -900,30 +902,52 @@ export default function Item() {
     );
 
 
-    if (!hydrated) {
-        return <LoadingView />;
-    }
+    const topBarHeight = insets.top + theme.components.navigationBar.topBarCollapsedHeight;
+    const topBar = (
+        <TopAppBar
+            title={type === 'answer' ? '回答详情' : '文章详情'}
+            back={() => router.back()}
+            actions={cookies && readData ? (
+                <View ref={menuBtnRef} collapsable={false}>
+                    <Pressable
+                        accessibilityRole="button"
+                        onPress={openHeaderMenu}
+                        hitSlop={8}
+                        style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 40 }}
+                    >
+                        <Icon name="dots-vertical" size={24} color={theme.colors.onBackground} />
+                    </Pressable>
+                </View>
+            ) : undefined}
+        />
+    );
+    const loadingPage = (message?: string) => (
+        <PageScaffold topBar={topBar} topBarHeight={topBarHeight}>
+            <PageContent style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                <LoadingView message={message} />
+            </PageContent>
+        </PageScaffold>
+    );
 
-    if (!readData && detailLoading) {
-        return <LoadingView message="正在加载详情…" />;
-    }
+    if (!hydrated) return loadingPage();
+    if (!readData && detailLoading) return loadingPage('正在加载详情…');
 
     if (!readData) {
         return (
-            <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-                <TopAppBar title="详情" back={() => router.back()} />
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.spacing.xl }}>
+            <PageScaffold topBar={topBar} topBarHeight={topBarHeight}>
+                <PageContent style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.spacing.xl }}>
                     <Text type="body1" color={secondaryText} style={{ textAlign: 'center' }}>
                         当前没有网络，且本地没有这篇内容。联网后可重新打开。
                     </Text>
-                </View>
-            </View>
+                </PageContent>
+            </PageScaffold>
         );
     }
 
     const title = type === 'answer' ? readData.questionTitle : (readData.title || '未知标题');
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+        <PageScaffold topBar={topBar} topBarHeight={topBarHeight} style={{ backgroundColor: theme.colors.background }}>
+        <View style={{ flex: 1 }}>
             <ImageReanimatedModal
                 visible={modalVisible}
                 url={imageUrl}
@@ -941,23 +965,6 @@ export default function Item() {
                 onClose={() => setVideoModalVisible(false)}
             />
 
-            {/* 顶部导航栏 */}
-            <TopAppBar
-                title={type === 'answer' ? '回答详情' : '文章详情'}
-                back={() => router.back()}
-                actions={cookies ? (
-                    <View ref={menuBtnRef} collapsable={false}>
-                        <Pressable
-                            accessibilityRole="button"
-                            onPress={openHeaderMenu}
-                            hitSlop={8}
-                            style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 40 }}
-                        >
-                            <Icon name="dots-vertical" size={24} color={theme.colors.onBackground} />
-                        </Pressable>
-                    </View>
-                ) : undefined}
-            />
             <Menu
                 visible={Boolean(cookies && menuVisible)}
                 onClose={() => setMenuVisible(false)}
@@ -986,8 +993,9 @@ export default function Item() {
             />
 
             <GestureDetector gesture={combinedGesture}>
-                <FlatList
-                    ref={articleListRef}
+                <View style={{ flex: 1 }}>
+                <PageFlatList
+                    listRef={articleListRef}
                     data={articleChunks}
                     keyExtractor={(_, index) => `${readData.id}:${index}`}
                     renderItem={({ item: chunk }) => (
@@ -1064,11 +1072,11 @@ export default function Item() {
                             style={{ paddingHorizontal: 0, marginBottom: 4 }}
                         />
                         {!cookies && !readData.content ? (
-                            <View style={{ padding: 14, borderRadius: theme.radius.component, backgroundColor: theme.colors.surfaceContainer, marginBottom: 12 }}>
+                            <Card feedback="none" style={{ marginBottom: 12 }} contentStyle={{ padding: 14 }}>
                                 <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
                                     回答和文章详情统一走知乎 Web 端。若游客访问的公开页面不提供完整正文，这里会保留推荐卡片摘要。
                                 </Text>
-                            </View>
+                            </Card>
                         ) : null}
                         <Divider style={{ marginVertical: 16 }} />
                     </>
@@ -1089,13 +1097,14 @@ export default function Item() {
                         <View style={{ height: 40 }} />
                     </>
                 ) : (
-                    <View style={{ marginTop: 16, marginBottom: 24, padding: 14, borderRadius: theme.radius.component, backgroundColor: theme.colors.surfaceContainer }}>
+                    <Card feedback="none" style={{ marginTop: 16, marginBottom: 24 }} contentStyle={{ padding: 14 }}>
                         <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
                             游客模式显示 Android 推荐卡片提供的公开摘要。知乎会对部分回答和文章限制匿名全文阅读。
                         </Text>
-                    </View>
+                    </Card>
                 )}
                 />
+                </View>
             </GestureDetector>
 
             {localSummaryVisible ? (
@@ -1135,5 +1144,6 @@ export default function Item() {
             ))}
 
         </View>
+        </PageScaffold>
     );
 }

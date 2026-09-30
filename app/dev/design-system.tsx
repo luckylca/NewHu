@@ -1,13 +1,14 @@
-import { BottomSheet, Button, Card, Checkbox, Dialog, GlassSurface, Icon, Input, ListRow, Menu, NavigationBar, NumberWheel, ProgressIndicator, SearchBar, SegmentedControl, Slider, Snackbar, Switch, TopAppBar } from '@/src/ui';
+import { BottomSheet, Button, Card, Checkbox, Dialog, GlassMaterialProvider, GlassSurface, Icon, Input, ListRow, Menu, NavigationBar, NumberWheel, PageScaffold, PageScrollView, PreferenceGroup, ProgressIndicator, SearchBar, SegmentedControl, Slider, Snackbar, Switch, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { ThemeProvider, liquidGlassDarkTheme, liquidGlassLightTheme, useTheme } from '@/src/ui/theme';
-import { GlassMaterialProvider, GlassTabBar } from '@newhu/react-native-liquid-glass';
+import { GlassAppearanceProvider, GlassTabBar } from '@newhu/react-native-liquid-glass';
 import type { GlassQuality } from '@newhu/react-native-liquid-glass';
 import { MotionProvider } from '@/src/ui/motion';
 import { router } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
+import type { LayoutChangeEvent } from 'react-native';
 
 /**
  * UI Showcase — the single page where every Design System component is
@@ -15,10 +16,10 @@ import { Pressable, ScrollView, View } from 'react-native';
  * against the live theme. The visual target is miuix (HyperOS), not Material.
  */
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, children, onLayout }: { title: string; children: ReactNode; onLayout?: (event: LayoutChangeEvent) => void }) {
     const theme = useTheme();
     return (
-        <View style={{ marginBottom: 24 }}>
+        <View onLayout={onLayout} style={{ marginBottom: 24 }}>
             <Text type="title4" weight="medium" color={theme.colors.onSurfaceVariantActions} style={{ marginBottom: 8, paddingHorizontal: 16 }}>
                 {title}
             </Text>
@@ -81,7 +82,7 @@ export default function DesignSystemShowcase() {
 
     return (
         <ThemeProvider value={previewTheme}>
-            <GlassMaterialProvider
+            <GlassAppearanceProvider
                 tokens={{ ...previewTheme.glass, quality }}
                 dark={dark}
                 reducedMotion={reducedMotion}
@@ -96,7 +97,7 @@ export default function DesignSystemShowcase() {
                         onReducedMotionChange={setReducedMotion}
                     />
                 </MotionProvider>
-            </GlassMaterialProvider>
+            </GlassAppearanceProvider>
         </ThemeProvider>
     );
 }
@@ -133,25 +134,24 @@ function DesignSystemShowcaseContent({
     const [searchExpanded, setSearchExpanded] = useState(false);
     const [inputValue, setInputValue] = useState('');
     const [navIndex, setNavIndex] = useState(0);
-
     // Menu anchoring
     const menuRef = useRef<View>(null);
     const [menuVisible, setMenuVisible] = useState(false);
     const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number; width: number; height: number } | undefined>();
     const [glassShifted, setGlassShifted] = useState(false);
-    const [glassRenderMode, setGlassRenderMode] = useState<'local' | 'backdrop'>('local');
+    const [glassRenderMode, setGlassRenderMode] = useState<'local' | 'backdrop'>('backdrop');
 
-    const openMenu = () => {
-        menuRef.current?.measureInWindow((x, y, width, height) => {
+    const openMenuFrom = (ref: React.RefObject<View | null>) => {
+        ref.current?.measureInWindow((x, y, width, height) => {
             setMenuAnchor({ x, y, width, height });
             setMenuVisible(true);
         });
     };
+    const openMenu = () => openMenuFrom(menuRef);
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
-            <TopAppBar title="UI Showcase" back={() => router.back()} />
-            <ScrollView contentContainerStyle={{ paddingBottom: 48, backgroundColor: theme.colors.surface }}>
+        <PageScaffold topBar={<TopAppBar title="UI Showcase" back={() => router.back()} />}>
+            <PageScrollView contentContainerStyle={{ paddingBottom: 48 }}>
                 <Section title="Liquid Glass Preview Settings">
                     <View style={{ paddingHorizontal: 16, gap: 10 }}>
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -180,7 +180,13 @@ function DesignSystemShowcaseContent({
                 </Section>
 
                 <Section title="Liquid Glass · local / live backdrop renderer">
-                    <View style={{ marginHorizontal: 16, height: 232, borderRadius: 24, overflow: 'hidden', backgroundColor: theme.colors.surfaceContainerHighest }}>
+                    <GlassMaterialProvider
+                        tokens={{ ...theme.glass, quality }}
+                        dark={dark}
+                        reducedMotion={reducedMotion}
+                        style={{ marginHorizontal: 16, height: 232, borderRadius: 24, overflow: 'hidden' }}
+                    >
+                    <View style={{ flex: 1, borderRadius: 24, overflow: 'hidden', backgroundColor: theme.colors.surfaceContainerHighest }}>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ alignItems: 'stretch' }}>
                             {['#E95858', '#E99538', '#E0C33C', '#3DAB80', '#319BB7', '#526DD1', '#9162C9', '#D45F9C'].map((color, index) => (
                                 <View key={index} style={{ width: 76, padding: 6, gap: 8, justifyContent: 'space-between', backgroundColor: color }}>
@@ -204,7 +210,8 @@ function DesignSystemShowcaseContent({
                         </ScrollView>
                         <GlassSurface
                             variant="floating"
-                            renderMode={glassRenderMode}
+                            positioning="floating"
+                            sampling={glassRenderMode}
                             interactive
                             style={{ position: 'absolute', left: glassShifted ? 132 : 18, top: 18, width: 196, height: 126, borderRadius: 24 }}
                             placeholderChildren={<View style={{ width: 196, height: 126 }} />}
@@ -214,20 +221,12 @@ function DesignSystemShowcaseContent({
                                 accessibilityLabel="Liquid Glass material preview"
                                 style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 16 }}
                             >
-                                <Text type="headline1" weight="medium" color={theme.colors.onBackground}>Liquid Glass</Text>
-                                <Text type="footnote1" color={theme.colors.onSurface}>Skia shader · 局部光学 · 边缘高光</Text>
+                                <Text type="headline1" weight="medium" color={theme.colors.onGlass}>Liquid Glass</Text>
+                                <Text type="footnote1" color={theme.colors.onGlassSecondary}>Skia shader · 局部光学 · 边缘高光</Text>
                             </Pressable>
                         </GlassSurface>
-                        <GlassSurface
-                            variant="floating"
-                            style={{ position: 'absolute', right: 12, bottom: 12, width: 80, height: 64, borderRadius: 20 }}
-                            placeholderChildren={<View style={{ width: 80, height: 64 }} />}
-                        >
-                            <View pointerEvents="none" style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                                <Text type="footnote2" weight="medium" color={theme.colors.onBackground}>LIVE</Text>
-                            </View>
-                        </GlassSurface>
                     </View>
+                    </GlassMaterialProvider>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 10 }}>
                         <Button onPress={() => setGlassShifted((shifted) => !shifted)}>移动玻璃</Button>
                         <Button onPress={() => setGlassRenderMode((mode) => mode === 'local' ? 'backdrop' : 'local')}>
@@ -280,6 +279,8 @@ function DesignSystemShowcaseContent({
                     <View style={{ paddingHorizontal: 16 }}>
                         <Swatch name="primary" value={theme.colors.primary} />
                         <Swatch name="onPrimary" value={theme.colors.onPrimary} />
+                        <Swatch name="onGlass" value={theme.colors.onGlass} />
+                        <Swatch name="onGlassSecondary" value={theme.colors.onGlassSecondary} />
                         <Swatch name="secondaryVariant" value={theme.colors.secondaryVariant} />
                         <Swatch name="background" value={theme.colors.background} />
                         <Swatch name="surface" value={theme.colors.surface} />
@@ -318,7 +319,7 @@ function DesignSystemShowcaseContent({
                 </Section>
 
                 {/* Card */}
-                <Section title="Card">
+                <Section title="Card · HyperOS solid / Liquid Glass local material">
                     <View style={{ paddingHorizontal: 16, gap: 12 }}>
                         <Card feedback="sink" onPress={() => {}}>
                             <View style={{ padding: 16 }}>
@@ -416,12 +417,12 @@ function DesignSystemShowcaseContent({
                 </Section>
 
                 {/* ListRow */}
-                <Section title="ListRow">
-                    <View style={{ backgroundColor: theme.colors.surfaceContainer, borderRadius: theme.radius.component, marginHorizontal: 16, overflow: 'hidden' }}>
+                <Section title="ListRow · PreferenceGroup">
+                    <PreferenceGroup title="偏好项" style={{ marginHorizontal: 16, marginTop: 0 }}>
                         <ListRow title="开启某项" summary="带 Switch 的行" trailing={<Switch value={switchOn} interactive={false} />} onPress={() => setSwitchOn(!switchOn)} />
                         <ListRow title="普通行" summary="summary 说明文字" onPress={() => {}} />
                         <ListRow title="禁用行" summary="disabled 状态" disabled />
-                    </View>
+                    </PreferenceGroup>
                 </Section>
 
                 {/* Input */}
@@ -461,7 +462,7 @@ function DesignSystemShowcaseContent({
                         />
                     </View>
                 </Section>
-            </ScrollView>
+            </PageScrollView>
 
             <Dialog
                 visible={dialogOpen}
@@ -502,6 +503,6 @@ function DesignSystemShowcaseContent({
                 onAction={() => setSnackVisible(false)}
                 onDismiss={() => setSnackVisible(false)}
             />
-        </View>
+        </PageScaffold>
     );
 }

@@ -1,8 +1,8 @@
-import { Card, SegmentedControl, Text, TopAppBar } from '@/src/ui';
+import { Card, PageScaffold, PageScrollView, SegmentedControl, Text, TopAppBar } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { router, useLocalSearchParams } from 'expo-router';
 import React from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 
 type LegalType = 'privacy' | 'terms';
 
@@ -34,9 +34,8 @@ export default function LegalScreen() {
     const copy = COPY[type];
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            <TopAppBar title={copy.title} back={() => router.back()} />
-            <ScrollView contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }} showsVerticalScrollIndicator={false}>
+        <PageScaffold topBar={<TopAppBar title={copy.title} back={() => router.back()} />}>
+            <PageScrollView contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }} showsVerticalScrollIndicator={false}>
                 <SegmentedControl
                     tabs={['隐私政策', '用户协议']}
                     selected={type === 'privacy' ? 0 : 1}
@@ -53,7 +52,7 @@ export default function LegalScreen() {
                 <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary} style={{ marginTop: theme.spacing.lg, textAlign: 'center' }}>
                     当前版本：2026-08-22
                 </Text>
-            </ScrollView>
-        </View>
+            </PageScrollView>
+        </PageScaffold>
     );
 }

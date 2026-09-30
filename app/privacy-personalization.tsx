@@ -1,12 +1,12 @@
 import { clearProductV1Personalization } from '@/src/product-v1';
 import { useConsentStore } from '@/src/stores/useConsentStore';
 import { useNotificationStore } from '@/src/stores/useNotificationStore';
-import { Button, Card, Dialog, Divider, ListRow, Switch, Text, TopAppBar } from '@/src/ui';
+import { Button, Card, Dialog, Divider, ListRow, PageScaffold, PageScrollView, Switch, Text, TopAppBar } from '@/src/ui';
 import { toggle } from '@/src/utils/haptics';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import React from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 
 export default function PrivacyPersonalizationScreen() {
     const theme = useTheme();
@@ -32,9 +32,8 @@ export default function PrivacyPersonalizationScreen() {
     };
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            <TopAppBar title="隐私与个性化" back={() => router.back()} />
-            <ScrollView contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}>
+        <PageScaffold topBar={<TopAppBar title="隐私与个性化" back={() => router.back()} />}>
+            <PageScrollView contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}>
                 <View style={{ marginTop: theme.spacing.lg }}>
                     <Card feedback="none" contentStyle={{ overflow: 'hidden' }}>
                         <View style={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: theme.spacing.xs }}>
@@ -69,13 +68,13 @@ export default function PrivacyPersonalizationScreen() {
                 <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary} style={{ margin: theme.spacing.lg, lineHeight: 20 }}>
                     开启后仅在本机处理曝光、打开、阅读进度、点赞、收藏与不喜欢信号；不会分析评论内容，也不会调用外部大模型。
                 </Text>
-            </ScrollView>
+            </PageScrollView>
             <Dialog visible={confirmClear} onClose={() => setConfirmClear(false)} title="清除兴趣画像？" summary="阅读事件和本地模型数据将被删除，离线缓存与浏览内容不受影响。">
                 <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: theme.spacing.sm }}>
                     <Button onPress={() => setConfirmClear(false)}>取消</Button>
                     <Button type="primary" onPress={() => void clearProfile()}>清除</Button>
                 </View>
             </Dialog>
-        </View>
+        </PageScaffold>
     );
 }

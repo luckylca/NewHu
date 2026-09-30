@@ -1,5 +1,8 @@
 import { Platform } from 'react-native';
 import { componentTokens, opacity, spacing, typography } from './tokens';
+import { liquidGlassPresentation } from './presentation';
+import { liquidGlassWallpaperTokens } from './wallpaper';
+import { liquidGlassForegroundColors } from './glassColors';
 import type { AppTheme, GlassTokens, ThemeColors, ThemeFonts, ThemeRadius } from './types';
 
 const lightColors: ThemeColors = {
@@ -13,7 +16,8 @@ const lightColors: ThemeColors = {
     disabledOnSecondaryVariant: '#8994A3', secondaryContainer: '#E9EFF7', onSecondaryContainer: '#50627A',
     secondaryContainerVariant: '#E2EAF5', onSecondaryContainerVariant: '#53657D',
     tertiaryContainer: '#E0F0F5', onTertiaryContainer: '#287087', tertiaryContainerVariant: '#E8F3F7',
-    background: '#EAF0F7', onBackground: '#162235', onBackgroundVariant: '#64758D',
+    background: 'transparent', onBackground: '#162235', onBackgroundVariant: '#64758D',
+    ...liquidGlassForegroundColors.light,
     surface: '#F4F7FB', onSurface: '#1B293C', surfaceVariant: '#EFF4FA',
     onSurfaceSecondary: 'rgba(24,38,57,0.82)', onSurfaceVariantSummary: 'rgba(45,62,84,0.68)',
     onSurfaceVariantActions: 'rgba(45,62,84,0.48)', disabledOnSurface: '#9AA6B5',
@@ -36,7 +40,8 @@ const darkColors: ThemeColors = {
     disabledOnSecondaryVariant: '#818FA3', secondaryContainer: '#303D50', onSecondaryContainer: '#BDCADB',
     secondaryContainerVariant: '#39485D', onSecondaryContainerVariant: '#BBC9DB',
     tertiaryContainer: '#244252', onTertiaryContainer: '#9AD5E7', tertiaryContainerVariant: '#2D4655',
-    background: '#151B25', onBackground: '#EDF3FB', onBackgroundVariant: '#A1AEC0',
+    background: 'transparent', onBackground: '#EDF3FB', onBackgroundVariant: '#A1AEC0',
+    ...liquidGlassForegroundColors.dark,
     surface: '#1B2230', onSurface: '#EDF3FB', surfaceVariant: '#222C3A',
     onSurfaceSecondary: 'rgba(237,243,251,0.84)', onSurfaceVariantSummary: 'rgba(210,222,238,0.66)',
     onSurfaceVariantActions: 'rgba(210,222,238,0.48)', disabledOnSurface: '#77859A',
@@ -72,8 +77,8 @@ const glass: GlassTokens = {
     fallbackTint: { light: 'rgba(237,244,252,0.94)', dark: 'rgba(31,42,58,0.96)' },
     fallbackBorder: { light: 'rgba(255,255,255,0.78)', dark: 'rgba(216,230,248,0.2)' },
     procedural: {
-        baseTint: { light: 'rgba(247,251,255,0.19)', dark: 'rgba(24,38,58,0.3)' },
-        accentTint: { light: 'rgba(196,220,255,0.15)', dark: 'rgba(103,158,235,0.14)' },
+        baseTint: { light: 'rgba(247,251,255,0.28)', dark: 'rgba(24,38,58,0.34)' },
+        accentTint: { light: 'rgba(175,205,252,0.24)', dark: 'rgba(103,158,235,0.2)' },
         highlightTint: { light: 'rgba(255,255,255,0.94)', dark: 'rgba(207,228,255,0.62)' },
         innerShade: { light: 'rgba(33,62,101,0.19)', dark: 'rgba(0,4,12,0.68)' },
         outerShadow: { light: 'rgba(49,71,102,0.2)', dark: 'rgba(0,2,9,0.54)' },
@@ -81,8 +86,12 @@ const glass: GlassTokens = {
     },
     materials: {
         surface: { radius: 20, opacity: 0.86, blurRadius: 3, refractionHeight: 8, refractionAmount: 10, saturation: 1.08, chromaticAberration: 0.1, highlightAlpha: 0.54, highlightWidth: 1.6 },
-        card: { radius: 20, opacity: 0.78, blurRadius: 3, refractionHeight: 9, refractionAmount: 12, saturation: 1.1, chromaticAberration: 0.14, highlightAlpha: 0.64, highlightWidth: 1.8 },
+        card: { radius: 20, opacity: 0.9, accentTint: { light: 'rgba(156,193,249,0.28)', dark: 'rgba(78,130,205,0.25)' }, blurRadius: 3, refractionHeight: 9, refractionAmount: 12, saturation: 1.1, chromaticAberration: 0.14, highlightAlpha: 0.78, highlightWidth: 1.8 },
+        preferencePanel: { radius: 22, opacity: 1, accentTint: { light: 'rgba(156,193,249,0.26)', dark: 'rgba(78,130,205,0.22)' }, blurRadius: 4, refractionHeight: 7, refractionAmount: 8, refractionBodyAmount: 1.2, saturation: 1.08, chromaticAberration: 0.06, highlightAlpha: 0.72, highlightWidth: 1.5, tintAlpha: 1, specularStrength: 0.82, fresnelStrength: 0.78, innerShadowStrength: 0.14 },
         bar: { radius: 0, opacity: 0.78, blurRadius: 2, refractionHeight: 8, refractionAmount: 12, saturation: 1.08, chromaticAberration: 0.16, highlightAlpha: 0.72, highlightWidth: 2 },
+        search: { radius: 9999, opacity: 0.78, blurRadius: 2, refractionHeight: 6, refractionAmount: 10, saturation: 1.08, chromaticAberration: 0.12, highlightAlpha: 0.62, highlightWidth: 1.6 },
+        menu: { radius: 20, opacity: 0.84, blurRadius: 4, refractionHeight: 9, refractionAmount: 13, saturation: 1.1, chromaticAberration: 0.14, highlightAlpha: 0.72, highlightWidth: 1.8, shadowOpacity: 0.2, shadowRadius: 14, shadowOffsetY: 5, elevation: 8 },
+        notification: { radius: 20, opacity: 0.84, blurRadius: 3, refractionHeight: 8, refractionAmount: 12, saturation: 1.1, chromaticAberration: 0.12, highlightAlpha: 0.7, highlightWidth: 1.8, shadowOpacity: 0.18, shadowRadius: 12, shadowOffsetY: 4, elevation: 6 },
         tabBar: { radius: 34, opacity: 0.62, blurRadius: 3, refractionHeight: 9, refractionAmount: 7, saturation: 1.1, chromaticAberration: 0.1, highlightAlpha: 0.64, highlightWidth: 2, shadowOpacity: 0.2, shadowRadius: 14, shadowOffsetY: 5, elevation: 8 },
         tabBarShell: { radius: 33, opacity: 0.52, blurRadius: 2, refractionHeight: 8, refractionAmount: 6, saturation: 1.08, chromaticAberration: 0.08, highlightAlpha: 0.54, highlightWidth: 1.8, shadowOpacity: 0.16, shadowRadius: 12, shadowOffsetY: 4, elevation: 6 },
         tabSelectionIdle: { radius: 24, opacity: 0.68, accentTint: { light: 'rgba(171,208,255,0.13)', dark: 'rgba(125,176,244,0.16)' }, blurRadius: 2, refractionHeight: 8, refractionAmount: 10, saturation: 1.08, chromaticAberration: 0.08, highlightAlpha: 0.62, highlightWidth: 1.8 },
@@ -144,6 +153,8 @@ const liquidGlassTheme = (dark: boolean): AppTheme => ({
         bottomSheet: { ...componentTokens.bottomSheet, radius: 32 },
         dialog: { ...componentTokens.dialog, radius: 28 },
     },
+    presentation: liquidGlassPresentation,
+    wallpaper: liquidGlassWallpaperTokens,
     glass,
     fonts,
 });

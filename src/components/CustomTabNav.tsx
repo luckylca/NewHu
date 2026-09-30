@@ -1,7 +1,7 @@
 import { Icon, NavigationBar } from '@/src/ui';
 import type { IconName } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
-import { GlassTabBar } from '@newhu/react-native-liquid-glass';
+import { GLASS_TAB_BAR_CONTENT_INSET, GlassTabBar } from '@newhu/react-native-liquid-glass';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,6 +17,15 @@ interface customTabNavProps {
     onIndexChange: (index: number) => void;
     onDoubleSelect?: (index: number) => void;
     routes: tabRoute[];
+}
+
+/** Content clearance required by the theme-selected bottom navigation. */
+export function useTabContentInset() {
+    const theme = useTheme();
+    const insets = useSafeAreaInsets();
+    return theme.presentation.bottomNavigation.floating
+        ? insets.bottom + GLASS_TAB_BAR_CONTENT_INSET
+        : 0;
 }
 
 const CustomTabNav = ({ activeIndex, onIndexChange, onDoubleSelect, routes }: customTabNavProps) => {
@@ -46,9 +55,9 @@ const CustomTabNav = ({ activeIndex, onIndexChange, onDoubleSelect, routes }: cu
         <Icon
             name={routes[index].icon as IconName}
             size={size}
-            color={theme.glass.enabled && selected ? theme.colors.primary : theme.colors.onSurfaceContainer}
+            color={selected && theme.presentation.bottomNavigation.selectedIconColor === 'primary' ? theme.colors.primary : theme.colors.onSurfaceContainer}
         />
-    ), [routes, theme.colors.onSurfaceContainer, theme.colors.primary, theme.glass.enabled]);
+    ), [routes, theme.colors.onSurfaceContainer, theme.colors.primary, theme.presentation.bottomNavigation.selectedIconColor]);
 
     useEffect(() => {
         const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
@@ -61,7 +70,7 @@ const CustomTabNav = ({ activeIndex, onIndexChange, onDoubleSelect, routes }: cu
 
     if (keyboardVisible) return null;
 
-    if (theme.glass.enabled) {
+    if (theme.presentation.bottomNavigation.style === 'glassTabBar') {
         return (
             <GlassTabBar
                 items={routes.map((route) => ({ label: route.title }))}

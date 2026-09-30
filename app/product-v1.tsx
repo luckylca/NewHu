@@ -14,7 +14,7 @@ import {
   warmProductV1Runtime,
 } from '@/src/product-v1';
 import type { ProductV1Settings, ProductV1Trace } from '@/src/product-v1/types';
-import { Button, Card, Dialog, Divider, Icon, ListRow, SegmentedControl, Slider, Switch, Text, TopAppBar } from '@/src/ui';
+import { Button, Card, Dialog, Divider, Icon, ListRow, PageContent, PageScaffold, PageScrollView, SegmentedControl, Slider, Switch, Text, TopAppBar } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { notify } from '@/src/stores/useNotificationStore';
 import { getApiInstance } from '@/src/api/ZhihuApi';
@@ -318,12 +318,20 @@ export default function ProductV1Screen() {
     ? `Search请求 ${trace.searchRequestCount} · 前20展示 ${trace.searchDisplayedCount ?? 0} (${Math.round((trace.searchDisplayedShare ?? 0) * 100)}%)`
     : '';
 
-  if (!settings || !ratio) return <View style={{ flex: 1, backgroundColor: theme.colors.background }}><TopAppBar title="512D 推荐" back={() => router.back()} /></View>;
+  const topBar = <TopAppBar title="Native512 推荐" back={() => router.back()} />;
+  if (!settings || !ratio) {
+    return (
+      <PageScaffold topBar={topBar}>
+        <PageContent style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <Text type="body1" color={theme.colors.onSurfaceVariantSummary}>正在加载推荐配置…</Text>
+        </PageContent>
+      </PageScaffold>
+    );
+  }
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <TopAppBar title="Native512 推荐" back={() => router.back()} />
-      <ScrollView contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl, gap: theme.spacing.lg }}>
+    <PageScaffold topBar={topBar}>
+      <PageScrollView contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl, gap: theme.spacing.lg }}>
         <Card feedback="none">
           <ListRow title="本地推荐运行时" summary={statusText} summaryNumberOfLines={2} trailing={<Switch value={settings.enabled} interactive={false} />} onPress={() => void patchSettings({ enabled: !settings.enabled })} />
           <Divider style={{ marginLeft: theme.spacing.lg }} />
@@ -437,7 +445,7 @@ export default function ProductV1Screen() {
           />
           {trace?.error ? <Text type="footnote1" color={theme.colors.error} style={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.lg }}>{trace.error}</Text> : null}
         </Card>
-      </ScrollView>
+      </PageScrollView>
 
       <Dialog visible={pickerVisible} onClose={() => setPickerVisible(false)} title="选择兴趣">
         <ScrollView style={{ maxHeight: 360 }}>
@@ -482,6 +490,6 @@ export default function ProductV1Screen() {
           </>
         ) : null}
       </Dialog>
-    </View>
+    </PageScaffold>
   );
 }

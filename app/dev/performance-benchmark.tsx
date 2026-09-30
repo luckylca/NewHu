@@ -214,7 +214,8 @@ export default function PerformanceBenchmark() {
                     <View style={styles.colorField} />
                     <GlassSurface
                         variant="card"
-                        renderMode="backdrop"
+                        positioning="floating"
+                        sampling="backdrop"
                         style={styles.singleGlass}
                         placeholderChildren={<View style={styles.singleGlass} />}
                     >
@@ -229,7 +230,8 @@ export default function PerformanceBenchmark() {
                         <GlassSurface
                             key={id}
                             variant="card"
-                            renderMode="backdrop"
+                            positioning="floating"
+                            sampling="backdrop"
                             style={styles.smallGlass}
                             placeholderChildren={<View style={styles.smallGlass} />}
                         >
@@ -269,7 +271,8 @@ export default function PerformanceBenchmark() {
                     </ScrollView>
                     <GlassSurface
                         variant="floating"
-                        renderMode="backdrop"
+                        positioning="floating"
+                        sampling="backdrop"
                         pointerEvents="none"
                         style={styles.scrollGlass}
                         placeholderChildren={<View style={styles.scrollGlass} />}

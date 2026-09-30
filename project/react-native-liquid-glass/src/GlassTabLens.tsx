@@ -58,6 +58,8 @@ export function GlassTabLens({ visible, label, icon, labelColor, style }: GlassT
     return (
         <GlassSurface
             variant="lens"
+            positioning="floating"
+            sampling="backdrop"
             interactive
             style={[styles.surface, style]}
             animatedStyle={animatedStyle}

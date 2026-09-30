@@ -39,6 +39,7 @@ const LARGE_MIN_HEIGHT = 480;
 
 export const Dialog = React.memo(function Dialog({ visible = false, onClose, title, summary, closeOnClickModal = true, children }: AppDialogProps) {
     const theme = useTheme();
+    const usesGlassMaterial = theme.presentation.overlays.dialog === 'glass' && theme.glass.enabled;
     const reducedMotion = useReducedMotionPreference();
     const dialogBackground = theme.colors.surfaceContainer;
     const c = theme.components.dialog;
@@ -104,13 +105,13 @@ export const Dialog = React.memo(function Dialog({ visible = false, onClose, tit
     }, [closeOnClickModal, handleClose]);
 
     useEffect(() => {
-        if (!theme.glass.enabled || !rendered) return;
+        if (!usesGlassMaterial || !rendered) return;
         const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
             handleClose();
             return true;
         });
         return () => subscription.remove();
-    }, [theme.glass.enabled, rendered, handleClose]);
+    }, [usesGlassMaterial, rendered, handleClose]);
 
     const content = (
                 <Animated.View
@@ -120,7 +121,8 @@ export const Dialog = React.memo(function Dialog({ visible = false, onClose, tit
                     <Animated.View style={isLarge ? largeStyle : mobileStyle}>
                         <GlassSurface
                             variant="dialog"
-                            renderMode="backdrop"
+                            positioning="floating"
+                            sampling="backdrop"
                             placement={isLarge ? 'center' : 'bottom'}
                             bottomInset={c.outsideMargin}
                             animatedStyle={isLarge ? largeStyle : mobileStyle}
@@ -143,12 +145,12 @@ export const Dialog = React.memo(function Dialog({ visible = false, onClose, tit
                             placeholderChildren={null}
                         >
                             {title != null && (
-                                <Text type="title4" weight="medium" color={theme.colors.onBackground} style={{ marginBottom: theme.spacing.md, textAlign: 'center' }}>
+                                <Text type="title4" weight="medium" color={usesGlassMaterial ? theme.colors.onGlass : theme.colors.onBackground} style={{ marginBottom: theme.spacing.md, textAlign: 'center' }}>
                                     {title}
                                 </Text>
                             )}
                             {summary != null && (
-                                <Text type="body1" color={theme.colors.onSurfaceSecondary} style={{ marginBottom: theme.spacing.md, textAlign: 'center' }}>
+                                <Text type="body1" color={usesGlassMaterial ? theme.colors.onGlassSecondary : theme.colors.onSurfaceSecondary} style={{ marginBottom: theme.spacing.md, textAlign: 'center' }}>
                                     {summary}
                                 </Text>
                             )}
@@ -160,7 +162,7 @@ export const Dialog = React.memo(function Dialog({ visible = false, onClose, tit
                 </Animated.View>
     );
 
-    if (theme.glass.enabled) return rendered ? <GlassOverlay>{content}</GlassOverlay> : null;
+    if (usesGlassMaterial) return rendered ? <GlassOverlay>{content}</GlassOverlay> : null;
     return (
         <Modal
             transparent

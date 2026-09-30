@@ -1,11 +1,11 @@
 import { notify } from '@/src/stores/useNotificationStore';
 import { useSettingStore } from '@/src/stores/useSettingStore';
-import { Button, Card, Dialog, Divider, Icon, Input, ListRow, TopAppBar } from '@/src/ui';
+import { Button, Card, Dialog, Divider, Icon, Input, ListRow, PageScaffold, PageScrollView, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 
 export default function AdvancedSettingsScreen() {
     const theme = useTheme();
@@ -15,9 +15,8 @@ export default function AdvancedSettingsScreen() {
     const [draft, setDraft] = useState(cookie);
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            <TopAppBar title="高级设置" back={() => router.back()} />
-            <ScrollView contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}>
+        <PageScaffold topBar={<TopAppBar title="高级设置" back={() => router.back()} />}>
+            <PageScrollView contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}>
                 <Card feedback="none" style={{ marginTop: theme.spacing.lg }}>
                     <View style={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: theme.spacing.xs }}>
                         <Text type="footnote1" weight="bold" color={theme.colors.primary}>调试</Text>
@@ -54,7 +53,7 @@ export default function AdvancedSettingsScreen() {
                         onPress={() => router.push('/dev/hyper-glow')}
                     />
                 </Card>
-            </ScrollView>
+            </PageScrollView>
 
             <Dialog visible={dialogVisible} onClose={() => setDialogVisible(false)} title="自定义 Cookie">
                 <Input
@@ -69,6 +68,6 @@ export default function AdvancedSettingsScreen() {
                     <Button type="primary" onPress={() => { setCookie(draft.trim()); setDialogVisible(false); notify('Cookie 已保存'); }}>保存</Button>
                 </View>
             </Dialog>
-        </View>
+        </PageScaffold>
     );
 }

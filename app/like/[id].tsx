@@ -3,14 +3,14 @@ import LoadingView from '@/src/components/LoadingView';
 import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
 import { useUserStore } from '@/src/stores/useUserStore';
 import type { FeedItem, FeedType } from '@/src/types/zhihu';
-import { Icon, Text, TopAppBar } from '@/src/ui';
+import { Icon, PageContent, PageFlatList, PageScaffold, Text, TopAppBar } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { contentToItem, normalizeContent } from '@/src/db/mappers';
 import { upsertContent } from '@/src/db/repositories/contentRepository';
 import { setContentLibrarySource } from '@/src/db/repositories/localSearchRepository';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useRef, useState } from 'react';
-import { FlatList, View } from 'react-native';
+import { View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { RenderItem } from '../home';
 
@@ -131,19 +131,18 @@ export default function CollectionItemsScreen() {
     );
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
-            <TopAppBar title={collectionTitle || '收藏内容'} back={() => router.back()} />
+        <PageScaffold topBar={<TopAppBar title={collectionTitle || '收藏内容'} back={() => router.back()} />}>
 
             {!hydrated ? (
-                <LoadingView />
+                <PageContent style={{ flex: 1 }}><LoadingView /></PageContent>
             ) : !isLoggedIn ? (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.xxl }}>
+                <PageContent style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.xxl }}>
                     <Text type="body1" color={theme.colors.onSurfaceVariantSummary} align="center">
                         登录后才能查看收藏内容
                     </Text>
-                </View>
+                </PageContent>
             ) : (
-                <FlatList
+                <PageFlatList
                     data={items}
                     keyExtractor={(item) => `${item.feedType}-${item.item.id}`}
                     renderItem={renderItem}
@@ -163,6 +162,6 @@ export default function CollectionItemsScreen() {
                     showsVerticalScrollIndicator={false}
                 />
             )}
-        </View>
+        </PageScaffold>
     );
 }

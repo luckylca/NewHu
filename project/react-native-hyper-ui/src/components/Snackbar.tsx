@@ -2,6 +2,7 @@ import { Icon, PressIndication, Text } from '../primitives';
 import { snackbarMotion } from '../motion';
 import { useReducedMotionPreference } from '../motion/MotionProvider';
 import { useTheme } from '../theme';
+import { GlassSurface } from '@newhu/react-native-liquid-glass';
 import React, { useLayoutEffect } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
@@ -37,6 +38,7 @@ const REDUCED_DURATION = 120;
 
 export const Snackbar = React.memo(function Snackbar({ visible = false, message, actionLabel, onAction, withDismissAction = false, onDismiss, bottomInset = 0 }: AppSnackbarProps) {
     const theme = useTheme();
+    const usesGlassMaterial = theme.presentation.overlays.notification === 'glass' && theme.glass.enabled;
     const reducedMotion = useReducedMotionPreference();
 
     const y = useSharedValue(ENTER_OFFSET);
@@ -67,42 +69,76 @@ export const Snackbar = React.memo(function Snackbar({ visible = false, message,
     return (
         <View pointerEvents={visible ? 'box-none' : 'none'} style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end', alignItems: 'center' }]}>
             <Animated.View style={[{ width: '100%', maxWidth: 420, paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.sm, bottom: bottomInset }, containerStyle]}>
-                <View
-                    style={{
-                        minHeight: 48,
-                        padding: theme.spacing.md,
-                        borderRadius: theme.radius.component,
-                        backgroundColor: theme.colors.onSecondaryVariant,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        shadowColor: '#000000',
-                        shadowOpacity: 0,
-                        shadowRadius: 0,
-                        shadowOffset: { width: 0, height: 0 },
-                        elevation: visible ? 4 : 0,
-                    }}
-                >
-                    <Text type="body2" color={theme.colors.secondaryVariant} style={{ flex: 1, minWidth: 0 }} numberOfLines={2}>
-                        {message}
-                    </Text>
-                    {actionLabel != null && <SnackbarAction label={actionLabel} onPress={onAction} />}
-                    {withDismissAction && (
-                        <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel="Dismiss"
-                            onPress={onDismiss}
-                            hitSlop={8}
-                            style={{ width: 20, height: 20, marginLeft: theme.spacing.sm, alignItems: 'center', justifyContent: 'center' }}
-                        >
-                            <Icon name="close" size={20} color={theme.colors.onSurfaceContainerVariant} />
-                        </Pressable>
-                    )}
-                </View>
+                {usesGlassMaterial ? (
+                    <GlassSurface
+                        variant="notification"
+                        positioning="floating"
+                        sampling="backdrop"
+                        animatedStyle={containerStyle}
+                        zIndex={110}
+                        style={{ width: '100%', minHeight: 48, borderRadius: theme.glass.materials.notification.radius }}
+                        contentStyle={{ minHeight: 48, padding: theme.spacing.md, flexDirection: 'row', alignItems: 'center' }}
+                        placeholderChildren={(
+                            <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center' }}>
+                                <Text type="body2" color="transparent" style={{ flex: 1, minWidth: 0 }} numberOfLines={2}>{message}</Text>
+                                {actionLabel != null ? (
+                                    <View style={{ minWidth: 26, minHeight: 26, marginLeft: theme.spacing.md, paddingHorizontal: 12, justifyContent: 'center' }}>
+                                        <Text style={{ fontSize: 15, lineHeight: 15, color: 'transparent' }}>{actionLabel}</Text>
+                                    </View>
+                                ) : null}
+                                {withDismissAction ? <View style={{ width: 20, height: 20, marginLeft: theme.spacing.sm }} /> : null}
+                            </View>
+                        )}
+                    >
+                        <SnackbarContent message={message} actionLabel={actionLabel} onAction={onAction} withDismissAction={withDismissAction} onDismiss={onDismiss} glass />
+                    </GlassSurface>
+                ) : (
+                    <View
+                        style={{
+                            minHeight: 48,
+                            padding: theme.spacing.md,
+                            borderRadius: theme.radius.component,
+                            backgroundColor: theme.colors.onSecondaryVariant,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            shadowColor: '#000000',
+                            shadowOpacity: 0,
+                            shadowRadius: 0,
+                            shadowOffset: { width: 0, height: 0 },
+                            elevation: visible ? 4 : 0,
+                        }}
+                    >
+                        <SnackbarContent message={message} actionLabel={actionLabel} onAction={onAction} withDismissAction={withDismissAction} onDismiss={onDismiss} glass={false} />
+                    </View>
+                )}
             </Animated.View>
         </View>
     );
 });
 Snackbar.displayName = 'HyperSnackbar';
+
+function SnackbarContent({ message, actionLabel, onAction, withDismissAction, onDismiss, glass }: Pick<AppSnackbarProps, 'message' | 'actionLabel' | 'onAction' | 'withDismissAction' | 'onDismiss'> & { glass: boolean }) {
+    const theme = useTheme();
+    return (
+        <>
+            <Text type="body2" color={glass ? theme.colors.onGlass : theme.colors.secondaryVariant} style={{ flex: 1, minWidth: 0 }} numberOfLines={2}>
+                {message}
+            </Text>
+            {actionLabel != null && <SnackbarAction label={actionLabel} onPress={onAction} />}
+            {withDismissAction && (
+                <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Dismiss"
+                    onPress={onDismiss}
+                    hitSlop={8}
+                    style={{ width: 20, height: 20, marginLeft: theme.spacing.sm, alignItems: 'center', justifyContent: 'center' }}
+                >
+                    <Icon name="close" size={20} color={glass ? theme.colors.onGlassSecondary : theme.colors.onSurfaceContainerVariant} />
+                </Pressable>
+            )}
+        </>
+    );
+}
 
 function SnackbarAction({ label, onPress }: { label: string; onPress?: () => void }) {
     const theme = useTheme();

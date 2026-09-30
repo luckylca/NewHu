@@ -8,7 +8,7 @@ import {
 import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { notify } from '@/src/stores/useNotificationStore';
-import { Card, Icon, Pressable, SearchBar, Text } from '@/src/ui';
+import { Card, GlassFab, Icon, PageFlatList, PageScaffold, Pressable, SearchBar, Text } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import type { FeedType } from '@/src/types/zhihu';
 import { Image } from 'expo-image';
@@ -787,7 +787,7 @@ export default function SearchScreen() {
             ) : null}
 
             {showSuggestions ? (
-                <View style={{ width: '100%', marginTop: theme.spacing.sm, padding: theme.spacing.sm, borderRadius: theme.radius.component, backgroundColor: theme.colors.surfaceContainer }}>
+                <Card feedback="none" style={{ width: '100%', marginTop: theme.spacing.sm }} contentStyle={{ padding: theme.spacing.sm }}>
                     <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary} style={{ paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs }}>
                         搜索建议
                     </Text>
@@ -802,7 +802,7 @@ export default function SearchScreen() {
                             <Icon name="arrow-top-left" size={18} color={theme.colors.onSurfaceVariantActions} />
                         </Pressable>
                     ))}
-                </View>
+                </Card>
             ) : null}
         </View>
     );
@@ -822,73 +822,71 @@ export default function SearchScreen() {
         </View>
     );
 
+    const searchBar = (
+        <SearchBar
+            value={query}
+            onChangeText={handleQueryChange}
+            onSearch={submitSearch}
+            onAction={() => submitSearch(query)}
+            actionText="搜索"
+            expanded
+            onExpandedChange={(expanded) => {
+                if (!expanded) router.back();
+            }}
+            label={mode === 'local' ? '搜索本地内容' : '搜索知乎内容'}
+            inputProps={{ autoFocus: true }}
+            horizontalPadding={theme.spacing.sm}
+            actionWidth={64}
+            actionPaddingHorizontal={theme.spacing.sm}
+        />
+    );
+    const resultsList = (
+        <PageFlatList
+            listRef={listRef}
+            style={{ flex: 1 }}
+            data={mode === 'ai' ? [] : results}
+            renderItem={renderResult}
+            keyExtractor={(item) => isLocalSearchResult(item) ? item.key : `${item.type}-${item.id}`}
+            ListHeaderComponent={renderListHeader}
+            contentContainerStyle={{ flexGrow: 1, paddingHorizontal: theme.spacing.sm, paddingBottom: insets.bottom + theme.spacing.lg }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            onScroll={(event) => setShowScrollTop(event.nativeEvent.contentOffset.y > 240)}
+            scrollEventThrottle={16}
+            onEndReached={() => {
+                if (mode !== 'ai' && mode !== 'local' && hasMore && !loadingMore) void runSearch(submittedQuery, true);
+            }}
+            onEndReachedThreshold={0.35}
+            ListEmptyComponent={emptyComponent}
+            ListFooterComponent={loadingMore ? (
+                <View style={{ paddingVertical: theme.spacing.lg, paddingHorizontal: theme.spacing.xxl }}><ProgressIndicator indeterminate height={4} /></View>
+            ) : null}
+        />
+    );
+
     return (
-        <View style={{ flex: 1, paddingTop: insets.top + theme.spacing.sm, backgroundColor: theme.colors.surface }}>
-            <SearchBar
-                value={query}
-                onChangeText={handleQueryChange}
-                onSearch={submitSearch}
-                onAction={() => submitSearch(query)}
-                actionText="搜索"
-                expanded
-                onExpandedChange={(expanded) => {
-                    if (!expanded) router.back();
-                }}
-                label={mode === 'local' ? '搜索本地内容' : '搜索知乎内容'}
-                inputProps={{ autoFocus: true }}
-                horizontalPadding={theme.spacing.sm}
-                actionWidth={64}
-                actionPaddingHorizontal={theme.spacing.sm}
-                style={{ marginBottom: theme.spacing.sm }}
-            />
-
-            <FlatList
-                ref={listRef}
-                data={mode === 'ai' ? [] : results}
-                renderItem={renderResult}
-                keyExtractor={(item) => isLocalSearchResult(item) ? item.key : `${item.type}-${item.id}`}
-                ListHeaderComponent={renderListHeader}
-                contentContainerStyle={{ flexGrow: 1, paddingHorizontal: theme.spacing.sm, paddingBottom: insets.bottom + theme.spacing.lg }}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-                onScroll={(event) => setShowScrollTop(event.nativeEvent.contentOffset.y > 240)}
-                scrollEventThrottle={16}
-                onEndReached={() => {
-                    if (mode !== 'ai' && mode !== 'local' && hasMore && !loadingMore) void runSearch(submittedQuery, true);
-                }}
-                onEndReachedThreshold={0.35}
-                ListEmptyComponent={emptyComponent}
-                ListFooterComponent={loadingMore ? (
-                    <View style={{ paddingVertical: theme.spacing.lg, paddingHorizontal: theme.spacing.xxl }}><ProgressIndicator indeterminate height={4} /></View>
-                ) : null}
-            />
-
+        <PageScaffold
+            searchAccessory={searchBar}
+            searchAccessoryTopSpacing={theme.spacing.sm}
+            searchAccessoryBottomSpacing={theme.spacing.sm}
+        >
+            <View style={{ flex: 1 }}>
+                {resultsList}
             {showScrollTop ? (
-                <Pressable
-                    accessibilityRole="button"
+                <GlassFab
                     accessibilityLabel="回到顶部"
                     onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })}
                     style={{
                         position: 'absolute',
                         right: theme.spacing.xxl,
                         bottom: insets.bottom + theme.spacing.xxl,
-                        width: 48,
-                        height: 48,
-                        borderRadius: 24,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: theme.colors.primary,
-                        elevation: 4,
                         zIndex: 10,
-                        shadowColor: '#000000',
-                        shadowOpacity: 0.16,
-                        shadowRadius: 8,
-                        shadowOffset: { width: 0, height: 3 },
                     }}
                 >
-                    <Icon name="arrow-up" size={22} color={theme.colors.onPrimary} />
-                </Pressable>
+                    {(foregroundColor) => <Icon name="arrow-up" size={22} color={foregroundColor} />}
+                </GlassFab>
             ) : null}
-        </View>
+            </View>
+        </PageScaffold>
     );
 }

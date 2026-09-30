@@ -57,10 +57,12 @@ const HIDDEN_TRANSLATION_Y = 20;
 export const TopAppBar = React.memo(function TopAppBar({ title = '', largeTitle, subtitle, large = false, scrollY, expansion = 88, back, actions, navigation }: AppTopAppBarProps) {
     const theme = useTheme();
     const reducedMotion = useReducedMotionPreference();
-    const titleColor = theme.colors.onBackground;
-    const subtitleColor = theme.colors.onSurfaceVariantSummary;
     const insets = useSafeAreaInsets();
     const barHeight = insets.top + theme.components.navigationBar.topBarCollapsedHeight + (large ? 42 + (subtitle != null ? 20 : 0) : 0);
+    const floating = theme.presentation.topBar.mode === 'floating';
+    const useGlassMaterial = theme.presentation.topBar.material === 'glass' && theme.glass.enabled;
+    const titleColor = useGlassMaterial ? theme.colors.onGlass : theme.colors.onBackground;
+    const subtitleColor = useGlassMaterial ? theme.colors.onGlassSecondary : theme.colors.onSurfaceVariantSummary;
 
     const hasBack = back !== undefined && back !== false && back !== null;
 
@@ -88,24 +90,26 @@ export const TopAppBar = React.memo(function TopAppBar({ title = '', largeTitle,
 
     return (
         <GlassSurface
-            variant="bar"
-            style={{ width: '100%', height: theme.glass.enabled ? barHeight : undefined, backgroundColor: theme.colors.surface }}
-            placeholderChildren={theme.glass.enabled ? <View style={{ width: '100%', height: barHeight }} /> : undefined}
+            variant={useGlassMaterial ? 'bar' : 'surface'}
+            positioning={floating ? 'floating' : 'inFlow'}
+            sampling={useGlassMaterial ? 'backdrop' : 'local'}
+            style={{ width: '100%', height: useGlassMaterial ? barHeight : undefined, backgroundColor: useGlassMaterial ? 'transparent' : theme.colors.surface }}
+            placeholderChildren={useGlassMaterial ? <View style={{ width: '100%', height: barHeight }} /> : undefined}
         >
             <View style={{ backgroundColor: 'transparent', paddingTop: insets.top }}>
             {/* Collapsed 52-bar */}
             <View style={{ minHeight: theme.components.navigationBar.topBarCollapsedHeight, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
                 <View style={{ position: 'absolute', left: 0, paddingLeft: theme.spacing.lg, minWidth: 0 }}>
-                    {navigation ?? (hasBack ? <BackAction onPress={typeof back === 'function' ? back : undefined} /> : null)}
+                    {navigation ?? (hasBack ? <BackAction color={titleColor} onPress={typeof back === 'function' ? back : undefined} /> : null)}
                 </View>
                 {large ? (
                     <Animated.View style={[{ alignItems: 'center', maxWidth: '68%', minWidth: 0, pointerEvents: 'none' }, smallTitleStyle]}>
-                        <TitleText>{title}</TitleText>
+                        <TitleText color={titleColor}>{title}</TitleText>
                         {subtitle != null && <Text type="body2" color={subtitleColor} numberOfLines={1} ellipsizeMode="tail">{subtitle}</Text>}
                     </Animated.View>
                 ) : (
                     <View style={{ alignItems: 'center', maxWidth: '68%', minWidth: 0 }}>
-                        <TitleText>{title}</TitleText>
+                        <TitleText color={titleColor}>{title}</TitleText>
                         {subtitle != null && <Text type="body2" color={subtitleColor} numberOfLines={1} ellipsizeMode="tail">{subtitle}</Text>}
                     </View>
                 )}
@@ -127,13 +131,12 @@ export const TopAppBar = React.memo(function TopAppBar({ title = '', largeTitle,
 });
 TopAppBar.displayName = 'HyperTopAppBar';
 
-function TitleText({ children }: { children: ReactNode }) {
-    const theme = useTheme();
+function TitleText({ children, color }: { children: ReactNode; color: string }) {
     return (
         <Text
             type="title3"
             weight="medium"
-            color={theme.colors.onBackground}
+            color={color}
             numberOfLines={1}
             ellipsizeMode="tail"
             style={{ textAlign: 'center' }}
@@ -143,8 +146,7 @@ function TitleText({ children }: { children: ReactNode }) {
     );
 }
 
-function BackAction({ onPress }: { onPress?: () => void }) {
-    const theme = useTheme();
+function BackAction({ onPress, color }: { onPress?: () => void; color: string }) {
     return (
         <Pressable
             accessibilityRole="button"
@@ -162,7 +164,7 @@ function BackAction({ onPress }: { onPress?: () => void }) {
                 },
             ]}
         >
-            <Icon name="arrow-left" size={24} color={theme.colors.onBackground} />
+            <Icon name="arrow-left" size={24} color={color} />
         </Pressable>
     );
 }

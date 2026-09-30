@@ -5,7 +5,7 @@ import { notify } from '@/src/stores/useNotificationStore';
 import { router } from "expo-router";
 import React, { useCallback } from "react";
 import { Image, ScrollView, View } from 'react-native';
-import { Card, Divider, Icon, ListRow, SegmentedControl } from '@/src/ui';
+import { Card, Divider, Icon, ListRow, PageScaffold, SegmentedControl, SurfaceGroup } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -57,7 +57,8 @@ const UserScreen = ({ navigation }: any) => {
     }
 
     return (
-        <ScrollView contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + MAIN_PAGE_TOP_SPACING, paddingBottom: theme.spacing.xxl + bottomContentInset, backgroundColor: theme.colors.surface }}>
+        <PageScaffold>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + MAIN_PAGE_TOP_SPACING, paddingBottom: theme.spacing.xxl + bottomContentInset }}>
             <Card
                 feedback="none"
                 showIndication
@@ -88,7 +89,7 @@ const UserScreen = ({ navigation }: any) => {
             </View>
 
             {/* 设置入口组 —— ListRow + Divider，Miuix 设置列表 */}
-            <View style={{ marginBottom: theme.spacing.xl, marginHorizontal: theme.spacing.lg, borderRadius: theme.radius.component, backgroundColor: theme.colors.surfaceContainer, overflow: 'hidden' }}>
+            <SurfaceGroup style={{ marginBottom: theme.spacing.xl, marginHorizontal: theme.spacing.lg }}>
                 <ListRow title="草稿箱" summary={draftCount > 0 ? `${draftCount} 条草稿` : '暂无草稿'} onPress={() => router.push('/drafts')} />
                 <Divider style={{ marginLeft: theme.spacing.lg }} />
                 <ListRow title="收藏列表" summary="查看保存的回答和文章" onPress={() => router.push('/like')} />
@@ -102,8 +103,9 @@ const UserScreen = ({ navigation }: any) => {
                 <ListRow title="离线缓存" summary="批量获取内容并保存到本地" onPress={() => router.push('/offline-cache')} />
                 <Divider style={{ marginLeft: theme.spacing.lg }} />
                 <ListRow title="设置" summary="管理账号、主题与应用偏好" onPress={() => router.push('/settings')} />
-            </View>
+            </SurfaceGroup>
         </ScrollView>
+        </PageScaffold>
     );
 }
 

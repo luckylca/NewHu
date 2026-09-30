@@ -1,12 +1,12 @@
 import { fetchAiAnalysisModels } from '@/src/services/aiAnalysisService';
 import { useAiAnalysisStore } from '@/src/stores/useAiAnalysisStore';
 import { notify } from '@/src/stores/useNotificationStore';
-import { Button, Card, Input, Pressable, Switch, TopAppBar } from '@/src/ui';
+import { Button, Card, Input, PageScaffold, PageScrollView, Pressable, Switch, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 
 export default function AiAnalysisSettingsScreen() {
     const theme = useTheme();
@@ -40,9 +40,8 @@ export default function AiAnalysisSettingsScreen() {
     }, [apiKey, baseUrl, loadingModels, model, setModel]);
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            <TopAppBar title="AI 分析" back={() => router.back()} />
-            <ScrollView
+        <PageScaffold topBar={<TopAppBar title="AI 分析" back={() => router.back()} />}>
+            <PageScrollView
                 contentContainerStyle={{
                     padding: theme.spacing.lg,
                     paddingBottom: theme.spacing.xxl,
@@ -194,7 +193,7 @@ export default function AiAnalysisSettingsScreen() {
                         </Card>
                     </>
                 ) : null}
-            </ScrollView>
-        </View>
+            </PageScrollView>
+        </PageScaffold>
     );
 }

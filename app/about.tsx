@@ -1,11 +1,11 @@
 import { HyperGlowBackground } from '@/src/components/effects/HyperGlowBackground';
 import { notify } from '@/src/stores/useNotificationStore';
-import { Button, Card, Dialog, Divider, Icon, Text, TopAppBar } from '@/src/ui';
+import { Button, Card, Dialog, Divider, Icon, PageScaffold, PageScrollView, Text, TopAppBar } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { Image, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import ProgressIndicator from '@/src/components/ProgressIndicator';
 
 const CURRENT_VERSION = `v${Constants.expoConfig?.version ?? '1.0.0'}`;
@@ -31,9 +31,8 @@ export default function AboutScreen() {
     };
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            <TopAppBar title="关于 NewHU" back={() => router.back()} />
-            <ScrollView
+        <PageScaffold topBar={<TopAppBar title="关于 NewHU" back={() => router.back()} />}>
+            <PageScrollView
                 contentContainerStyle={styles.content}
                 showsVerticalScrollIndicator={false}
             >
@@ -89,7 +88,7 @@ export default function AboutScreen() {
                         <Icon name="chevron-right" size={24} color={theme.colors.onSurfaceVariantActions} />
                     )}
                 </Card>
-            </ScrollView>
+            </PageScrollView>
 
             <Dialog visible={updateVisible} onClose={() => setUpdateVisible(false)} title="检查更新">
                 <Text type="body1" color={theme.colors.onBackground}>
@@ -103,7 +102,7 @@ export default function AboutScreen() {
                     <Button type="primary" onPress={() => setUpdateVisible(false)} disabled={update.loading}>知道了</Button>
                 </View>
             </Dialog>
-        </View>
+        </PageScaffold>
     );
 }
 

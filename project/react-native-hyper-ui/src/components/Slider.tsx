@@ -4,6 +4,7 @@ import {
     sliderProgressIdle,
     sliderThumbScale,
 } from '../motion';
+import { GlassSurface } from '@newhu/react-native-liquid-glass';
 import { useTheme } from '../theme';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AccessibilityActionEvent, LayoutChangeEvent, StyleProp, ViewStyle } from 'react-native';
@@ -57,6 +58,7 @@ export const Slider = memo(function Slider({
 }: AppSliderProps) {
     const theme = useTheme();
     const tokens = theme.components.slider;
+    const useGlassThumb = theme.presentation.controls.sliderThumb === 'glass' && theme.glass.enabled;
     const trackHeight = tokens.height;
     const range = Math.max(maximumValue - minimumValue, 0);
     const clampedValue = clamp(value, minimumValue, maximumValue);
@@ -296,13 +298,25 @@ export const Slider = memo(function Slider({
                             width: knobRadius * 2,
                             height: knobRadius * 2,
                             borderRadius: knobRadius,
-                            backgroundColor: disabled
-                                ? theme.colors.disabledOnPrimary
-                                : theme.colors.onPrimary,
+                            backgroundColor: useGlassThumb
+                                ? 'transparent'
+                                : disabled
+                                    ? theme.colors.disabledOnPrimary
+                                    : theme.colors.onPrimary,
                         },
                         knobStyle,
                     ]}
-                />
+                >
+                    {useGlassThumb ? (
+                        <GlassSurface
+                            variant="tabSelectionLens"
+                            positioning="inFlow"
+                            sampling="local"
+                            pointerEvents="none"
+                            style={{ width: knobRadius * 2, height: knobRadius * 2, borderRadius: knobRadius }}
+                        />
+                    ) : null}
+                </Animated.View>
             </Animated.View>
         </GestureDetector>
     );

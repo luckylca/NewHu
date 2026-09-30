@@ -7,7 +7,7 @@ import { notify } from '@/src/stores/useNotificationStore';
 import { useNetworkStore } from '@/src/stores/useNetworkStore';
 import { useSettingStore } from '@/src/stores/useSettingStore';
 import { useUserStore } from '@/src/stores/useUserStore';
-import { Button, BottomSheet, Card, Divider, ListRow, Switch, TopAppBar } from '@/src/ui';
+import { Button, BottomSheet, Card, Divider, ListRow, PageFlatList, PageScaffold, Switch, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import {
@@ -17,7 +17,7 @@ import {
 } from 'expo-download-storage';
 import { router } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Linking, View } from 'react-native';
+import { Linking, View } from 'react-native';
 
 const MAX_CACHE_COUNT = 100;
 
@@ -203,9 +203,8 @@ export default function OfflineCacheScreen() {
     );
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            <TopAppBar title="离线缓存" back={() => router.back()} />
-            <FlatList
+        <PageScaffold topBar={<TopAppBar title="离线缓存" back={() => router.back()} />}>
+            <PageFlatList
                 data={items}
                 keyExtractor={(item) => `${item.contentType}:${item.contentId}`}
                 renderItem={renderItem}
@@ -251,6 +250,6 @@ export default function OfflineCacheScreen() {
                     </Button>
                 </Card>
             </BottomSheet>
-        </View>
+        </PageScaffold>
     );
 }

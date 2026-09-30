@@ -59,6 +59,9 @@ export interface ThemeColors {
     background: string;
     onBackground: string;
     onBackgroundVariant: string;
+    onGlass: string;
+    onGlassSecondary: string;
+    onGlassMuted: string;
 
     surface: string;
     onSurface: string;
@@ -235,6 +238,71 @@ export interface DialogTokens {
     outsideMargin: number;
 }
 
+export type SurfaceMaterial = 'solid' | 'glass';
+export type PresentationMode = 'inFlow' | 'floating';
+
+/** Layout and material decisions owned by the design system, not page code. */
+export interface ThemePresentation {
+    page: {
+        background: 'surface' | 'transparent';
+    };
+    topBar: {
+        mode: PresentationMode;
+        material: SurfaceMaterial;
+        contentUnderlay: boolean;
+    };
+    search: {
+        defaultMode: PresentationMode;
+        material: SurfaceMaterial;
+    };
+    bottomNavigation: {
+        style: 'navigationBar' | 'glassTabBar';
+        floating: boolean;
+        selectedIconColor: 'primary' | 'onSurfaceContainer';
+    };
+    content: {
+        groupStyle: 'solid' | 'softGrouped';
+        groupMaterial: SurfaceMaterial;
+        cardMaterial: SurfaceMaterial;
+        dividerStyle: 'normal' | 'subtle';
+        iconStyle: 'filled' | 'light';
+    };
+    controls: {
+        buttonMaterial: SurfaceMaterial;
+        switchThumb: SurfaceMaterial;
+        sliderThumb: SurfaceMaterial;
+        floatingActionForeground: 'onGlass' | 'onPrimary';
+    };
+    overlays: {
+        menu: SurfaceMaterial;
+        notification: SurfaceMaterial;
+        floatingAction: SurfaceMaterial;
+        dialog: SurfaceMaterial;
+        sheet: SurfaceMaterial;
+    };
+}
+
+type WallpaperColorRoles = Pick<ThemeColors,
+    | 'background'
+    | 'surface'
+    | 'surfaceVariant'
+    | 'surfaceContainer'
+    | 'surfaceContainerHigh'
+    | 'surfaceContainerHighest'
+    | 'dividerLine'
+    | 'outline'
+    | 'card'
+    | 'border'
+>;
+
+/** Family-specific palette derivation when a user wallpaper is present. */
+export interface ThemeWallpaperTokens {
+    base: { light: string; dark: string };
+    scrim: { light: string; dark: string };
+    defaultBackdrop: 'none' | 'ambient';
+    colors: { light: WallpaperColorRoles; dark: WallpaperColorRoles };
+}
+
 export interface ComponentTokens {
     button: ButtonTokens;
     card: CardTokens;
@@ -271,6 +339,8 @@ export interface AppTheme {
     radius: ThemeRadius;
     opacity: ThemeOpacity;
     components: ComponentTokens;
+    presentation: ThemePresentation;
+    wallpaper: ThemeWallpaperTokens;
     glass: GlassTokenConfig;
     fonts: ThemeFonts;
 }

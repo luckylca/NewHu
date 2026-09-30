@@ -2,11 +2,11 @@ import { getApiInstance } from '@/src/api/ZhihuApi';
 import LoadingView from '@/src/components/LoadingView';
 import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
 import { useUserStore } from '@/src/stores/useUserStore';
-import { Button, Card, Icon, Text, TopAppBar } from '@/src/ui';
+import { Button, Card, Icon, PageContent, PageFlatList, PageScaffold, Text, TopAppBar } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import React, { useCallback, useRef, useState } from 'react';
-import { FlatList, View } from 'react-native';
+import { View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
 const PAGE_SIZE = 20;
@@ -177,13 +177,12 @@ export default function LikeScreen() {
     );
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
-            <TopAppBar title="收藏列表" back={() => router.back()} />
+        <PageScaffold topBar={<TopAppBar title="收藏列表" back={() => router.back()} />}>
 
             {!hydrated ? (
-                <LoadingView />
+                <PageContent style={{ flex: 1 }}><LoadingView /></PageContent>
             ) : !isLoggedIn ? (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.xxl }}>
+                <PageContent style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.xxl }}>
                     <Icon name="bookmark-multiple-outline" size={48} color={theme.colors.onSurfaceVariantActions} />
                     <Text type="body1" color={theme.colors.onSurfaceVariantSummary} align="center" style={{ marginTop: theme.spacing.md }}>
                         登录知乎后才能查看收藏列表
@@ -191,9 +190,9 @@ export default function LikeScreen() {
                     <Button type="primary" onPress={() => router.push('/webview')} style={{ marginTop: theme.spacing.lg }}>
                         登录知乎
                     </Button>
-                </View>
+                </PageContent>
             ) : (
-                <FlatList
+                <PageFlatList
                     data={collections}
                     keyExtractor={(item) => item.id}
                     renderItem={renderCollection}
@@ -213,6 +212,6 @@ export default function LikeScreen() {
                     showsVerticalScrollIndicator={false}
                 />
             )}
-        </View>
+        </PageScaffold>
     );
 }

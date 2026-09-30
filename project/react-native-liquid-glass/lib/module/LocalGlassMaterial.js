@@ -31,17 +31,20 @@ half4 main(float2 position) {
     float signedEdgeDistance = length(max(q, float2(0.0))) + min(max(q.x, q.y), 0.0) - radius;
     float edgeDepth = max(-signedEdgeDistance, 0.0);
 
-    float fresnel = 1.0 - smoothstep(0.0, 0.105, edgeDepth);
+    float2 outside = max(q, float2(0.0));
+    float2 edgeNormal = length(outside) > 0.0001
+        ? normalize(outside) * sign(p)
+        : (q.x > q.y ? float2(sign(p.x), 0.0) : float2(0.0, sign(p.y)));
+    float2 lightDirection = normalize(float2(-0.52, -0.85));
+    float edgeFacing = max(dot(edgeNormal, lightDirection), 0.0);
+    float edgeLight = 0.2 + 0.8 * pow(edgeFacing, 1.35);
+    float fresnel = (1.0 - smoothstep(0.0, 0.105, edgeDepth)) * edgeLight;
     float innerShadow = smoothstep(0.005, 0.045, edgeDepth) * (1.0 - smoothstep(0.045, 0.14, edgeDepth));
-    float topArc = 0.045 + 0.12 * pow(abs(uv.x - 0.5) * 2.0, 1.8);
-    float topSpecular = exp(-pow((uv.y - topArc) * 26.0, 2.0)) * (0.25 + 0.75 * (1.0 - abs(uv.x - 0.5)));
-    float lowerArc = 0.91 - 0.045 * pow(abs(uv.x - 0.5) * 2.0, 1.5);
-    float lowerReflection = exp(-pow((uv.y - lowerArc) * 33.0, 2.0)) * (1.0 - smoothstep(0.22, 0.52, abs(uv.x - 0.5)));
     float sideReflection = exp(-pow((uv.x - 0.025) * 24.0, 2.0)) + exp(-pow((uv.x - 0.975) * 24.0, 2.0));
 
     float3 body = mix(baseTint.rgb, accentTint.rgb, 0.12 + vertical * 0.18);
     float3 color = body;
-    color += highlightTint.rgb * (topSpecular * 0.23 + lowerReflection * 0.055 + sideReflection * 0.035) * highlightStrength;
+    color += highlightTint.rgb * sideReflection * 0.035 * highlightStrength;
     color += highlightTint.rgb * fresnel * (0.055 + highlightStrength * 0.11);
     color -= innerShade.rgb * innerShadow * 0.16;
 
@@ -54,7 +57,7 @@ half4 main(float2 position) {
     color += grain * noiseStrength;
     color = clamp(color, float3(0.0), float3(1.0));
 
-    float alpha = clamp((baseTint.a + accentTint.a * (0.22 + vertical * 0.08) + topSpecular * 0.05) * materialOpacity, 0.0, 0.72);
+    float alpha = clamp((baseTint.a + accentTint.a * (0.22 + vertical * 0.08)) * materialOpacity, 0.0, 0.72);
     // Skia shader colors are premultiplied before source-over compositing.
     // Leaving RGB unscaled makes translucent light tints look almost opaque.
     return half4(color * alpha, alpha);

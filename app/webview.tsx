@@ -3,7 +3,7 @@ import { Modal, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { getCookieHeader } from 'expo-cookie-storage';
 import { useUserStore } from '@/src/stores/useUserStore';
-import { TopAppBar } from '@/src/ui';
+import { PageScaffold, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
@@ -61,16 +61,16 @@ const ZhihuLoginWebView = () => {
     const theme = useTheme();
 
     return (
-        <View style={{ flex: 1 }}>
+        <PageScaffold topBar={<TopAppBar title="登录知乎" back={() => router.back()} />}>
             <Modal visible={modalVisible} transparent>
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.windowDimming }}>
                     <View style={{ width: 160 }}><ProgressIndicator indeterminate /></View>
                     <Text type="body1" style={{ marginTop: theme.spacing.sm, color: theme.colors.onPrimary }}>{statusText}</Text>
                 </View>
             </Modal>
-            <TopAppBar title="登录知乎" back={() => router.back()} />
             <WebView
                 source={{ uri: 'https://www.zhihu.com/signin' }}
+                style={{ flex: 1 }}
                 incognito={true} // 使用隐身模式，确保不使用之前的 Cookie
                 userAgent="Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.181 Mobile Safari/537.36" // 建议固定 UA
                 onNavigationStateChange={(navState) => {
@@ -87,7 +87,7 @@ const ZhihuLoginWebView = () => {
                     if (hasSeenSigninRef.current) void extractCookie();
                 }}
             />
-        </View>
+        </PageScaffold>
     );
 };
 

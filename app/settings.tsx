@@ -2,14 +2,14 @@ import { AI_TEXT_SENSITIVITY_THRESHOLDS, type AiTextDetectionSensitivity } from 
 import { useSettingStore } from '@/src/stores/useSettingStore';
 import { useAiAnalysisStore } from '@/src/stores/useAiAnalysisStore';
 import { useUserStore } from '@/src/stores/useUserStore';
-import { Card, Divider, Icon, ListRow, Switch, TopAppBar } from '@/src/ui';
+import { Divider, Icon, ListRow, PageScaffold, PageScrollView, PreferenceGroup, Switch, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import type { IconName } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import React from 'react';
 import type { ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 
 export default function SettingsScreen() {
     const theme = useTheme();
@@ -34,10 +34,9 @@ export default function SettingsScreen() {
     const trailingChevron = <Icon name="chevron-right" size={22} color={theme.colors.onSurfaceVariantActions} />;
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            <TopAppBar title="设置" back={() => router.back()} />
-            <ScrollView contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xxl }} showsVerticalScrollIndicator={false}>
-                <SettingsGroup title="账号">
+        <PageScaffold topBar={<TopAppBar title="设置" back={() => router.back()} />}>
+            <PageScrollView contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xxl }} showsVerticalScrollIndicator={false}>
+                <PreferenceGroup title="账号">
                     <SettingRow
                         icon="account-circle-outline"
                         title="账号管理"
@@ -45,9 +44,9 @@ export default function SettingsScreen() {
                         trailing={trailingChevron}
                         onPress={() => router.push(isLoggedIn ? '/userinfo' : '/webview')}
                     />
-                </SettingsGroup>
+                </PreferenceGroup>
 
-                <SettingsGroup title="内容">
+                <PreferenceGroup title="内容">
                     <SettingRow
                         icon="advertisements-off"
                         title="过滤推广内容"
@@ -126,9 +125,9 @@ export default function SettingsScreen() {
                         trailing={trailingChevron}
                         onPress={() => router.push('/ai-analysis-settings' as any)}
                     />
-                </SettingsGroup>
+                </PreferenceGroup>
 
-                <SettingsGroup title="外观与体验">
+                <PreferenceGroup title="外观与体验">
                     <SettingRow icon="palette-outline" title="主题与壁纸" summary="颜色、壁纸、透明度和模糊" trailing={trailingChevron} onPress={() => router.push('/themeSet')} />
                     <Divider style={{ marginLeft: 60 }} />
                     <SettingRow
@@ -140,17 +139,17 @@ export default function SettingsScreen() {
                     />
                     <Divider style={{ marginLeft: 60 }} />
                     <SettingRow icon="tune-variant" title="高级设置" summary="Cookie 和调试选项" trailing={trailingChevron} onPress={() => router.push('/devmode')} />
-                </SettingsGroup>
+                </PreferenceGroup>
 
-                <SettingsGroup title="应用">
+                <PreferenceGroup title="应用">
                     <SettingRow icon="shield-account-outline" title="隐私与个性化" summary="本地 AI、兴趣画像与协议" trailing={trailingChevron} onPress={() => router.push('/privacy-personalization' as any)} />
                     <Divider style={{ marginLeft: 60 }} />
                     <SettingRow icon="database-outline" title="存储管理" summary="空间占用与离线内容管理" trailing={trailingChevron} onPress={() => router.push('/storage-management' as any)} />
                     <Divider style={{ marginLeft: 60 }} />
                     <SettingRow icon="information-outline" title="关于 NewHU" summary="版本信息与检查更新" trailing={trailingChevron} onPress={() => router.push('/about')} />
-                </SettingsGroup>
-            </ScrollView>
-        </View>
+                </PreferenceGroup>
+            </PageScrollView>
+        </PageScaffold>
     );
 }
 
@@ -174,20 +173,6 @@ const AI_SENSITIVITY_ORDER: AiTextDetectionSensitivity[] = ['conservative', 'bal
 function nextAiSensitivity(current: AiTextDetectionSensitivity): AiTextDetectionSensitivity {
     const index = AI_SENSITIVITY_ORDER.indexOf(current);
     return AI_SENSITIVITY_ORDER[(index + 1) % AI_SENSITIVITY_ORDER.length];
-}
-
-function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {
-    const theme = useTheme();
-    return (
-        <View style={{ marginTop: theme.spacing.lg }}>
-            <Card feedback="none" contentStyle={{ overflow: 'hidden' }}>
-                <View style={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: theme.spacing.xs }}>
-                    <Text type="footnote1" weight="bold" color={theme.colors.primary}>{title}</Text>
-                </View>
-                {children}
-            </Card>
-        </View>
-    );
 }
 
 function SettingRow({ icon, ...props }: { icon: IconName; title: string; summary: string; summaryNumberOfLines?: number; trailing?: ReactNode; onPress: () => void; onPressIn?: () => void }) {

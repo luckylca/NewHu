@@ -7,11 +7,12 @@ import { ThemeProvider as UiThemeProvider } from '@/src/ui/theme';
 import { MotionProvider } from '@/src/ui/motion';
 import { hasCurrentRequiredConsent, useConsentStore } from '@/src/stores/useConsentStore';
 import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
-import { ThemeProvider as NavigationThemeProvider } from '@react-navigation/native'; // React Navigation 的导航主题
+import { ThemeProvider as NavigationThemeProvider, useIsFocused } from '@react-navigation/native'; // React Navigation 的导航主题
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import React, { useEffect } from 'react';
-import { AppState, StatusBar } from 'react-native';
+import type { ReactNode } from 'react';
+import { AppState, StatusBar, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -21,10 +22,20 @@ import { startNetworkMonitoring } from '@/src/services/networkService';
 import { syncOutbox } from '@/src/services/syncService';
 import { useNetworkStore } from '@/src/stores/useNetworkStore';
 import { useSettingStore } from '@/src/stores/useSettingStore';
-import { getWallpaperBase } from '@/src/ui/theme/wallpaper';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { recoverSyncingActions } from '@/src/db/repositories/outboxRepository';
 import { getApiInstance } from '@/src/api/ZhihuApi';
+
+function RouteGlassScene({ children }: { children: ReactNode }) {
+	const focused = useIsFocused();
+	return (
+		<AppBackground glassBackdrop={focused}>
+			{children}
+			{focused ? <GlobalNotificationHost /> : null}
+			{focused ? <LaterReadFloatingBubble /> : null}
+		</AppBackground>
+	);
+}
 
 void SplashScreen.preventAutoHideAsync();
 SplashScreen.setOptions({ duration: 180, fade: true });
@@ -43,12 +54,11 @@ export default function RootLayout() {
 	const persistedConsentReady = consentHydrated && hasCurrentRequiredConsent(consent);
 	const consentReady = persistedConsentReady;
 	const splashHidden = React.useRef(false);
-	const routeBaseColor = getWallpaperBase(uiTheme.dark);
-	const renderRouteScene = React.useCallback(({ children }: { children: React.ReactNode }) => (
-		// Routes own a scoped host for explicit dialog/sheet backdrop surfaces.
-		// Local controls never register there, so the native recorder stays idle
-		// unless a backdrop-mode surface is mounted on this route.
-		<AppBackground glassBackdrop>{children}</AppBackground>
+	// Stack cards are route boundaries: keep them opaque while the route scene
+	// draws its own theme backdrop above this base color.
+	const routeBaseColor = uiTheme.dark ? uiTheme.wallpaper.base.dark : uiTheme.wallpaper.base.light;
+	const renderRouteScene = React.useCallback(({ children }: { children: ReactNode }) => (
+		<RouteGlassScene>{children}</RouteGlassScene>
 	), []);
 
 	useEffect(() => {
@@ -95,16 +105,16 @@ export default function RootLayout() {
 			<SafeAreaProvider>
 				<UiThemeProvider value={uiTheme}>
 					<MotionProvider reduced={reducedMotion}>
-						<AppBackground>
-							<NavigationThemeProvider value={navigationTheme}>
+							<View style={{ flex: 1, backgroundColor: routeBaseColor }}>
+								<NavigationThemeProvider value={navigationTheme}>
 							<StatusBar
 								barStyle={uiTheme.dark ? 'light-content' : 'dark-content'}
 								backgroundColor="transparent"
 								translucent
 							/>
-							<Stack
-								screenLayout={renderRouteScene}
-								screenOptions={{
+								<Stack
+									screenLayout={renderRouteScene}
+									screenOptions={{
 									contentStyle: { backgroundColor: routeBaseColor },
 									headerShown: false,
 									animation: reducedMotion ? 'fade' : 'slide_from_right',
@@ -146,11 +156,9 @@ export default function RootLayout() {
 								<Stack.Screen name="dev/glass-lens" options={{ title: 'Glass Lens Debug' }} />
 								<Stack.Screen name="dev/hyper-glow" options={{ title: '动态柔光预览' }} />
 								</Stack.Protected>
-							</Stack>
-						</NavigationThemeProvider>
-						<GlobalNotificationHost />
-						<LaterReadFloatingBubble />
-						</AppBackground>
+								</Stack>
+							</NavigationThemeProvider>
+							</View>
 					</MotionProvider>
 				</UiThemeProvider>
 			</SafeAreaProvider>

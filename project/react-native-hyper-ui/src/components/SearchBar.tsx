@@ -42,6 +42,8 @@ export interface AppSearchBarProps {
     actionWidth?: number;
     /** Horizontal padding inside the trailing action. */
     actionPaddingHorizontal?: number;
+    /** Keep pager pages in-tree while inactive; active Liquid Glass pages use backdrop by default. */
+    glassRenderMode?: 'local' | 'backdrop';
     placeholderTextColor?: string;
     inputProps?: Partial<TextInputProps>;
     /** Results area — shown only while expanded. */
@@ -64,18 +66,24 @@ export const SearchBar = React.memo(function SearchBar({
     horizontalPadding,
     actionWidth = 88,
     actionPaddingHorizontal,
+    glassRenderMode,
+    placeholderTextColor,
     inputProps,
     children,
     style,
 }: AppSearchBarProps) {
     const theme = useTheme();
     const c = theme.components.searchBar;
+    const usesGlassMaterial = theme.presentation.search.material === 'glass' && theme.glass.enabled;
+    const glassForeground = usesGlassMaterial ? theme.colors.onGlass : theme.colors.onSurfaceContainerHigh;
+    const glassForegroundSecondary = usesGlassMaterial ? theme.colors.onGlassSecondary : theme.colors.onSurfaceContainerHigh;
+    const resolvedPlaceholderTextColor = placeholderTextColor ?? inputProps?.placeholderTextColor ?? glassForegroundSecondary;
     const inputRef = useRef<TextInput>(null);
     const barPadding = horizontalPadding ?? theme.spacing.md;
     const actionPadding = actionPaddingHorizontal ?? theme.spacing.md;
 
     const hasText = value.length > 0;
-    const showLabel = !hasText && !expanded;
+    const showLabel = !hasText;
 
     const cancelShown = useSharedValue(expanded ? 1 : 0);
     useEffect(() => {
@@ -123,60 +131,49 @@ export const SearchBar = React.memo(function SearchBar({
         <View style={[{ width: '100%' }, style]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: barPadding }}>
                 <GlassSurface
-                    variant="control"
-                    // Stay in the page tree so this search field follows its
-                    // PagerView page and cannot remain floating over both tabs.
-                    renderMode="local"
+                    variant={usesGlassMaterial ? 'search' : 'control'}
+                    positioning={theme.presentation.search.defaultMode}
+                    sampling={usesGlassMaterial ? glassRenderMode ?? (theme.presentation.search.defaultMode === 'floating' ? 'backdrop' : 'local') : 'local'}
                     interactive={Boolean(onPress)}
                     style={{
                         flex: 1,
                         minWidth: 0,
                         minHeight: c.minHeight,
                         borderRadius: c.radius,
-                        backgroundColor: theme.colors.surfaceContainerHigh,
+                        backgroundColor: usesGlassMaterial ? 'transparent' : theme.colors.surfaceContainerHigh,
                         borderColor: theme.colors.outline,
-                        borderWidth: theme.glass.enabled ? 0.5 : 0,
+                        borderWidth: usesGlassMaterial ? 0.5 : 0,
                     }}
-                    placeholderChildren={theme.glass.enabled ? <View style={{ flex: 1, minHeight: c.minHeight }} /> : undefined}
+                    placeholderChildren={usesGlassMaterial ? <View style={{ flex: 1, minHeight: c.minHeight }} /> : undefined}
                 >
                     <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
                     <View style={{ paddingLeft: theme.spacing.lg, paddingRight: theme.spacing.sm }}>
-                        <Icon name="magnify" size={22} color={theme.colors.onSurfaceContainerHigh} />
+                        <Icon name="magnify" size={22} color={glassForegroundSecondary} />
                     </View>
-                    <View style={{ flex: 1, minWidth: 0, position: 'relative', justifyContent: 'center' }}>
-                        {showLabel && (
-                            <Text
-                                type="body1"
-                                size={c.fontSize}
-                                weight="medium"
-                                color={theme.colors.onSurfaceContainerHigh}
-                                style={{ position: 'absolute', left: 0 }}
-                                pointerEvents="none"
-                                numberOfLines={1}
-                            >
-                                {label}
-                            </Text>
-                        )}
+                    <View style={{ flex: 1, minWidth: 0, justifyContent: 'center', height: '100%' }}>
                         <TextInput
+                            {...inputProps}
                             ref={inputRef}
                             value={value}
                             onChangeText={onChangeText}
                             onFocus={handleFocus}
                             onBlur={() => {}}
                             onSubmitEditing={handleSubmit}
+                            placeholder={showLabel ? label : undefined}
                             returnKeyType="search"
                             cursorColor={theme.colors.primary}
                             style={{
                                 padding: 0,
                                 margin: 0,
-                                color: theme.colors.onSurface,
+                                color: usesGlassMaterial ? theme.colors.onGlass : theme.colors.onSurface,
                                 fontSize: c.fontSize,
                                 fontWeight: '500',
+                                height: '100%',
                                 paddingVertical: 0,
+                                textAlignVertical: 'center',
                             }}
-                            placeholderTextColor={theme.colors.onSurfaceContainerHigh}
+                            placeholderTextColor={resolvedPlaceholderTextColor}
                             autoCorrect={false}
-                            {...inputProps}
                         />
                     </View>
                     {hasText && (
@@ -210,11 +207,11 @@ export const SearchBar = React.memo(function SearchBar({
                                         bottom: 0,
                                         left: 0,
                                         borderRadius: 8,
-                                        backgroundColor: theme.colors.onSurfaceContainerHighest,
+                                        backgroundColor: usesGlassMaterial ? theme.colors.onGlass : theme.colors.onSurfaceContainerHighest,
                                         opacity: 0.06,
                                     }}
                                 />
-                                <Icon name="close" size={14} color={theme.colors.onSurfaceContainerHighest} style={{ opacity: 0.3 }} />
+                                <Icon name="close" size={14} color={usesGlassMaterial ? theme.colors.onGlassMuted : theme.colors.onSurfaceContainerHighest} style={{ opacity: 0.72 }} />
                             </View>
                         </Pressable>
                     )}

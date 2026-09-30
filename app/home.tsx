@@ -8,14 +8,13 @@ import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent, RefreshControl, ScrollView, View, StyleSheet, Share } from 'react-native';
-import type { GestureResponderEvent, LayoutChangeEvent } from 'react-native';
-import { Card, Icon, Menu, SearchBar, Text } from '@/src/ui';
+import type { FlatListProps, GestureResponderEvent, LayoutChangeEvent } from 'react-native';
+import { Card, Icon, Menu, PageFlatList, PageScaffold, PageScrollView, SearchBar, Text, usePageContentInset } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { useSettingStore } from '../src/stores/useSettingStore';
 import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
 import type { FeedItem, FeedItemInfo, FeedType } from '@/src/types/zhihu';
 import { short } from '@/src/utils/haptics';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getNetworkStatus, useNetworkStore, type NetworkStatus } from '@/src/stores/useNetworkStore';
 import { notify } from '@/src/stores/useNotificationStore';
 import { getRecentFeed, saveFeedEntries, trimTransientFeedEntries } from '@/src/db/repositories/feedRepository';
@@ -444,7 +443,6 @@ type HomeScreenProps = {
 
 const HomeScreen = ({ active = true }: HomeScreenProps) => {
     const theme = useTheme();
-    const insets = useSafeAreaInsets();
     const bottomContentInset = useMainTabBottomContentInset();
     
     // 从 store 中通过精细选择器拉取所需的状态和方法
@@ -1117,48 +1115,43 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
         }
     }, [reportExposure]);
 
-    const cardItemLayout = useCallback((_data: any, index: number) => ({
-        length: CARD_ITEM_HEIGHT,
-        offset: CARD_ITEM_HEIGHT * index,
-        index,
-    }), []);
-
     if (userHydrated && !cookies && networkStatus !== 'offline') {
-        return <GuestHomeFeed />;
+        return <GuestHomeFeed active={active} />;
     }
 
+    const searchAccessory = (
+        <SearchBar
+            label="搜索知乎内容"
+            onPress={() => router.push('/search')}
+            glassRenderMode={active ? 'backdrop' : 'local'}
+            inputProps={{ editable: false, showSoftInputOnFocus: false }}
+            style={{ height: theme.components.searchBar.minHeight }}
+        />
+    );
+
     return (
-        <View style={{ flex: 1, paddingTop: insets.top + MAIN_PAGE_TOP_SPACING, backgroundColor: theme.colors.surface }}>
-            <SearchBar
-                label="搜索知乎内容"
-                onPress={() => router.push('/search')}
-                inputProps={{
-                    editable: false,
-                    showSoftInputOnFocus: false,
-                }}
-                style={{ height: theme.components.searchBar.minHeight, marginBottom: 10 }}
-            />
-            
+        <PageScaffold
+            searchAccessory={searchAccessory}
+            searchAccessoryTopSpacing={MAIN_PAGE_TOP_SPACING}
+            searchAccessoryBottomSpacing={10}
+        >
             {displayMode === 'card' ? (
                 <View
                     style={{ flex: 1, alignItems: 'center', width: '100%' }}
                     onLayout={(event) => setCardListHeight(event.nativeEvent.layout.height)}
                 >
-                    <FlatList
-                        ref={flatListRef}
+                    <HomeCardList
+                        listRef={flatListRef}
+                        itemExtent={CARD_ITEM_HEIGHT}
+                        viewportHeight={cardListHeight}
+                        bottomContentInset={bottomContentInset}
                         style={{ width: '100%', flex: 1 }}
-                        contentContainerStyle={{
-                            alignItems: 'center',
-                            paddingTop: Math.max(0, (cardListHeight - CARD_ITEM_HEIGHT) / 2),
-                            paddingBottom: Math.max(0, (cardListHeight - CARD_ITEM_HEIGHT) / 2) + bottomContentInset,
-                        }}
                         data={visibleFeedList}
                         renderItem={renderCardListItem}
                         ListEmptyComponent={feedEmptyState}
                         keyExtractor={(item) => item.item.id.toString()}
                         snapToInterval={CARD_ITEM_HEIGHT}
                         snapToAlignment="start"
-                        // 保留一点惯性，但一次手势最多推进一个卡片间隔。
                         decelerationRate={0.96}
                         disableIntervalMomentum
                         showsVerticalScrollIndicator={false}
@@ -1171,13 +1164,12 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
                         onMomentumScrollEnd={handleMomentumScrollEnd}
                         onViewableItemsChanged={onViewableItemsChanged}
                         viewabilityConfig={{ itemVisiblePercentThreshold: 60 }}
-                        getItemLayout={cardItemLayout}
                         removeClippedSubviews={true}
                     />
                 </View>
             ) : displayMode === 'waterfall' ? (
-                <ScrollView
-                    ref={waterfallScrollRef}
+                <PageScrollView
+                    pageScrollRef={waterfallScrollRef}
                     style={{ flex: 1 }}
                     contentContainerStyle={{ flexGrow: 1, paddingBottom: bottomContentInset }}
                     showsVerticalScrollIndicator={false}
@@ -1217,11 +1209,11 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
                             ))}
                         </View>
                     ) : feedEmptyState}
-                </ScrollView>
+                </PageScrollView>
             ) : (
-                <FlatList
+                <PageFlatList
                     style={{ flex: 1 }}
-                    contentContainerStyle={{ alignItems: 'center', paddingTop: 0, paddingBottom: theme.spacing.md + bottomContentInset }}
+                    contentContainerStyle={{ alignItems: 'center', paddingBottom: theme.spacing.md + bottomContentInset }}
                     data={visibleFeedList}
                     renderItem={renderListItem}
                     ListEmptyComponent={feedEmptyState}
@@ -1241,13 +1233,48 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
                     removeClippedSubviews={true}
                 />
             )}
+
             <Menu
                 visible={actionMenuTarget !== null}
                 onClose={closeActionMenu}
                 anchor={actionMenuAnchor}
                 items={actionMenuItems}
             />
-        </View>
+        </PageScaffold>
+    );
+}
+
+type HomeCardListProps<ItemT> = Omit<FlatListProps<ItemT>, 'contentContainerStyle' | 'getItemLayout' | 'ref'> & {
+    listRef: React.RefObject<FlatList<ItemT> | null>;
+    itemExtent: number;
+    viewportHeight: number;
+    bottomContentInset: number;
+};
+
+function HomeCardList<ItemT>({ listRef, itemExtent, viewportHeight, bottomContentInset, ...props }: HomeCardListProps<ItemT>) {
+    const contentTopInset = usePageContentInset();
+    const centerSpace = contentTopInset > 0
+        ? Math.max(0, (viewportHeight - contentTopInset - bottomContentInset - itemExtent) / 2)
+        : Math.max(0, (viewportHeight - itemExtent) / 2);
+    const getItemLayout = (_data: ArrayLike<ItemT> | null | undefined, index: number) => ({
+        length: itemExtent,
+        // HyperOS keeps the previous offsets exactly; only floating Liquid Glass
+        // pages include their reserved overlay inset in virtualized coordinates.
+        offset: contentTopInset > 0 ? contentTopInset + centerSpace + itemExtent * index : itemExtent * index,
+        index,
+    });
+
+    return (
+        <PageFlatList
+            listRef={listRef}
+            {...props}
+            contentContainerStyle={{
+                alignItems: 'center',
+                paddingTop: centerSpace,
+                paddingBottom: centerSpace + bottomContentInset,
+            }}
+            getItemLayout={getItemLayout}
+        />
     );
 }
 
