@@ -8,10 +8,10 @@
   "types": "./lib/types/index.d.ts",
   "react-native": "./src/index.ts",
   "sideEffects": false,
-  "files": ["src", "lib", "README.md"],
+  "files": ["src", "lib", "android/build.gradle", "android/src", "android-core/build.gradle", "android-core/src", "app.plugin.js", "expo-module.config.json", "THIRD_PARTY_NOTICES.md", "README.md"],
   "scripts": {
     "clean": "node scripts/clean.mjs",
-    "build": "npm run clean && tsc -p tsconfig.build.json && tsc -p tsconfig.module.json"
+    "build": "tsc -p tsconfig.build.json && tsc -p tsconfig.module.json"
   },
   "peerDependencies": {
     "@shopify/react-native-skia": ">=2.2 <3",
@@ -32,7 +32,7 @@
       "import": "./lib/module/index.js",
       "require": "./lib/commonjs/index.js",
       "default": "./lib/module/index.js"
-    }
-  },
-  "private": true
+    },
+    "./app.plugin.js": "./app.plugin.js"
+  }
 }

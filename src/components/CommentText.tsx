@@ -4,6 +4,7 @@ import { PressableScale, Text } from '@/src/ui';
 import ImageReanimatedModal from "./ImageReanimatedModal";
 import { resolveImageUri } from "@/src/services/resourceService";
 import { useNetworkStore } from "@/src/stores/useNetworkStore";
+import { useCommentInteractionHost } from "@/src/components/CommentInteractionHost";
 
 type Token =
     | { type: "text"; text: string }
@@ -11,6 +12,9 @@ type Token =
     | { type: "link"; text: string; href: string }
     | { type: "emoji"; name: string }
     | { type: "image"; url: string ; width: number; height: number };
+
+const TOKEN_CACHE_LIMIT = 256;
+const tokenCache = new Map<string, Token[]>();
 
 const { width: WindowWidth } = Dimensions.get("window");
 
@@ -64,6 +68,12 @@ function textToTokens(plain: string): Token[] {
 }
 function htmlToTokens(html: string): Token[] {
     if (!html) return [];
+    const cached = tokenCache.get(html);
+    if (cached) {
+        tokenCache.delete(html);
+        tokenCache.set(html, cached);
+        return cached;
+    }
     let tmp = html
         .replace(/<br\s*\/?>/gi, "\n")
         .replace(/<\/p>\s*<p[^>]*>/gi, "\n")
@@ -109,6 +119,11 @@ function htmlToTokens(html: string): Token[] {
     tokens.push(...textToTokens(stripLightHtml(tmp.slice(lastIndex))));
 
     while (tokens.length && tokens[tokens.length - 1].type === "newline") tokens.pop();
+    tokenCache.set(html, tokens);
+    if (tokenCache.size > TOKEN_CACHE_LIMIT) {
+        const oldest = tokenCache.keys().next().value;
+        if (oldest !== undefined) tokenCache.delete(oldest);
+    }
     return tokens;
 }
 
@@ -126,6 +141,7 @@ export default function CommentText({
     const [imageOrigin, setImageOrigin] = React.useState<{ x: number; y: number; width: number; height: number }>({ x: 0, y: 0, width: 0, height: 0 });
     const imageRef = React.useRef<any>(null);
     const [imageVisible, setImageVisible] = React.useState(false);
+    const interactionHost = useCommentInteractionHost();
     const children = useMemo(() => {
         return tokens.map((t, idx) => {
             if (t.type === "newline") return <Text key={idx} type="body2" size={15}>{"\n"}</Text>;
@@ -173,11 +189,16 @@ export default function CommentText({
     const imagePressHandler = () => {
         if (imageRef.current) {
             imageRef.current.measureInWindow((x: number, y: number, width: number, height: number) => {
-                setImageOrigin({ x, y, width, height });
-                setImageVisible(true);
+                const origin = { x, y, width, height };
+                if (interactionHost) {
+                    interactionHost.openImagePreview(imageUrl, origin);
+                } else {
+                    setImageOrigin(origin);
+                    setImageVisible(true);
+                }
             })
         }
-    }
+    };
 
     return (
         <>
@@ -195,7 +216,9 @@ export default function CommentText({
                     />
                 </PressableScale>
             )}
-            <ImageReanimatedModal url={imageUrl} origin={imageOrigin} visible={imageVisible} onClose={() => setImageVisible(false)} />
+            {!interactionHost ? (
+                <ImageReanimatedModal url={imageUrl} origin={imageOrigin} visible={imageVisible} onClose={() => setImageVisible(false)} />
+            ) : null}
         </>
     );
 }

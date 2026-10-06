@@ -29,6 +29,7 @@
     },
     "plugins": [
       "expo-router",
+      "@newhu/react-native-liquid-glass",
       "./plugins/withNoLegacyStoragePermissions",
       [
         "expo-splash-screen",

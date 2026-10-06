@@ -1,12 +1,12 @@
 import { useSettingStore } from '@/src/stores/useSettingStore';
 import { notify } from '@/src/stores/useNotificationStore';
-import { Button, Card, Icon, ListRow, PageScaffold, PageScrollView, SegmentedControl, Switch, Text, TopAppBar } from '@/src/ui';
+import { Button, Card, Icon, ListRow, PageScaffold, PageSettingsList, SegmentedControl, Switch, Text, TopAppBar } from '@/src/ui';
 import { getWallpaperBlurRadius, resolveBackdropSource, resolveBaseTheme, type AppTheme, type ThemeName, type WallpaperBlurLevel, useTheme, wallpaperConfig } from '../project/react-native-hyper-ui/src/theme';
 import { GlassAppearanceProvider, GlassSurface } from '@newhu/react-native-liquid-glass';
 import { DefaultAmbientBackdrop } from '@/src/components/background/DefaultAmbientBackdrop';
 import { File, Paths } from 'expo-file-system';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
 
@@ -36,13 +36,13 @@ const ThemeSetScreen = () => {
 
     const [isPicking, setIsPicking] = useState(false);
 
-    const removeStoredWallpaper = (uri: string | null) => {
+    const removeStoredWallpaper = useCallback((uri: string | null) => {
         if (!uri || !uri.startsWith(Paths.document.uri) || !uri.includes('/newhu-wallpaper-')) return;
         const file = new File(uri);
         if (file.exists) file.delete();
-    };
+    }, []);
 
-    const importWallpaper = async () => {
+    const importWallpaper = useCallback(async () => {
         setIsPicking(true);
         try {
             const result = await launchImageLibrary({
@@ -74,17 +74,18 @@ const ThemeSetScreen = () => {
         } finally {
             setIsPicking(false);
         }
-    };
+    }, [removeStoredWallpaper, setWallpaperUri, wallpaperUri]);
 
-    const clearWallpaper = () => {
+    const clearWallpaper = useCallback(() => {
         removeStoredWallpaper(wallpaperUri);
         setWallpaperUri(null);
         notify('已恢复默认背景');
-    };
+    }, [removeStoredWallpaper, setWallpaperUri, wallpaperUri]);
 
-    return (
-        <PageScaffold topBar={<TopAppBar title="主题设置" back={() => router.back()} />} style={styles.container}>
-            <PageScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    const sections = useMemo(() => [
+        {
+            key: 'themes',
+            node: (
                 <View style={styles.section}>
                     <Text type="title4" weight="medium" color={theme.colors.onBackground} style={styles.sectionHeading}>主题风格</Text>
                     <View style={styles.themeChoices}>
@@ -114,7 +115,11 @@ const ThemeSetScreen = () => {
                         />
                     </View>
                 </View>
-
+            ),
+        },
+        {
+            key: 'appearance',
+            node: (
                 <View style={styles.section}>
                     <Card contentStyle={styles.groupCard}>
                         <CardSectionTitle>外观</CardSectionTitle>
@@ -134,7 +139,11 @@ const ThemeSetScreen = () => {
                         />
                     </Card>
                 </View>
-
+            ),
+        },
+        {
+            key: 'wallpaper',
+            node: (
                 <View style={styles.section}>
                     <Card contentStyle={styles.wallpaperCard}>
                         <CardSectionTitle>当前背景</CardSectionTitle>
@@ -206,11 +215,37 @@ const ThemeSetScreen = () => {
                         </View>
                     </Card>
                 </View>
-
+            ),
+        },
+        {
+            key: 'hint',
+            node: (
                 <Text type="footnote1" color={theme.colors.onBackgroundVariant} style={styles.hint}>
                     图片会保存在应用目录中。全局主题蒙层会保持正文清晰，文字颜色不会根据图片内容动态变化。
                 </Text>
-            </PageScrollView>
+            ),
+        },
+    ], [
+        clearWallpaper,
+        currentBackgroundLabel,
+        followSystemTheme,
+        hasAmbientDefault,
+        importWallpaper,
+        isDarkMode,
+        isPicking,
+        setDarkMode,
+        setFollowSystemTheme,
+        setThemeName,
+        setWallpaperBlurLevel,
+        theme,
+        themeName,
+        wallpaperBlurLevel,
+        wallpaperUri,
+    ]);
+
+    return (
+        <PageScaffold topBar={<TopAppBar title="主题设置" back={() => router.back()} />} style={styles.container}>
+            <PageSettingsList sections={sections} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} />
         </PageScaffold>
     );
 };

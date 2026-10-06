@@ -1,0 +1,50 @@
+import React from 'react';
+import type { ColorValue, View, ViewProps } from 'react-native';
+import type { GlassOpticsModel } from './types';
+export interface GlassCaptureSourceProps extends ViewProps {
+    providerId: string;
+    underlayProviderId?: string;
+    captureMode?: 'live' | 'static' | 'oneShot' | 'frozen';
+    snapshotBlurRadiusDp?: number;
+    sourceRevision?: string;
+    children?: React.ReactNode;
+}
+export interface NativeGlassSurfaceProps extends ViewProps {
+    providerId: string;
+    opticsModel?: GlassOpticsModel;
+    sdfContrast?: number;
+    sdfBrightness?: number;
+    sdfSaturation?: number;
+    sdfOuterShadowAlpha?: number;
+    sdfOuterShadowBlurRadius?: number;
+    sdfOuterShadowOffsetY?: number;
+    sdfInnerShadowAlpha?: number;
+    sdfInnerShadowExtent?: number;
+    cornerRadius?: number;
+    blurRadius?: number;
+    refractionHeight?: number;
+    refractionAmount?: number;
+    bodyRefractionAmount?: number;
+    interactionProgress?: number;
+    saturation?: number;
+    tint?: ColorValue;
+    tintAlpha?: number;
+    chromaticAberration?: number;
+    noiseAlpha?: number;
+    highlightAlpha?: number;
+    specularStrength?: number;
+    fresnelStrength?: number;
+    innerShadowStrength?: number;
+    highlightWidth?: number;
+    lightAngle?: number;
+    interactive?: boolean;
+    motionX?: number;
+    motionY?: number;
+    displacementOnlyDebug?: boolean;
+    sdfDisplacementMapDebug?: boolean;
+    continuous?: boolean;
+}
+export declare const LegacyGlassSurfaceView: React.ComponentType<NativeGlassSurfaceProps>;
+export declare const LegacyGlassCaptureSource: React.ComponentType<GlassCaptureSourceProps>;
+export declare const CoreGlassCaptureSource: React.ComponentType<GlassCaptureSourceProps> | null;
+export declare const CoreGlassSurfaceView: React.ForwardRefExoticComponent<NativeGlassSurfaceProps & React.RefAttributes<View>> | null;

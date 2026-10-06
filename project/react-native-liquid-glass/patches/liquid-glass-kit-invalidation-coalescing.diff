@@ -1,0 +1,249 @@
+diff --git a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassProviderModule.kt b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassProviderModule.kt
+--- a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassProviderModule.kt
++++ b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassProviderModule.kt
+@@ -9,9 +9,9 @@ import android.graphics.Shader
+ import android.os.Handler
+ import android.os.Looper
+ import android.os.Build
+-import android.os.SystemClock
+ import android.view.View
+ import android.view.ViewGroup
++import android.view.Choreographer
+ import android.view.ViewTreeObserver
+ import dev.liquidglass.view.BackdropRecorder
+ import dev.liquidglass.view.LiquidGlassBackdropSource
+@@ -81,13 +81,52 @@ class LiquidGlassProviderExpoView(
+     private val scrollTargets = IdentityHashMap<View, IntArray>()
+     private val sourceLocation = IntArray(2)
+     private val consumerLocation = IntArray(2)
++    private var glassFrameScheduled = false
++    private var scrollActive = false
++    private var contentDirtyDuringScroll = false
++    private var scrollConsumerRefreshPending = false
++    private var sourceCapturePending = false
++    private val glassFrameCallback = Choreographer.FrameCallback {
++        glassFrameScheduled = false
++        LiquidGlassPerfTelemetry.glassFrameExecuted()
++        if (!recorder.hasConsumers) {
++            scrollConsumerRefreshPending = false
++            sourceCapturePending = false
++            return@FrameCallback
++        }
++        if (!scrollActive && sourceCapturePending) {
++            sourceCapturePending = false
++            scrollConsumerRefreshPending = false
++            LiquidGlassPerfTelemetry.sourceContentDirty()
++            requestCapture()
++            return@FrameCallback
++        }
++        if (scrollConsumerRefreshPending) {
++            scrollConsumerRefreshPending = false
++            LiquidGlassPerfTelemetry.sourceContentDirty()
++            LiquidGlassPerfTelemetry.routeScrollReuse()
++            recorder.invalidateConsumers()
++            LiquidGlassPerfTelemetry.consumerInvalidationExecuted()
++        }
++    }
+     private val settleScrollCapture = Runnable {
+-        if (captureMode == "live" && recorder.hasConsumers) requestCapture()
++        if (captureMode == "live" && recorder.hasConsumers) {
++            scrollActive = false
++            if (contentDirtyDuringScroll) {
++                contentDirtyDuringScroll = false
++                sourceCapturePending = true
++                LiquidGlassPerfTelemetry.settleCaptureExecuted()
++                scheduleGlassFrame()
++            } else if (scrollConsumerRefreshPending) {
++                scheduleGlassFrame()
++            }
++        }
+     }
+     private val layoutListener = View.OnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+         updateConsumerBounds(view)
+     }
+     private val scrollChangedListener = ViewTreeObserver.OnScrollChangedListener {
++        LiquidGlassPerfTelemetry.scrollEventReceived()
+         if (!recorder.hasConsumers) return@OnScrollChangedListener
+         // A route may register its first backdrop consumer before a virtualized
+         // list has mounted enough cells to report that it can scroll. Keep the
+@@ -96,10 +135,13 @@ class LiquidGlassProviderExpoView(
+         // that list.
+         if (scrollTargets.isEmpty()) refreshScrollTargets()
+         if (hasTrackedScrollMoved()) {
+-            lastScrollReuseUptimeMs = SystemClock.uptimeMillis()
+-            LiquidGlassPerfTelemetry.sourceContentDirty()
+-            LiquidGlassPerfTelemetry.routeScrollReuse()
+-            recorder.invalidateConsumers()
++            scrollActive = true
++            if (sourceCapturePending) {
++                sourceCapturePending = false
++                contentDirtyDuringScroll = true
++            }
++            scrollConsumerRefreshPending = true
++            scheduleGlassFrame()
+             mainHandler.removeCallbacks(settleScrollCapture)
+             mainHandler.postDelayed(settleScrollCapture, 200L)
+         }
+@@ -107,7 +149,6 @@ class LiquidGlassProviderExpoView(
+     private var backdropDirty = false
+     private var observingScroll = false
+     private var oneShotCaptured = false
+-    private var lastScrollReuseUptimeMs = 0L
+     var snapshotBlurRadiusDp: Float = 0f
+         set(value) {
+             if (field == value) return
+@@ -129,10 +170,12 @@ class LiquidGlassProviderExpoView(
+                 requestCapture()
+             } else if (value == "frozen") {
+                 backdropDirty = false
++                clearGlassFrameWork()
+                 mainHandler.removeCallbacks(settleScrollCapture)
+                 scrollTargets.clear()
+                 updateScrollObservation()
+             } else if (value == "static") {
++                clearGlassFrameWork()
+                 mainHandler.removeCallbacks(settleScrollCapture)
+                 scrollTargets.clear()
+                 updateScrollObservation()
+@@ -239,25 +282,26 @@ class LiquidGlassProviderExpoView(
+     }
+
+     override fun onDescendantInvalidated(child: View, target: View) {
+-        if (captureMode == "live" || captureMode == "static" || (captureMode == "oneShot" && !oneShotCaptured)) {
+-            LiquidGlassPerfTelemetry.sourceContentDirty()
+-            val nestedScrollNodeChanged = captureMode == "live" &&
+-                SystemClock.uptimeMillis() - lastScrollReuseUptimeMs <= 200L
+-            if (nestedScrollNodeChanged) {
+-                LiquidGlassPerfTelemetry.routeScrollReuse()
+-                recorder.invalidateConsumers()
++        if (recorder.hasConsumers && (captureMode == "live" || captureMode == "static" || (captureMode == "oneShot" && !oneShotCaptured))) {
++            LiquidGlassPerfTelemetry.descendantInvalidationReceived()
++            if (captureMode == "live" && scrollActive) {
++                contentDirtyDuringScroll = true
++                scrollConsumerRefreshPending = true
++                if (!scheduleGlassFrame()) LiquidGlassPerfTelemetry.descendantInvalidationCoalesced()
+             } else {
+-                requestCapture()
++                sourceCapturePending = true
++                if (!scheduleGlassFrame()) LiquidGlassPerfTelemetry.descendantInvalidationCoalesced()
+             }
+         }
+         super.onDescendantInvalidated(child, target)
+     }
+
+     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
+-        if ((captureMode == "live" || captureMode == "static" || (captureMode == "oneShot" && !oneShotCaptured)) && width > 0 && height > 0) {
++        if (recorder.hasConsumers && (captureMode == "live" || captureMode == "static" || (captureMode == "oneShot" && !oneShotCaptured)) && width > 0 && height > 0) {
+             if (captureMode == "live" && scrollTargets.isEmpty()) refreshScrollTargets()
+             updateScrollObservation()
+-            requestCapture()
++            sourceCapturePending = true
++            scheduleGlassFrame()
+         }
+         super.onSizeChanged(width, height, oldWidth, oldHeight)
+     }
+@@ -417,6 +461,23 @@ class LiquidGlassProviderExpoView(
+         postInvalidateOnAnimation()
+     }
+
++    private fun scheduleGlassFrame(): Boolean {
++        if (glassFrameScheduled) return false
++        glassFrameScheduled = true
++        LiquidGlassPerfTelemetry.glassFrameScheduled()
++        Choreographer.getInstance().postFrameCallback(glassFrameCallback)
++        return true
++    }
++
++    private fun clearGlassFrameWork() {
++        if (glassFrameScheduled) Choreographer.getInstance().removeFrameCallback(glassFrameCallback)
++        glassFrameScheduled = false
++        scrollActive = false
++        contentDirtyDuringScroll = false
++        scrollConsumerRefreshPending = false
++        sourceCapturePending = false
++    }
++
+     private fun updateScrollObservation() {
+         val shouldObserve = captureMode == "live" && recorder.hasConsumers && isAttachedToWindow
+         if (shouldObserve && !observingScroll) {
+@@ -481,6 +542,7 @@ class LiquidGlassProviderExpoView(
+     override fun onDetachedFromWindow() {
+         LiquidGlassRegistry.unregisterProvider(providerId, this)
+         mainHandler.removeCallbacks(settleScrollCapture)
++        clearGlassFrameWork()
+         updateScrollObservation()
+         LiquidGlassPerfTelemetry.removeProviderGeometry(providerId)
+         backdropDirty = false
+diff --git a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/LiquidGlassPerfTelemetry.kt b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/LiquidGlassPerfTelemetry.kt
+--- a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/LiquidGlassPerfTelemetry.kt
++++ b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/LiquidGlassPerfTelemetry.kt
+@@ -31,6 +31,13 @@ internal object LiquidGlassPerfTelemetry {
+     private val routeRenderNodeRecords = AtomicLong()
+     private val routeScreenComposites = AtomicLong()
+     private val routeScrollReuses = AtomicLong()
++    private val descendantInvalidationsReceived = AtomicLong()
++    private val descendantInvalidationsCoalesced = AtomicLong()
++    private val scrollEventsReceived = AtomicLong()
++    private val glassFramesScheduled = AtomicLong()
++    private val glassFramesExecuted = AtomicLong()
++    private val consumerInvalidationsExecuted = AtomicLong()
++    private val settleCapturesExecuted = AtomicLong()
+     private val frozenSnapshotBlurRecords = AtomicLong()
+     private val frozenSnapshotRequests = AtomicLong()
+     private val frozenSnapshotFailures = AtomicLong()
+@@ -80,6 +87,13 @@ class LiquidGlassPerfTelemetry {
+                     "routeNodeRecord=${delta(current, previous, "routeRenderNodeRecordCount")} " +
+                     "routeScreenComposite=${delta(current, previous, "routeScreenCompositeCount")} " +
+                     "routeScrollReuse=${delta(current, previous, "routeScrollReuseCount")} " +
++                    "descendantInvalidationReceived=${delta(current, previous, "descendantInvalidationReceivedCount")} " +
++                    "descendantInvalidationCoalesced=${delta(current, previous, "descendantInvalidationCoalescedCount")} " +
++                    "scrollEventsReceived=${delta(current, previous, "scrollEventsReceivedCount")} " +
++                    "glassFrameScheduled=${delta(current, previous, "glassFrameScheduledCount")} " +
++                    "glassFrameExecuted=${delta(current, previous, "glassFrameExecutedCount")} " +
++                    "consumerInvalidationExecuted=${delta(current, previous, "consumerInvalidationExecutedCount")} " +
++                    "settleCaptureExecuted=${delta(current, previous, "settleCaptureExecutedCount")} " +
+                     "frozenSnapshotBlur=${delta(current, previous, "frozenSnapshotBlurRecordCount")} " +
+                     "frozenSnapshotRequests=${delta(current, previous, "frozenSnapshotRequestCount")} " +
+                     "frozenSnapshotFailures=${delta(current, previous, "frozenSnapshotFailureCount")} " +
+@@ -155,6 +169,13 @@ internal object LiquidGlassPerfTelemetry {
+     fun routeRenderNodeRecord() { if (enabled) routeRenderNodeRecords.incrementAndGet() }
+     fun routeScreenComposite() { if (enabled) routeScreenComposites.incrementAndGet() }
+     fun routeScrollReuse() { if (enabled) routeScrollReuses.incrementAndGet() }
++    fun descendantInvalidationReceived() { if (enabled) descendantInvalidationsReceived.incrementAndGet() }
++    fun descendantInvalidationCoalesced() { if (enabled) descendantInvalidationsCoalesced.incrementAndGet() }
++    fun scrollEventReceived() { if (enabled) scrollEventsReceived.incrementAndGet() }
++    fun glassFrameScheduled() { if (enabled) glassFramesScheduled.incrementAndGet() }
++    fun glassFrameExecuted() { if (enabled) glassFramesExecuted.incrementAndGet() }
++    fun consumerInvalidationExecuted() { if (enabled) consumerInvalidationsExecuted.incrementAndGet() }
++    fun settleCaptureExecuted() { if (enabled) settleCapturesExecuted.incrementAndGet() }
+     fun frozenSnapshotBlurRecorded() { if (enabled) frozenSnapshotBlurRecords.incrementAndGet() }
+     fun frozenSnapshotRequested() { if (enabled) frozenSnapshotRequests.incrementAndGet() }
+     fun frozenSnapshotFailed() { if (enabled) frozenSnapshotFailures.incrementAndGet() }
+@@ -211,6 +232,13 @@ class LiquidGlassPerfTelemetry {
+         "routeRenderNodeRecordCount" to routeRenderNodeRecords.get(),
+         "routeScreenCompositeCount" to routeScreenComposites.get(),
+         "routeScrollReuseCount" to routeScrollReuses.get(),
++        "descendantInvalidationReceivedCount" to descendantInvalidationsReceived.get(),
++        "descendantInvalidationCoalescedCount" to descendantInvalidationsCoalesced.get(),
++        "scrollEventsReceivedCount" to scrollEventsReceived.get(),
++        "glassFrameScheduledCount" to glassFramesScheduled.get(),
++        "glassFrameExecutedCount" to glassFramesExecuted.get(),
++        "consumerInvalidationExecutedCount" to consumerInvalidationsExecuted.get(),
++        "settleCaptureExecutedCount" to settleCapturesExecuted.get(),
+         "frozenSnapshotBlurRecordCount" to frozenSnapshotBlurRecords.get(),
+         "frozenSnapshotRequestCount" to frozenSnapshotRequests.get(),
+         "frozenSnapshotFailureCount" to frozenSnapshotFailures.get(),
+@@ -259,6 +287,13 @@ class LiquidGlassPerfTelemetry {
+         routeRenderNodeRecords.set(0L)
+         routeScreenComposites.set(0L)
+         routeScrollReuses.set(0L)
++        descendantInvalidationsReceived.set(0L)
++        descendantInvalidationsCoalesced.set(0L)
++        scrollEventsReceived.set(0L)
++        glassFramesScheduled.set(0L)
++        glassFramesExecuted.set(0L)
++        consumerInvalidationsExecuted.set(0L)
++        settleCapturesExecuted.set(0L)
+         frozenSnapshotBlurRecords.set(0L)
+         frozenSnapshotRequests.set(0L)
+         frozenSnapshotFailures.set(0L)

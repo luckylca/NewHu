@@ -39,10 +39,11 @@ const jsx_runtime_1 = require("react/jsx-runtime");
 const react_1 = __importStar(require("react"));
 const react_native_1 = require("react-native");
 const Haptics = __importStar(require("expo-haptics"));
-const liquid_glass_kit_1 = require("liquid-glass-kit");
 const react_native_gesture_handler_1 = require("react-native-gesture-handler");
 const react_native_reanimated_1 = __importStar(require("react-native-reanimated"));
 const GlassSurface_1 = require("./GlassSurface");
+const glassNativeEngine_1 = require("./glassNativeEngine");
+const nativeGlassViews_1 = require("./nativeGlassViews");
 const TAB_BAR_HEIGHT = 66;
 const TAB_BAR_BOTTOM_GAP = 8;
 const TAB_BAR_SCROLL_CLEARANCE = 12;
@@ -61,7 +62,10 @@ const IDLE_SPRING = { damping: 24, stiffness: 330, mass: 0.68 };
 const TAP_SELECTION_SPRING = { damping: 26, stiffness: 520, mass: 0.56 };
 const EDGE_SPRING_FAST = { damping: 31, stiffness: 620, mass: 0.62 };
 const EDGE_SPRING_SLOW = { damping: 29, stiffness: 260, mass: 0.76 };
-const AnimatedLiquidGlassView = (0, react_native_reanimated_1.createAnimatedComponent)(liquid_glass_kit_1.LiquidGlassView);
+const AnimatedLegacyGlassSurface = (0, react_native_reanimated_1.createAnimatedComponent)(nativeGlassViews_1.LegacyGlassSurfaceView);
+const AnimatedCoreGlassSurface = nativeGlassViews_1.CoreGlassSurfaceView
+    ? (0, react_native_reanimated_1.createAnimatedComponent)(nativeGlassViews_1.CoreGlassSurfaceView)
+    : null;
 function logGlassTabGesture(event, detail) {
     if (GESTURE_DEBUG_ENABLED) {
         const timestamp = globalThis.performance?.now?.();
@@ -81,10 +85,17 @@ function emitTargetHaptic(_index) {
  */
 function GlassTabBar({ items, selected, bottomInset = 0, shellBackgroundColor, onSelect, onSelectFromDrag, renderIcon, renderItem, presentation = 'floating', height = TAB_BAR_HEIGHT, width: requestedWidth, horizontalPadding = TAB_BAR_HORIZONTAL_PADDING, shellRadius, lensMaxWidth = SELECTION_LENS_MAX_WIDTH, lensRefractionHeight, accessibilityHint, }) {
     const { width: windowWidth } = (0, react_native_1.useWindowDimensions)();
+    const nativeEngine = (0, react_1.useSyncExternalStore)(glassNativeEngine_1.subscribeGlassNativeEngine, glassNativeEngine_1.getGlassNativeEngine, glassNativeEngine_1.getGlassNativeEngine);
     const appearance = (0, GlassSurface_1.useGlassAppearance)();
     const reducedMotion = (0, GlassSurface_1.useGlassReducedMotion)();
     const tabBarMaterial = appearance?.tokens.materials.tabBarShell ?? appearance?.tokens.materials.tabBar;
     const nativeLiveAvailable = react_native_1.Platform.OS === 'android' && appearance?.tokens.quality !== 'fallback';
+    const NativeCaptureSource = nativeEngine === 'core' && nativeGlassViews_1.CoreGlassCaptureSource
+        ? nativeGlassViews_1.CoreGlassCaptureSource
+        : nativeGlassViews_1.LegacyGlassCaptureSource;
+    const NativeGlassSurface = nativeEngine === 'core' && AnimatedCoreGlassSurface
+        ? AnimatedCoreGlassSurface
+        : AnimatedLegacyGlassSurface;
     const dark = appearance?.dark ?? false;
     const opaqueShellColor = shellBackgroundColor ?? (dark ? '#283547' : '#EAF0F7');
     const providerId = react_1.default.useId();
@@ -743,7 +754,7 @@ function GlassTabBar({ items, selected, bottomInset = 0, shellBackgroundColor, o
             }
             : undefined, pointerEvents: "box-none", style: presentation === 'floating'
             ? [styles.host, { left: shellScreenLeft, bottom: bottomInset + TAB_BAR_BOTTOM_GAP, width: barWidth, height }]
-            : [styles.inlineHost, { width: requestedWidth ?? '100%', height }], children: [nativeLiveAvailable ? ((0, jsx_runtime_1.jsxs)(jsx_runtime_1.Fragment, { children: [(0, jsx_runtime_1.jsx)(liquid_glass_kit_1.LiquidGlassProvider, { providerId: providerId, pointerEvents: "none", style: [
+            : [styles.inlineHost, { width: requestedWidth ?? '100%', height }], children: [nativeLiveAvailable ? ((0, jsx_runtime_1.jsxs)(jsx_runtime_1.Fragment, { children: [(0, jsx_runtime_1.jsx)(NativeCaptureSource, { providerId: providerId, pointerEvents: "none", style: [
                             styles.localBackdropProvider,
                             {
                                 width: barWidth,
@@ -756,7 +767,7 @@ function GlassTabBar({ items, selected, bottomInset = 0, shellBackgroundColor, o
                                 shadowOffset: { width: 0, height: tabBarMaterial?.shadowOffsetY ?? 0 },
                                 elevation: tabBarMaterial?.elevation ?? 0,
                             },
-                        ], children: (0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "none", style: [styles.shell, shellStyle], children: (0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "none", style: [styles.row, { paddingHorizontal: horizontalPadding }], children: tabItems }) }) }), (0, jsx_runtime_1.jsx)(AnimatedLiquidGlassView, { pointerEvents: "none", providerId: providerId, cornerRadius: appearance?.tokens.materials.tabSelectionLens.radius ?? lensBaseHeight / 2, blurRadius: (appearance?.tokens.materials.tabSelectionLens.blurRadius ?? 0.35) * (appearance?.tokens.quality === 'high' ? 1.2 : 1), refractionHeight: lensRefractionHeight ?? appearance?.tokens.materials.tabSelectionLens.refractionHeight ?? 12, refractionAmount: appearance?.tokens.materials.tabSelectionLens.refractionAmount ?? 5.5, bodyRefractionAmount: appearance?.tokens.materials.tabSelectionLens.refractionBodyAmount ?? 1.5, saturation: appearance?.tokens.materials.tabSelectionLens.saturation ?? 1.02, chromaticAberration: appearance?.tokens.materials.tabSelectionLens.chromaticAberration ?? 0.3, highlightAlpha: appearance?.tokens.materials.tabSelectionLens.highlightAlpha ?? 0.62, highlightWidth: appearance?.tokens.materials.tabSelectionLens.highlightWidth ?? 1.3, tintAlpha: appearance?.tokens.materials.tabSelectionLens.tintAlpha ?? 0.08, specularStrength: appearance?.tokens.materials.tabSelectionLens.specularStrength ?? 0.95, fresnelStrength: appearance?.tokens.materials.tabSelectionLens.fresnelStrength ?? 0.72, innerShadowStrength: appearance?.tokens.materials.tabSelectionLens.innerShadowStrength ?? 0.2, tint: appearance?.tokens.tint[dark ? 'dark' : 'light'], continuous: liveBackdropEnabled, animatedProps: liveLensAnimatedProps, style: [styles.nativeLens, liveLensStyle] })] })) : ((0, jsx_runtime_1.jsxs)(react_native_1.View, { pointerEvents: "none", style: [styles.shell, shellStyle], children: [(0, jsx_runtime_1.jsx)(GlassSurface_1.GlassSurface, { variant: "tabSelectionLens", positioning: "inFlow", sampling: "local", pointerEvents: "none", style: {
+                        ], children: (0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "none", style: [styles.shell, shellStyle], children: (0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "none", style: [styles.row, { paddingHorizontal: horizontalPadding }], children: tabItems }) }) }), (0, jsx_runtime_1.jsx)(NativeGlassSurface, { pointerEvents: "none", providerId: providerId, cornerRadius: appearance?.tokens.materials.tabSelectionLens.radius ?? lensBaseHeight / 2, blurRadius: (appearance?.tokens.materials.tabSelectionLens.blurRadius ?? 0.35) * (appearance?.tokens.quality === 'high' ? 1.2 : 1), refractionHeight: lensRefractionHeight ?? appearance?.tokens.materials.tabSelectionLens.refractionHeight ?? 12, refractionAmount: appearance?.tokens.materials.tabSelectionLens.refractionAmount ?? 5.5, bodyRefractionAmount: appearance?.tokens.materials.tabSelectionLens.refractionBodyAmount ?? 1.5, saturation: appearance?.tokens.materials.tabSelectionLens.saturation ?? 1.02, chromaticAberration: appearance?.tokens.materials.tabSelectionLens.chromaticAberration ?? 0.3, highlightAlpha: appearance?.tokens.materials.tabSelectionLens.highlightAlpha ?? 0.62, highlightWidth: appearance?.tokens.materials.tabSelectionLens.highlightWidth ?? 1.3, tintAlpha: appearance?.tokens.materials.tabSelectionLens.tintAlpha ?? 0.08, specularStrength: appearance?.tokens.materials.tabSelectionLens.specularStrength ?? 0.95, fresnelStrength: appearance?.tokens.materials.tabSelectionLens.fresnelStrength ?? 0.72, innerShadowStrength: appearance?.tokens.materials.tabSelectionLens.innerShadowStrength ?? 0.2, tint: appearance?.tokens.tint[dark ? 'dark' : 'light'], continuous: liveBackdropEnabled, animatedProps: liveLensAnimatedProps, style: [styles.nativeLens, liveLensStyle] })] })) : ((0, jsx_runtime_1.jsxs)(react_native_1.View, { pointerEvents: "none", style: [styles.shell, shellStyle], children: [(0, jsx_runtime_1.jsx)(GlassSurface_1.GlassSurface, { variant: "tabSelectionLens", positioning: "inFlow", sampling: "local", pointerEvents: "none", style: {
                             position: 'absolute',
                             left: selectedLeft,
                             top: verticalInset,

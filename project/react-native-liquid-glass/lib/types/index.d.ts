@@ -1,9 +1,16 @@
-export { GlassAppearanceProvider, GlassMaterialProvider, GlassOverlay, GlassSurface, useGlassAppearance, useGlassReducedMotion } from './GlassSurface';
-export type { GlassAppearanceProviderProps, GlassMaterialProviderProps, GlassSurfaceProps } from './GlassSurface';
+export { GlassAppearanceProvider, GlassMaterialProvider, GlassOverlay, GlassSurface, RouteGlassCaptureScope, RouteGlassCaptureSource, useGlassAppearance, useGlassProviderId, useGlassReducedMotion } from './GlassSurface';
+export type { GlassAppearanceProviderProps, GlassMaterialProviderProps, GlassSamplingSource, GlassSurfaceProps } from './GlassSurface';
+export { glassController } from './glassController';
+export { getGlassNativeEngine, setGlassNativeEngine } from './glassNativeEngine';
+export type { GlassNativeEngine } from './glassNativeEngine';
+export { getGlassRuntime, setGlassRuntime } from './glassRuntime';
+export type { GlassRuntimeConfig, GlassRuntimeEngine } from './glassRuntime';
 export { GlassTabLens } from './GlassTabLens';
 export type { GlassTabLensProps } from './GlassTabLens';
 export { GlassTabBar, GLASS_TAB_BAR_CONTENT_INSET } from './GlassTabBar';
 export type { GlassTabBarItem, GlassTabBarProps } from './GlassTabBar';
 export { getLiquidGlassPerformanceStats, setLiquidGlassPerformanceTelemetryEnabled } from './performanceTelemetry';
 export type { LiquidGlassPerformanceStats } from './performanceTelemetry';
+export { getLocalGlassNativeEngine, getLocalGlassTelemetry, setLocalGlassHardwareLayerExperimentEnabled, setLocalGlassNativeEngine, setLocalGlassTelemetryEnabled, setLocalGlassVisibleItemCount } from './localGlassTelemetry';
+export type { LocalGlassNativeEngine, LocalGlassRendererKind, LocalGlassTelemetrySnapshot } from './localGlassTelemetry';
 export type { GlassMaterialTokens, GlassQuality, GlassTokens, GlassVariant } from './types';

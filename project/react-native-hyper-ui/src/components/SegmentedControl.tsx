@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { GlassTabBar } from '@newhu/react-native-liquid-glass';
 import { Text } from '../primitives';
 import { useTheme } from '../theme';
+import { useSurfaceEnvironment } from './SurfaceEnvironmentContext';
 
 export interface AppSegmentedControlProps {
     tabs: string[];
@@ -20,6 +21,7 @@ const CONTROL_HEIGHT = 56;
  */
 export const SegmentedControl = React.memo(function SegmentedControl({ tabs, selected = 0, onSelect, lensRefractionHeight }: AppSegmentedControlProps) {
     const theme = useTheme();
+    const embeddedInGlassOverlay = useSurfaceEnvironment() === 'glassOverlay';
     const renderModeLabel = useCallback((item: { label: string }, _index: number, active: boolean) => (
         <Text
             type="body1"
@@ -31,7 +33,7 @@ export const SegmentedControl = React.memo(function SegmentedControl({ tabs, sel
         </Text>
     ), [theme.colors.onBackground, theme.colors.onSurfaceVariantSummary]);
 
-    if (theme.glass.enabled) {
+    if (theme.glass.enabled && !embeddedInGlassOverlay) {
         return (
             <GlassTabBar
                 items={tabs.map((label) => ({ label }))}
@@ -52,7 +54,7 @@ export const SegmentedControl = React.memo(function SegmentedControl({ tabs, sel
     }
 
     return (
-        <View style={[styles.fallbackShell, { backgroundColor: theme.colors.secondaryVariant }]}>
+        <View style={[styles.fallbackShell, { backgroundColor: embeddedInGlassOverlay ? 'transparent' : theme.colors.secondaryVariant }]}>
             {tabs.map((label, index) => {
                 const active = index === selected;
                 return (
@@ -61,7 +63,11 @@ export const SegmentedControl = React.memo(function SegmentedControl({ tabs, sel
                         accessibilityRole="tab"
                         accessibilityState={{ selected: active }}
                         onPress={() => onSelect?.(index)}
-                        style={[styles.fallbackItem, active && { backgroundColor: theme.colors.surfaceContainer }]}
+                        style={[styles.fallbackItem, active && {
+                            backgroundColor: embeddedInGlassOverlay
+                                ? theme.glass.tint[theme.dark ? 'dark' : 'light']
+                                : theme.colors.surfaceContainer,
+                        }]}
                     >
                         <Text
                             type="body1"

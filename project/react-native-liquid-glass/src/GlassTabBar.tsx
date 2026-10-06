@@ -1,8 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { LiquidGlassProvider, LiquidGlassView } from 'liquid-glass-kit';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
     cancelAnimation,
@@ -18,6 +17,13 @@ import Animated, {
 } from 'react-native-reanimated';
 import type { SharedValue } from 'react-native-reanimated';
 import { GlassOverlay, GlassSurface, useGlassAppearance, useGlassReducedMotion } from './GlassSurface';
+import { getGlassNativeEngine, subscribeGlassNativeEngine } from './glassNativeEngine';
+import {
+    CoreGlassCaptureSource,
+    CoreGlassSurfaceView,
+    LegacyGlassCaptureSource,
+    LegacyGlassSurfaceView,
+} from './nativeGlassViews';
 
 const TAB_BAR_HEIGHT = 66;
 const TAB_BAR_BOTTOM_GAP = 8;
@@ -37,7 +43,10 @@ const IDLE_SPRING = { damping: 24, stiffness: 330, mass: 0.68 };
 const TAP_SELECTION_SPRING = { damping: 26, stiffness: 520, mass: 0.56 };
 const EDGE_SPRING_FAST = { damping: 31, stiffness: 620, mass: 0.62 };
 const EDGE_SPRING_SLOW = { damping: 29, stiffness: 260, mass: 0.76 };
-const AnimatedLiquidGlassView = createAnimatedComponent(LiquidGlassView);
+const AnimatedLegacyGlassSurface = createAnimatedComponent(LegacyGlassSurfaceView);
+const AnimatedCoreGlassSurface = CoreGlassSurfaceView
+    ? createAnimatedComponent(CoreGlassSurfaceView)
+    : null;
 
 type TabLensState = 'idle' | 'pressing' | 'inflating' | 'dragging' | 'snapping' | 'settling';
 
@@ -122,10 +131,17 @@ export function GlassTabBar({
     accessibilityHint,
 }: GlassTabBarProps) {
     const { width: windowWidth } = useWindowDimensions();
+    const nativeEngine = useSyncExternalStore(subscribeGlassNativeEngine, getGlassNativeEngine, getGlassNativeEngine);
     const appearance = useGlassAppearance();
     const reducedMotion = useGlassReducedMotion();
     const tabBarMaterial = appearance?.tokens.materials.tabBarShell ?? appearance?.tokens.materials.tabBar;
     const nativeLiveAvailable = Platform.OS === 'android' && appearance?.tokens.quality !== 'fallback';
+    const NativeCaptureSource = nativeEngine === 'core' && CoreGlassCaptureSource
+        ? CoreGlassCaptureSource
+        : LegacyGlassCaptureSource;
+    const NativeGlassSurface = nativeEngine === 'core' && AnimatedCoreGlassSurface
+        ? AnimatedCoreGlassSurface
+        : AnimatedLegacyGlassSurface;
     const dark = appearance?.dark ?? false;
     const opaqueShellColor = shellBackgroundColor ?? (dark ? '#283547' : '#EAF0F7');
     const providerId = React.useId();
@@ -860,7 +876,7 @@ export function GlassTabBar({
         >
             {nativeLiveAvailable ? (
                 <>
-                    <LiquidGlassProvider
+                    <NativeCaptureSource
                         providerId={providerId}
                         pointerEvents="none"
                         style={[
@@ -881,8 +897,8 @@ export function GlassTabBar({
                         <View pointerEvents="none" style={[styles.shell, shellStyle]}>
                             <View pointerEvents="none" style={[styles.row, { paddingHorizontal: horizontalPadding }]}>{tabItems}</View>
                         </View>
-                    </LiquidGlassProvider>
-                    <AnimatedLiquidGlassView
+                    </NativeCaptureSource>
+                    <NativeGlassSurface
                         pointerEvents="none"
                         providerId={providerId}
                         cornerRadius={appearance?.tokens.materials.tabSelectionLens.radius ?? lensBaseHeight / 2}

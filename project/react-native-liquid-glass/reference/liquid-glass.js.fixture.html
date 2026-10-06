@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Liquid Glass SDF Scale Lens Reference</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body {
+      position: relative;
+      color: #172743;
+      font: 16px/1.35 ui-sans-serif, system-ui, sans-serif;
+      background-color: #eff5ff;
+      background-image:
+        repeating-conic-gradient(#dbe8f6 0% 25%, #f6f9fd 0% 50%);
+      background-size: 48px 48px;
+    }
+    .color-wash {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 18% 17%, rgba(255, 94, 121, .84), transparent 26%),
+        radial-gradient(ellipse at 77% 22%, rgba(40, 200, 177, .8), transparent 29%),
+        radial-gradient(ellipse at 83% 79%, rgba(111, 102, 237, .72), transparent 30%),
+        linear-gradient(132deg, rgba(255, 224, 139, .72), rgba(159, 203, 255, .35) 54%, rgba(255, 194, 159, .58));
+    }
+    .grid { position: absolute; inset: 0; opacity: .56; }
+    .grid::before, .grid::after {
+      position: absolute;
+      content: "";
+      inset: 0;
+      background-size: 64px 64px;
+      background-position: 0 0;
+    }
+    .grid::before {
+      background-image: linear-gradient(90deg, rgba(20, 62, 120, .65) 1px, transparent 1px),
+        linear-gradient(rgba(20, 62, 120, .65) 1px, transparent 1px);
+    }
+    .grid::after {
+      background-size: 256px 256px;
+      background-image: linear-gradient(90deg, rgba(9, 49, 107, .88) 2px, transparent 2px),
+        linear-gradient(rgba(9, 49, 107, .88) 2px, transparent 2px);
+    }
+    .stripe { position: absolute; opacity: .78; }
+    .stripe.horizontal { left: 0; right: 0; height: 10px; }
+    .stripe.vertical { top: 0; bottom: 0; width: 10px; }
+    .stripe.red { top: 31%; background: #ed3357; }
+    .stripe.blue { top: 68%; background: #204fea; }
+    .stripe.green { left: 26%; background: #12aa68; }
+    .stripe.gold { left: 76%; background: #e0a20a; }
+    .photo {
+      position: absolute;
+      left: 8%;
+      bottom: 7%;
+      width: 34%;
+      height: 21%;
+      overflow: hidden;
+      border: 2px solid rgba(255,255,255,.9);
+      border-radius: 12px;
+      background: linear-gradient(#8be0ee 0 48%, #f7d379 48% 51%, #538d9a 51%);
+      box-shadow: 0 8px 22px rgba(20,40,70,.25);
+    }
+    .photo::before, .photo::after {
+      position: absolute;
+      content: "";
+      left: -8%;
+      width: 120%;
+      height: 65%;
+      bottom: -18%;
+      background: #426c64;
+      clip-path: polygon(0 100%, 33% 5%, 56% 70%, 77% 22%, 100% 100%);
+    }
+    .photo::after { bottom: -35%; background: #203f53; transform: scaleX(-1); }
+    .sun { position: absolute; right: 17%; top: 15%; width: 28px; height: 28px; border-radius: 50%; background: #fff7bd; box-shadow: 0 0 26px #fff7bd; }
+    .label { position: absolute; z-index: 1; padding: 8px 12px; border-radius: 8px; color: #142c52; background: rgba(255,255,255,.72); font-weight: 700; letter-spacing: .04em; white-space: nowrap; }
+    .label.a { left: 7%; top: 9%; }
+    .label.b { left: 66%; top: 44%; }
+    .label.c { left: 58%; bottom: 10%; }
+    .copy { position: absolute; left: 8%; top: 21%; width: 45%; color: #132b4f; font-size: 22px; font-weight: 700; text-shadow: 0 1px 0 rgba(255,255,255,.7); }
+    .copy small { display: block; margin-top: 8px; font-size: 13px; font-weight: 500; }
+    body.show-map .liquid-glass-300 { display: none !important; }
+    body.show-map .color-wash, body.show-map .grid, body.show-map .stripe,
+    body.show-map .photo, body.show-map .label, body.show-map .copy { visibility: hidden; }
+    body.show-map canvas { display: block !important; position: fixed; z-index: 10000; left: 50%; top: 50%; width: min(80vw, 600px); height: auto; transform: translate(-50%, -50%); outline: 2px solid white; }
+    body.show-probe::after { content: attr(data-viewport); position: fixed; z-index: 20000; top: 4px; left: 4px; padding: 4px 6px; color: white; background: black; font: 12px monospace; }
+  </style>
+</head>
+<body>
+  <div class="color-wash"></div>
+  <div class="grid"></div>
+  <div class="stripe horizontal red"></div>
+  <div class="stripe horizontal blue"></div>
+  <div class="stripe vertical green"></div>
+  <div class="stripe vertical gold"></div>
+  <div class="photo"><span class="sun"></span></div>
+  <div class="copy">Liquid Glass<small>300 × 200 · rounded SDF · edge scale mapping</small></div>
+  <div class="label a">TEXT + GRID</div>
+  <div class="label b">COLOR STRIPES</div>
+  <div class="label c">IMAGE + GRADIENT</div>
+  <script src="./liquid-glass.js"></script>
+  <script>
+    const query = new URLSearchParams(location.search);
+    if (query.has('probe')) {
+      document.body.dataset.viewport = `${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio}`;
+      document.body.classList.add('show-probe');
+    }
+    if (query.has('capture') && window.liquidGlass?.container) {
+      const targetWidth = Number(query.get('width') || 377);
+      const targetHeight = Number(query.get('height') || 896);
+      document.documentElement.style.width = `${targetWidth}px`;
+      document.documentElement.style.height = `${targetHeight}px`;
+      document.body.style.width = `${targetWidth}px`;
+      document.body.style.height = `${targetHeight}px`;
+      window.liquidGlass.container.style.left = `${targetWidth * 0.5}px`;
+      window.liquidGlass.container.style.top = `${targetHeight * 0.5}px`;
+      if (query.has('map') && window.liquidGlass.canvas) {
+        window.liquidGlass.canvas.style.left = `${targetWidth * 0.5}px`;
+        window.liquidGlass.canvas.style.top = `${targetHeight * 0.5}px`;
+        window.liquidGlass.canvas.style.width = `${Math.min(300, targetWidth * 0.8)}px`;
+      }
+    }
+    if (query.has('map')) {
+      document.body.classList.add('show-map');
+      requestAnimationFrame(() => {
+        if (window.liquidGlass?.canvas) {
+          window.liquidGlass.container.style.display = 'none';
+          window.liquidGlass.svg.style.display = 'none';
+          document.body.appendChild(window.liquidGlass.canvas);
+          window.liquidGlass.canvas.style.display = 'block';
+        }
+      });
+    }
+  </script>
+</body>
+</html>

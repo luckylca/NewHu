@@ -134,6 +134,7 @@ export const SearchBar = React.memo(function SearchBar({
                     variant={usesGlassMaterial ? 'search' : 'control'}
                     positioning={theme.presentation.search.defaultMode}
                     sampling={usesGlassMaterial ? glassRenderMode ?? (theme.presentation.search.defaultMode === 'floating' ? 'backdrop' : 'local') : 'local'}
+                    inlineBackdrop={usesGlassMaterial}
                     interactive={Boolean(onPress)}
                     style={{
                         flex: 1,
@@ -144,7 +145,6 @@ export const SearchBar = React.memo(function SearchBar({
                         borderColor: theme.colors.outline,
                         borderWidth: usesGlassMaterial ? 0.5 : 0,
                     }}
-                    placeholderChildren={usesGlassMaterial ? <View style={{ flex: 1, minHeight: c.minHeight }} /> : undefined}
                 >
                     <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
                     <View style={{ paddingLeft: theme.spacing.lg, paddingRight: theme.spacing.sm }}>

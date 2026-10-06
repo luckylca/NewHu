@@ -1,0 +1,624 @@
+diff --git a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/BackdropRecorder.kt b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/BackdropRecorder.kt
+--- a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/BackdropRecorder.kt
++++ b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/BackdropRecorder.kt
+@@ -6,6 +6,7 @@
+ import android.os.Build
+ import android.view.View
+ import androidx.annotation.RequiresApi
++import java.util.IdentityHashMap
+ import java.util.concurrent.CopyOnWriteArrayList
+ 
+ /**
+@@ -34,6 +35,10 @@
+     public val recordedOriginY: Int
+         get() = 0
+ 
++    public fun renderNodeFor(consumer: View): RenderNode? = contentRenderNode
++    public fun recordedOriginXFor(consumer: View): Int = recordedOriginX
++    public fun recordedOriginYFor(consumer: View): Int = recordedOriginY
++
+     public fun registerConsumer(consumer: View)
+ 
+     public fun unregisterConsumer(consumer: View)
+@@ -62,6 +67,8 @@
+ public class BackdropRecorder {
+ 
+     private val consumers = CopyOnWriteArrayList<View>()
++    private val consumerRegionNodes = IdentityHashMap<View, RenderNode>()
++    private val consumerRegionBounds = IdentityHashMap<View, Rect>()
+     // Reused scratch objects: capture runs on the UI thread and may execute every
+     // display frame, so avoid coordinate-array/Rect allocation per consumer.
+     private val clampedCaptureBounds = Rect()
+@@ -85,8 +92,65 @@
+ 
+     public fun unregister(consumer: View) {
+         consumers.remove(consumer)
++        val node = consumerRegionNodes.remove(consumer)
++        if (Build.VERSION.SDK_INT >= 29) node?.discardDisplayList()
++        consumerRegionBounds.remove(consumer)
+     }
+ 
++    /** Build consumer slices from the shared route node without traversing the View tree again. */
++    public fun updateConsumerRegions(
++        regions: Map<View, Rect>,
++        source: RenderNode,
++        width: Int,
++        height: Int,
++    ): Long {
++        if (Build.VERSION.SDK_INT < 29 || width <= 0 || height <= 0 || !source.hasDisplayList()) return 0L
++        val removed = consumerRegionNodes.keys.filter { !regions.containsKey(it) }
++        for (consumer in removed) {
++            consumerRegionNodes.remove(consumer)?.discardDisplayList()
++            consumerRegionBounds.remove(consumer)
++        }
++
++        var recordedPixels = 0L
++        for (consumer in consumers) {
++            val requested = regions[consumer] ?: continue
++            clampedCaptureBounds.set(
++                requested.left.coerceIn(0, width),
++                requested.top.coerceIn(0, height),
++                requested.right.coerceIn(0, width),
++                requested.bottom.coerceIn(0, height),
++            )
++            if (clampedCaptureBounds.width() <= 0 || clampedCaptureBounds.height() <= 0) continue
++            val existing = consumerRegionBounds[consumer]
++            if (existing == clampedCaptureBounds) {
++                recordedPixels += existing.width().toLong() * existing.height().toLong()
++                continue
++            }
++            val bounds = Rect(clampedCaptureBounds)
++            val node = consumerRegionNodes[consumer]
++                ?: RenderNode("LiquidGlassRegion-${System.identityHashCode(consumer)}").also {
++                    consumerRegionNodes[consumer] = it
++                }
++            node.setPosition(0, 0, bounds.width(), bounds.height())
++            val recording = node.beginRecording(bounds.width(), bounds.height())
++            try {
++                recording.clipRect(0f, 0f, bounds.width().toFloat(), bounds.height().toFloat())
++                recording.translate(-bounds.left.toFloat(), -bounds.top.toFloat())
++                recording.drawRenderNode(source)
++            } finally {
++                node.endRecording()
++            }
++            consumerRegionBounds[consumer] = bounds
++            recordedPixels += bounds.width().toLong() * bounds.height().toLong()
++        }
++        return recordedPixels
++    }
++
++    public fun renderNodeFor(consumer: View): RenderNode? = consumerRegionNodes[consumer] ?: contentNode
++    public fun regionNodeFor(consumer: View): RenderNode? = consumerRegionNodes[consumer]
++    public fun recordedOriginXFor(consumer: View): Int = consumerRegionBounds[consumer]?.left ?: originX
++    public fun recordedOriginYFor(consumer: View): Int = consumerRegionBounds[consumer]?.top ?: originY
++
+     /** Re-draw consumers against nested RenderNodes without re-recording the route tree. */
+     public fun invalidateConsumers() {
+         for (consumer in consumers) consumer.postInvalidateOnAnimation()
+@@ -250,5 +314,10 @@
+         contentNode = null
+         originX = 0
+         originY = 0
++        if (Build.VERSION.SDK_INT >= 29) {
++            for (node in consumerRegionNodes.values) node.discardDisplayList()
++        }
++        consumerRegionNodes.clear()
++        consumerRegionBounds.clear()
+     }
+ }
+diff --git a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/GlassViewController.kt b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/GlassViewController.kt
+--- a/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/GlassViewController.kt
++++ b/node_modules/liquid-glass-kit/android/src/main/java/dev/liquidglass/view/GlassViewController.kt
+@@ -209,7 +209,7 @@
+         val frame = buildFrame()
+         val backdrop = provider
+         val providerNode =
+-            if (Build.VERSION.SDK_INT >= 29) backdrop?.contentRenderNode else null
++            if (Build.VERSION.SDK_INT >= 29) backdrop?.renderNodeFor(host) else null
+ 
+         val tier = GlassRenderTier.select(Build.VERSION.SDK_INT, tierOverride)
+         val canSample = canvas.isHardwareAccelerated &&
+@@ -241,8 +241,8 @@
+         val relative = relativeToProvider()
+         updateMotion(relative)
+         val backdrop = provider
+-        val recordedOriginX = backdrop?.recordedOriginX ?: 0
+-        val recordedOriginY = backdrop?.recordedOriginY ?: 0
++        val recordedOriginX = backdrop?.recordedOriginXFor(host) ?: 0
++        val recordedOriginY = backdrop?.recordedOriginYFor(host) ?: 0
+         frame.widthPx = width
+         frame.heightPx = height
+         frame.cornerRadiusPx = cornerRadiusPx
+diff --git a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassProviderModule.kt b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassProviderModule.kt
+--- a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassProviderModule.kt
++++ b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/ExpoLiquidGlassProviderModule.kt
+@@ -1,15 +1,11 @@
+ package expo.modules.liquidglass
+ 
+ import android.content.Context
+-import android.graphics.Bitmap
+ import android.graphics.Canvas
+-import android.graphics.ColorSpace
+-import android.graphics.HardwareBufferRenderer
+ import android.graphics.RenderEffect
+ import android.graphics.Rect
+ import android.graphics.RenderNode
+ import android.graphics.Shader
+-import android.hardware.HardwareBuffer
+ import android.os.Handler
+ import android.os.Looper
+ import android.os.Build
+@@ -23,10 +19,7 @@
+ import expo.modules.kotlin.modules.Module
+ import expo.modules.kotlin.modules.ModuleDefinition
+ import expo.modules.kotlin.views.ExpoView
+-import expo.modules.kotlin.viewevent.EventDispatcher
+ import java.util.IdentityHashMap
+-import java.time.Duration
+-import java.util.concurrent.Executors
+ 
+ /**
+  * Native side of `<LiquidGlassProvider>`: hosts the React Native children that
+@@ -38,7 +31,6 @@
+         Name("ExpoLiquidGlassProvider")
+ 
+         View(LiquidGlassProviderExpoView::class) {
+-            Events("onSnapshotReady")
+             Prop("providerId") { view: LiquidGlassProviderExpoView, id: String ->
+                 view.providerId = id
+             }
+@@ -66,6 +58,12 @@
+         AsyncFunction("getPerformanceStats") {
+             LiquidGlassPerfTelemetry.snapshot()
+         }
++        Function("setCaptureMode") { providerId: String, mode: String ->
++            LiquidGlassRegistry.setCaptureMode(providerId, mode)
++        }
++        Function("prepareFrozenBackdrop") { providerId: String, blurRadiusDp: Float ->
++            LiquidGlassRegistry.prepareFrozenBackdrop(providerId, blurRadiusDp)
++        }
+     }
+ }
+ 
+@@ -74,19 +72,9 @@
+     appContext: AppContext,
+ ) : ExpoView(context, appContext), LiquidGlassBackdropSource {
+ 
+-    private val onSnapshotReady by EventDispatcher<Unit>()
+-
+     private val recorder = BackdropRecorder()
+     private var frozenBlurNode: RenderNode? = null
+-    private var frozenSnapshotNode: RenderNode? = null
+-    private var frozenSnapshotBitmap: Bitmap? = null
+-    private var frozenSnapshotBuffer: HardwareBuffer? = null
+-    private var snapshotGeneration = 0L
+-    private var snapshotRenderPending = false
+     private val mainHandler = Handler(Looper.getMainLooper())
+-    private val snapshotExecutor = Executors.newSingleThreadExecutor { task ->
+-        Thread(task, "LiquidGlassSnapshotFence").apply { isDaemon = true }
+-    }
+     var underlayProviderId: String? = null
+     private val drawBackdropContent: (Canvas) -> Unit = { target -> dispatchBackdropContent(target) }
+     private val consumerBounds = IdentityHashMap<View, Rect>()
+@@ -140,6 +128,7 @@
+                 updateScrollObservation()
+                 requestCapture()
+             } else if (value == "frozen") {
++                backdropDirty = false
+                 mainHandler.removeCallbacks(settleScrollCapture)
+                 scrollTargets.clear()
+                 updateScrollObservation()
+@@ -181,10 +170,10 @@
+         get() = this
+ 
+     override val contentRenderNode: RenderNode?
+-        get() = frozenSnapshotNode ?: frozenBlurNode ?: recorder.contentNode
++        get() = frozenBlurNode ?: recorder.contentNode
+ 
+     override val hasRecording: Boolean
+-        get() = recorder.hasRecording
++        get() = contentRenderNode?.hasDisplayList() == true
+ 
+     // The recorder holds the full scene, so a moved glass view only needs new
+     // sampling coordinates and never requests another full-scene recording.
+@@ -197,15 +186,27 @@
+     override val recordedOriginY: Int
+         get() = recorder.originY
+ 
++    override fun renderNodeFor(consumer: View): RenderNode? =
++        when (captureMode) {
++            "oneShot", "frozen" -> recorder.regionNodeFor(consumer) ?: contentRenderNode
++            else -> recorder.renderNodeFor(consumer)
++        }
++
++    override fun recordedOriginXFor(consumer: View): Int =
++        recorder.recordedOriginXFor(consumer)
++
++    override fun recordedOriginYFor(consumer: View): Int =
++        recorder.recordedOriginYFor(consumer)
++
+     override fun registerConsumer(consumer: View) {
+-        val hadRecording = recorder.hasRecording
++        val hadRecording = hasRecording
+         recorder.register(consumer)
+         if (!consumerBounds.containsKey(consumer)) consumer.addOnLayoutChangeListener(layoutListener)
+         updateConsumerBounds(consumer)
+         if (captureMode == "live" && (!hadRecording || scrollTargets.isEmpty())) refreshScrollTargets()
+         updateScrollObservation()
+         if (!hadRecording) {
+-            if (captureMode == "frozen") captureMode = "oneShot" else requestCapture()
++            if (captureMode != "frozen") requestCapture()
+         }
+     }
+ 
+@@ -263,7 +264,7 @@
+ 
+     override fun dispatchDraw(canvas: Canvas) {
+         LiquidGlassPerfTelemetry.routeDraw()
+-        if (!recorder.hasConsumers && captureMode != "static" && captureMode != "oneShot") {
++        if (!recorder.hasConsumers) {
+             LiquidGlassPerfTelemetry.routeTreeTraversal()
+             super.dispatchDraw(canvas)
+             return
+@@ -273,17 +274,22 @@
+         if (shouldRecord) {
+             backdropDirty = false
+             if (Build.VERSION.SDK_INT >= 29 && canvas.isHardwareAccelerated && width > 0 && height > 0) {
+-                LiquidGlassPerfTelemetry.backdropCapture(width, height)
+                 LiquidGlassPerfTelemetry.routeRenderNodeRecord()
+             }
+         }
+         val shared = recorder.drawShared(canvas, width, height, shouldRecord, drawBackdropContent)
++        if (shouldRecord && Build.VERSION.SDK_INT >= 29 && canvas.isHardwareAccelerated && width > 0 && height > 0) {
++            val regionPixels = contentRenderNode?.let {
++                recorder.updateConsumerRegions(consumerBounds, it, width, height)
++            } ?: 0L
++            LiquidGlassPerfTelemetry.backdropCapture(providerId, width, height, regionPixels, captureMode)
++        }
+         if (captureMode == "oneShot" && shouldRecord) {
+             oneShotCaptured = true
+             recordFrozenSnapshot()
+         }
+         if (captureMode == "oneShot" && oneShotCaptured) {
+-            val frozen = frozenSnapshotNode ?: frozenBlurNode
++            val frozen = frozenBlurNode
+             if (frozen?.hasDisplayList() == true) canvas.drawRenderNode(frozen)
+         }
+         if (shared) LiquidGlassPerfTelemetry.routeScreenComposite()
+@@ -295,147 +301,22 @@
+     }
+ 
+     private fun recordFrozenSnapshot() {
++        if (snapshotBlurRadiusDp <= 0f) return
+         LiquidGlassPerfTelemetry.frozenSnapshotRequested()
+         val source = recorder.contentNode ?: run {
+             LiquidGlassPerfTelemetry.frozenSnapshotFailed()
+-            onSnapshotReady(Unit)
+             return
+         }
+         val radiusPx = snapshotBlurRadiusDp * resources.displayMetrics.density.coerceAtLeast(1f)
+-        if (Build.VERSION.SDK_INT < 34 || radiusPx <= 0f || width <= 0 || height <= 0 || !source.hasDisplayList()) {
+-            recordFrozenBlurNode(source, radiusPx)
+-            onSnapshotReady(Unit)
+-            return
+-        }
+-        if (snapshotRenderPending) return
+-
+-        snapshotRenderPending = true
+-        val generation = ++snapshotGeneration
+-        val snapshotWidth = width
+-        val snapshotHeight = height
+-        val renderRoot = RenderNode("LiquidGlassFrozenRouteSource")
+-        renderRoot.setPosition(0, 0, snapshotWidth, snapshotHeight)
+-        renderRoot.setRenderEffect(
+-            RenderEffect.createBlurEffect(radiusPx, radiusPx, Shader.TileMode.CLAMP),
+-        )
+-        val recording = renderRoot.beginRecording(snapshotWidth, snapshotHeight)
+-        try {
+-            val underlay = underlayProviderId?.let { LiquidGlassRegistry.provider(it)?.contentRenderNode }
+-            if (underlay?.hasDisplayList() == true) recording.drawRenderNode(underlay)
+-            recording.drawRenderNode(source)
+-        } finally {
+-            renderRoot.endRecording()
+-        }
+-
+-        val buffer = try {
+-            HardwareBuffer.create(
+-                snapshotWidth,
+-                snapshotHeight,
+-                HardwareBuffer.RGBA_8888,
+-                1,
+-                HardwareBuffer.USAGE_GPU_COLOR_OUTPUT or HardwareBuffer.USAGE_GPU_SAMPLED_IMAGE,
+-            )
+-        } catch (_: Throwable) {
+-            snapshotRenderPending = false
+-            LiquidGlassPerfTelemetry.frozenSnapshotFailed()
+-            recordFrozenBlurNode(source, radiusPx)
+-            onSnapshotReady(Unit)
+-            return
+-        }
+-        val renderer = try {
+-            HardwareBufferRenderer(buffer).apply { setContentRoot(renderRoot) }
+-        } catch (_: Throwable) {
+-            buffer.close()
+-            snapshotRenderPending = false
+-            LiquidGlassPerfTelemetry.frozenSnapshotFailed()
+-            recordFrozenBlurNode(source, radiusPx)
+-            onSnapshotReady(Unit)
+-            return
+-        }
+-
+-        try {
+-            renderer.obtainRenderRequest()
+-                .setColorSpace(ColorSpace.get(ColorSpace.Named.SRGB))
+-                .draw(snapshotExecutor) { result ->
+-                    val fence = result.fence
+-                    val success = try {
+-                        result.status == HardwareBufferRenderer.RenderResult.SUCCESS &&
+-                            fence?.await(Duration.ofSeconds(2)) == true
+-                    } catch (_: Throwable) {
+-                        false
+-                    } finally {
+-                        try {
+-                            fence?.close()
+-                        } catch (_: Throwable) {
+-                            // Fence ownership is transferred with the render result.
+-                        }
+-                    }
+-                    renderer.close()
+-                    if (!success) {
+-                        buffer.close()
+-                        LiquidGlassPerfTelemetry.frozenSnapshotFailed()
+-                        mainHandler.post {
+-                            if (generation == snapshotGeneration && captureMode == "oneShot") {
+-                                snapshotRenderPending = false
+-                                recordFrozenBlurNode(source, radiusPx)
+-                                onSnapshotReady(Unit)
+-                            }
+-                        }
+-                        return@draw
+-                    }
+-
+-                    mainHandler.post {
+-                        if (generation != snapshotGeneration || captureMode != "oneShot") {
+-                            buffer.close()
+-                            return@post
+-                        }
+-                        val bitmap = try {
+-                            Bitmap.wrapHardwareBuffer(buffer, ColorSpace.get(ColorSpace.Named.SRGB))
+-                        } catch (_: Throwable) {
+-                            null
+-                        }
+-                        if (bitmap == null) {
+-                            buffer.close()
+-                            snapshotRenderPending = false
+-                            LiquidGlassPerfTelemetry.frozenSnapshotFailed()
+-                            recordFrozenBlurNode(source, radiusPx)
+-                            onSnapshotReady(Unit)
+-                            return@post
+-                        }
+-
+-                        val node = RenderNode("LiquidGlassFrozenRouteSnapshot")
+-                        node.setPosition(0, 0, snapshotWidth, snapshotHeight)
+-                        val nodeCanvas = node.beginRecording(snapshotWidth, snapshotHeight)
+-                        nodeCanvas.drawBitmap(bitmap, 0f, 0f, null)
+-                        node.endRecording()
+-                        // HardwareBufferRenderer has already rasterized the
+-                        // fixed HWUI blur into this one-shot snapshot.
+-                        clearFrozenSnapshotContents()
+-                        frozenSnapshotNode = node
+-                        frozenSnapshotBitmap = bitmap
+-                        frozenSnapshotBuffer = buffer
+-                        frozenBlurNode = null
+-                        snapshotRenderPending = false
+-                        LiquidGlassPerfTelemetry.frozenSnapshotBlurRecorded()
+-                        recorder.invalidateConsumers()
+-                        invalidate()
+-                        onSnapshotReady(Unit)
+-                    }
+-                }
+-        } catch (_: Throwable) {
+-            renderer.close()
+-            buffer.close()
+-            snapshotRenderPending = false
++        if (!recordFrozenBlurNode(source, radiusPx)) {
+             LiquidGlassPerfTelemetry.frozenSnapshotFailed()
+-            recordFrozenBlurNode(source, radiusPx)
+-            onSnapshotReady(Unit)
+         }
+     }
+ 
+-    private fun recordFrozenBlurNode(source: RenderNode, radiusPx: Float) {
++    private fun recordFrozenBlurNode(source: RenderNode, radiusPx: Float): Boolean {
+         frozenBlurNode?.discardDisplayList()
+         frozenBlurNode = null
+-        if (Build.VERSION.SDK_INT < 31 || radiusPx <= 0f || width <= 0 || height <= 0 || !source.hasDisplayList()) return
++        if (Build.VERSION.SDK_INT < 31 || radiusPx <= 0f || width <= 0 || height <= 0 || !source.hasDisplayList()) return false
+         val node = RenderNode("LiquidGlassFrozenRouteBlurFallback")
+         node.setPosition(0, 0, width, height)
+         val recording = node.beginRecording(width, height)
+@@ -449,29 +330,54 @@
+         node.setRenderEffect(RenderEffect.createBlurEffect(radiusPx, radiusPx, Shader.TileMode.CLAMP))
+         frozenBlurNode = node
+         LiquidGlassPerfTelemetry.frozenSnapshotBlurRecorded()
++        return true
+     }
+ 
+     private fun invalidateFrozenSnapshot() {
+-        snapshotGeneration += 1
+-        snapshotRenderPending = false
+         clearFrozenSnapshotContents()
+     }
+ 
+     private fun clearFrozenSnapshotContents() {
+-        frozenSnapshotNode?.discardDisplayList()
+-        frozenSnapshotNode = null
+-        frozenSnapshotBitmap?.recycle()
+-        frozenSnapshotBitmap = null
+-        try {
+-            frozenSnapshotBuffer?.close()
+-        } catch (_: Throwable) {
+-            // The HardwareBuffer can be released by Bitmap when its display list is discarded.
+-        }
+-        frozenSnapshotBuffer = null
+         frozenBlurNode?.discardDisplayList()
+         frozenBlurNode = null
+     }
+ 
++    fun setCaptureModeImperatively(mode: String) {
++        if (mode != "oneShot" && mode != "frozen" && mode != "live") return
++        runOnMainThread {
++            if (isAttachedToWindow) captureMode = mode
++        }
++    }
++
++    fun prepareFrozenBackdropImperatively(blurRadiusDp: Float) {
++        runOnMainThread {
++            if (!isAttachedToWindow) return@runOnMainThread
++            snapshotBlurRadiusDp = blurRadiusDp.coerceAtLeast(0f)
++            LiquidGlassPerfTelemetry.frozenSnapshotRequested()
++            val source = recorder.contentNode
++            val radiusPx = snapshotBlurRadiusDp * resources.displayMetrics.density.coerceAtLeast(1f)
++            if (source == null || !recordFrozenBlurNode(source, radiusPx)) {
++                LiquidGlassPerfTelemetry.frozenSnapshotFailed()
++                captureMode = "frozen"
++                backdropDirty = false
++                return@runOnMainThread
++            }
++            backdropDirty = false
++            captureMode = "frozen"
++            recorder.updateConsumerRegions(consumerBounds, frozenBlurNode!!, width, height)
++            recorder.invalidateConsumers()
++            invalidate()
++        }
++    }
++
++    private fun runOnMainThread(action: () -> Unit) {
++        if (Looper.myLooper() == Looper.getMainLooper()) {
++            action()
++            return
++        }
++        mainHandler.post(action)
++    }
++
+     private fun updateConsumerBounds(consumer: View) {
+         if (consumer.width <= 0 || consumer.height <= 0 || width <= 0 || height <= 0) return
+         consumer.getLocationInWindow(consumerLocation)
+@@ -492,6 +398,7 @@
+         val previous = consumerBounds[consumer]
+         if (previous == next) return
+         consumerBounds[consumer] = next
++        if (captureMode != "oneShot") contentRenderNode?.let { recorder.updateConsumerRegions(consumerBounds, it, width, height) }
+         reportProviderGeometry()
+     }
+ 
+@@ -503,7 +410,7 @@
+ 
+     private fun requestCapture() {
+         if (captureMode == "frozen" || (captureMode == "oneShot" && oneShotCaptured)) return
+-        if ((!recorder.hasConsumers && captureMode != "static" && captureMode != "oneShot") || backdropDirty) return
++        if (!recorder.hasConsumers || backdropDirty) return
+         backdropDirty = true
+         LiquidGlassPerfTelemetry.backdropRequest()
+         LiquidGlassPerfTelemetry.captureScheduled()
+diff --git a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/LiquidGlassPerfTelemetry.kt b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/LiquidGlassPerfTelemetry.kt
+--- a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/LiquidGlassPerfTelemetry.kt
++++ b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/LiquidGlassPerfTelemetry.kt
+@@ -36,6 +36,7 @@
+     private val frozenSnapshotFailures = AtomicLong()
+     private val backdropSamples = AtomicLong()
+     private val providerGeometry = ConcurrentHashMap<String, ProviderGeometry>()
++    private val providerCaptures = ConcurrentHashMap<String, ProviderCapture>()
+     @Volatile private var displayRefreshRate = 0f
+ 
+     private data class ProviderGeometry(
+@@ -44,6 +45,12 @@
+         val rects: List<Rect>,
+     )
+ 
++    private data class ProviderCapture(
++        val count: AtomicLong = AtomicLong(),
++        val pixels: AtomicLong = AtomicLong(),
++        @Volatile var mode: String = "",
++    )
++
+     private val mainHandler = Handler(Looper.getMainLooper())
+     private var previousLog = counters()
+ 
+@@ -57,6 +64,7 @@
+                 "hz=${displayRefreshRate.toInt()} requests=${delta(current, previous, "backdropRequestCount")} " +
+                     "captures=${delta(current, previous, "backdropCaptureCount")} " +
+                     "capturePixels=${delta(current, previous, "backdropCapturedPixelCount")} " +
++                    "providerCaptures=${providerCaptureSummary()} " +
+                     "sourceDirty=${delta(current, previous, "sourceContentDirtyCount")} " +
+                     "geometryDirty=${delta(current, previous, "consumerGeometryDirtyCount")} " +
+                     "opticsDirty=${delta(current, previous, "opticsDirtyCount")} " +
+@@ -121,10 +129,22 @@
+     fun consumerGeometryDirty() { if (enabled) consumerGeometryDirties.incrementAndGet() }
+     fun opticsDirty() { if (enabled) opticsDirties.incrementAndGet() }
+     fun materialDirty() { if (enabled) materialDirties.incrementAndGet() }
+-    fun backdropCapture(width: Int, height: Int) {
++    fun backdropCapture(
++        providerId: String,
++        width: Int,
++        height: Int,
++        capturedPixelArea: Long = width.coerceAtLeast(0).toLong() * height.coerceAtLeast(0),
++        mode: String,
++    ) {
+         if (!enabled) return
+         captures.incrementAndGet()
+-        capturedPixels.addAndGet(width.coerceAtLeast(0).toLong() * height.coerceAtLeast(0).toLong())
++        val pixels = capturedPixelArea.coerceAtLeast(0L)
++        capturedPixels.addAndGet(pixels)
++        providerCaptures.computeIfAbsent(providerId) { ProviderCapture() }.apply {
++            count.incrementAndGet()
++            this.pixels.addAndGet(pixels)
++            this.mode = mode
++        }
+     }
+     fun captureSkippedNoIntersection() { if (enabled) skippedNoIntersection.incrementAndGet() }
+     fun captureSkippedAlreadyDirty() { if (enabled) skippedAlreadyDirty.incrementAndGet() }
+@@ -210,6 +230,13 @@
+         }
+     }
+ 
++    private fun providerCaptureSummary(): String {
++        if (!enabled) return "[]"
++        return providerCaptures.entries.sortedBy { it.key }.joinToString(prefix = "[", postfix = "]", separator = ";") { (id, capture) ->
++            "$id:${capture.count.get()}x${capture.pixels.get()}:${capture.mode}"
++        }
++    }
++
+     private fun delta(current: Map<String, Long>, previous: Map<String, Long>, key: String): Long =
+         (current[key] ?: 0L) - (previous[key] ?: 0L)
+ 
+@@ -236,5 +263,6 @@
+         frozenSnapshotRequests.set(0L)
+         frozenSnapshotFailures.set(0L)
+         backdropSamples.set(0L)
++        providerCaptures.clear()
+     }
+ }
+diff --git a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/LiquidGlassRegistry.kt b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/LiquidGlassRegistry.kt
+--- a/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/LiquidGlassRegistry.kt
++++ b/node_modules/liquid-glass-kit/android/src/main/java/expo/modules/liquidglass/LiquidGlassRegistry.kt
+@@ -42,6 +42,19 @@
+ 
+     fun provider(id: String): LiquidGlassBackdropSource? = providers[id]?.get()
+ 
++    fun setCaptureMode(id: String, mode: String) {
++        val prefix = "$id:"
++        for ((providerId, reference) in providers.entries) {
++            if (providerId == id || providerId.startsWith(prefix)) {
++                (reference.get() as? LiquidGlassProviderExpoView)?.setCaptureModeImperatively(mode)
++            }
++        }
++    }
++
++    fun prepareFrozenBackdrop(id: String, blurRadiusDp: Float) {
++        (provider(id) as? LiquidGlassProviderExpoView)?.prepareFrozenBackdropImperatively(blurRadiusDp)
++    }
++
+     fun resolve(id: String, controller: GlassViewController) {
+         val provider = providers[id]?.get()
+         if (provider != null) {

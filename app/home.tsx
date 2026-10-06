@@ -115,6 +115,7 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetect
         <Card
             feedback="none"
             showIndication
+            glassVariant="preferencePanel"
             onPress={openItem}
             onLongPress={type === 'question' ? undefined : openActionMenu}
             style={{ width: WindowWidth * 0.9, marginBottom: 10 }}
@@ -244,6 +245,7 @@ const WaterfallItem = memo(({ item, type, needToGet, measurementKey, showDomainL
             <Card
                 feedback="none"
                 showIndication
+                glassVariant="preferencePanel"
                 onPress={openItem}
                 onLongPress={type === 'question' ? undefined : openActionMenu}
                 style={{ width: '100%' }}
@@ -344,6 +346,7 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
                 <Card
                     feedback={disableAnimations ? 'none' : 'sink'}
                     showIndication
+                    glassVariant="preferencePanel"
                     onPress={openItem}
                     onLongPress={type === 'question' ? undefined : openActionMenu}
                     style={{ flex: 1 }}
@@ -1078,6 +1081,12 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
         void loadDataRef.current?.(false);
     }, []);
 
+    const handleWaterfallScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const offsetY = event.nativeEvent.contentOffset.y;
+        waterfallOffsetYRef.current = offsetY;
+        updateWaterfallRenderWindow(offsetY);
+    }, [updateWaterfallRenderWindow]);
+
     const handleWaterfallScrollSettled = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
         const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
         waterfallOffsetYRef.current = contentOffset.y;
@@ -1173,6 +1182,8 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
                     style={{ flex: 1 }}
                     contentContainerStyle={{ flexGrow: 1, paddingBottom: bottomContentInset }}
                     showsVerticalScrollIndicator={false}
+                    scrollEventThrottle={32}
+                    onScroll={handleWaterfallScroll}
                     onScrollEndDrag={handleWaterfallScrollSettled}
                     onMomentumScrollEnd={handleWaterfallScrollSettled}
                     refreshControl={(

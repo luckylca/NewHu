@@ -946,7 +946,7 @@ export default function Item() {
 
     const title = type === 'answer' ? readData.questionTitle : (readData.title || '未知标题');
     return (
-        <PageScaffold topBar={topBar} topBarHeight={topBarHeight} style={{ backgroundColor: theme.colors.background }}>
+        <PageScaffold topBar={topBar} topBarHeight={topBarHeight}>
         <View style={{ flex: 1 }}>
             <ImageReanimatedModal
                 visible={modalVisible}

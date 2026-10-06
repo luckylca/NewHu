@@ -1,10 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.LocalGlassMaterial = LocalGlassMaterial;
+exports.LocalGlassMaterial = void 0;
 const jsx_runtime_1 = require("react/jsx-runtime");
 const react_native_skia_1 = require("@shopify/react-native-skia");
+const expo_modules_core_1 = require("expo-modules-core");
 const react_1 = require("react");
 const react_native_1 = require("react-native");
+const localGlassTelemetry_1 = require("./localGlassTelemetry");
 const GLASS_SHADER = `
 uniform float2 resolution;
 uniform float4 baseTint;
@@ -66,6 +68,14 @@ half4 main(float2 position) {
     return half4(color * alpha, alpha);
 }
 `;
+const NativeLocalGlassView = react_native_1.Platform.OS === 'android'
+    ? (0, expo_modules_core_1.requireNativeViewManager)('ExpoLocalGlass', 'LocalGlassMaterial')
+    : null;
+const NativeLocalGlassEngineView = react_native_1.Platform.OS === 'android'
+    ? (0, expo_modules_core_1.requireNativeViewManager)('ExpoLocalGlassEngine', 'LocalGlassMaterial')
+    : null;
+const resolvedMaterialCache = new Map();
+const MAX_RESOLVED_MATERIALS = 48;
 let sharedShader;
 function getSharedShader() {
     if (sharedShader !== undefined)
@@ -101,29 +111,82 @@ function rgba(value) {
     }
     return [1, 1, 1, 0.2];
 }
-function LocalGlassMaterial({ tokens, material, dark, }) {
+function resolveMaterial(tokens, material, dark) {
+    const mode = dark ? 'dark' : 'light';
+    const colorValues = [
+        tokens.procedural.baseTint[mode],
+        (material.accentTint ?? tokens.procedural.accentTint)[mode],
+        tokens.procedural.highlightTint[mode],
+        tokens.procedural.innerShade[mode],
+    ];
+    const scalarValues = [
+        material.refractionAmount,
+        material.chromaticAberration,
+        material.highlightAlpha,
+        tokens.procedural.noiseStrength,
+        material.opacity ?? 1,
+        material.radius,
+    ];
+    const key = JSON.stringify([colorValues, scalarValues]);
+    const cached = resolvedMaterialCache.get(key);
+    if (cached)
+        return cached;
+    const resolved = {
+        baseTint: rgba(colorValues[0]),
+        accentTint: rgba(colorValues[1]),
+        highlightTint: rgba(colorValues[2]),
+        innerShade: rgba(colorValues[3]),
+        surfaceWarp: scalarValues[0],
+        chromatic: scalarValues[1],
+        highlightStrength: scalarValues[2],
+        noiseStrength: scalarValues[3],
+        materialOpacity: scalarValues[4],
+        cornerRadiusPx: scalarValues[5],
+    };
+    if (resolvedMaterialCache.size >= MAX_RESOLVED_MATERIALS) {
+        const oldest = resolvedMaterialCache.keys().next().value;
+        if (oldest !== undefined)
+            resolvedMaterialCache.delete(oldest);
+    }
+    resolvedMaterialCache.set(key, resolved);
+    return resolved;
+}
+function NativeLocalGlassRenderer({ tokens, material, dark, resolved, }) {
+    const engine = (0, react_1.useSyncExternalStore)(localGlassTelemetry_1.subscribeLocalGlassNativeEngine, localGlassTelemetry_1.getLocalGlassNativeEngine, localGlassTelemetry_1.getLocalGlassNativeEngine);
+    const NativeView = engine === 'core'
+        ? NativeLocalGlassEngineView ?? NativeLocalGlassView
+        : NativeLocalGlassView;
+    (0, react_1.useEffect)(() => NativeView ? (0, localGlassTelemetry_1.registerLocalGlassMaterial)('native') : undefined, [NativeView]);
+    if (!NativeView) {
+        return (0, jsx_runtime_1.jsx)(SkiaLocalGlassRenderer, { tokens: tokens, material: material, dark: dark, resolved: resolved });
+    }
+    return (0, jsx_runtime_1.jsx)(NativeView, { ...resolved, pointerEvents: "none", style: react_native_1.StyleSheet.absoluteFill });
+}
+function SkiaLocalGlassRenderer({ tokens, material, dark, resolved, }) {
     const [size, setSize] = (0, react_1.useState)({ width: 0, height: 0 });
     const source = (0, react_1.useMemo)(getSharedShader, []);
     const uniforms = (0, react_1.useMemo)(() => ({
         resolution: [size.width, size.height],
-        baseTint: rgba(tokens.procedural.baseTint[dark ? 'dark' : 'light']),
-        accentTint: rgba((material.accentTint ?? tokens.procedural.accentTint)[dark ? 'dark' : 'light']),
-        highlightTint: rgba(tokens.procedural.highlightTint[dark ? 'dark' : 'light']),
-        innerShade: rgba(tokens.procedural.innerShade[dark ? 'dark' : 'light']),
-        surfaceWarp: material.refractionAmount,
-        chromatic: material.chromaticAberration,
-        highlightStrength: material.highlightAlpha,
-        noiseStrength: tokens.procedural.noiseStrength,
-        materialOpacity: material.opacity ?? 1,
-        cornerRadiusPx: material.radius,
-    }), [dark, material.accentTint, material.chromaticAberration, material.highlightAlpha, material.opacity, material.radius, material.refractionAmount, size, tokens]);
+        ...resolved,
+    }), [resolved, size]);
+    (0, react_1.useEffect)(() => (0, localGlassTelemetry_1.registerLocalGlassMaterial)(source ? 'skia' : 'fallback'), [source]);
     const handleLayout = (event) => {
         const next = { width: event.nativeEvent.layout.width, height: event.nativeEvent.layout.height };
         setSize((current) => current.width === next.width && current.height === next.height ? current : next);
     };
     if (!source) {
-        return ((0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "none", onLayout: handleLayout, style: [react_native_1.StyleSheet.absoluteFill, { backgroundColor: dark ? tokens.fallbackTint.dark : tokens.fallbackTint.light }] }));
+        return ((0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "none", style: [react_native_1.StyleSheet.absoluteFill, { backgroundColor: dark ? tokens.fallbackTint.dark : tokens.fallbackTint.light }] }));
     }
     return ((0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "none", onLayout: handleLayout, style: react_native_1.StyleSheet.absoluteFill, children: (0, jsx_runtime_1.jsx)(react_native_skia_1.Canvas, { pointerEvents: "none", style: react_native_1.StyleSheet.absoluteFill, children: (0, jsx_runtime_1.jsx)(react_native_skia_1.Fill, { children: (0, jsx_runtime_1.jsx)(react_native_skia_1.Shader, { source: source, uniforms: uniforms }) }) }) }));
 }
+exports.LocalGlassMaterial = (0, react_1.memo)(function LocalGlassMaterial({ tokens, material, dark, }) {
+    const resolved = (0, react_1.useMemo)(() => resolveMaterial(tokens, material, dark), [dark, material, tokens]);
+    const supportsNativeRenderer = react_native_1.Platform.OS === 'android'
+        && Number(react_native_1.Platform.Version) >= 33
+        && (NativeLocalGlassView !== null || NativeLocalGlassEngineView !== null);
+    if (supportsNativeRenderer) {
+        return (0, jsx_runtime_1.jsx)(NativeLocalGlassRenderer, { tokens: tokens, material: material, dark: dark, resolved: resolved });
+    }
+    return (0, jsx_runtime_1.jsx)(SkiaLocalGlassRenderer, { tokens: tokens, material: material, dark: dark, resolved: resolved });
+});
 //# sourceMappingURL=LocalGlassMaterial.js.map

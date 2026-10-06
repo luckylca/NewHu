@@ -5,12 +5,15 @@ import ProgressIndicator from "@/src/components/ProgressIndicator";
 
 const LoadingView = ({ message = "正在加载…" }: { message?: string }) => {
     const theme = useTheme();
+    const pageBackground = theme.presentation.page.background === 'transparent'
+        ? 'transparent'
+        : theme.colors.background;
 
     return (
         <View
             style={{
                 flex: 1,
-                backgroundColor: theme.colors.background,
+                backgroundColor: pageBackground,
                 justifyContent: "center",
                 alignItems: "center",
                 paddingHorizontal: 24,

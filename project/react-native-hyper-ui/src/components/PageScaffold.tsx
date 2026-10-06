@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useMemo } from 'react';
+import { RouteGlassCaptureScope, RouteGlassCaptureSource } from '@newhu/react-native-liquid-glass';
 import { FlatList, ScrollView, StyleSheet, View } from 'react-native';
-import type { FlatListProps, ScrollViewProps, StyleProp, ViewStyle } from 'react-native';
+import type { FlatListProps, ListRenderItem, ScrollViewProps, StyleProp, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
 
@@ -51,6 +52,7 @@ export const PageScaffold = React.memo(function PageScaffold({
     const transparentPage = theme.presentation.page.background === 'transparent';
 
     return (
+        <RouteGlassCaptureScope>
         <View style={[{ flex: 1, backgroundColor: theme.colors.surface }, style, transparentPage ? { backgroundColor: 'transparent' } : undefined]}>
             <View
                 pointerEvents="box-none"
@@ -69,9 +71,12 @@ export const PageScaffold = React.memo(function PageScaffold({
                 </View>
             ) : null}
             <ContentInsetContext.Provider value={contentInset}>
-                <View style={{ flex: 1 }}>{children}</View>
+                <View style={{ flex: 1 }}>
+                    <RouteGlassCaptureSource>{children}</RouteGlassCaptureSource>
+                </View>
             </ContentInsetContext.Provider>
         </View>
+        </RouteGlassCaptureScope>
     );
 });
 
@@ -94,7 +99,52 @@ export interface PageFlatListProps<ItemT> extends FlatListProps<ItemT> {
 export function PageFlatList<ItemT>({ listRef, ...props }: PageFlatListProps<ItemT>) {
     const inset = usePageContentInset();
     const adjustedStyle = useMemo(() => withTopInset(props.contentContainerStyle, inset), [props.contentContainerStyle, inset]);
-    return <FlatList {...props} ref={listRef} style={[styles.scroll, props.style]} contentContainerStyle={adjustedStyle} />;
+    return (
+        <FlatList
+            {...props}
+            ref={listRef}
+            initialNumToRender={props.initialNumToRender ?? 5}
+            maxToRenderPerBatch={props.maxToRenderPerBatch ?? 5}
+            windowSize={props.windowSize ?? 5}
+            updateCellsBatchingPeriod={props.updateCellsBatchingPeriod ?? 48}
+            removeClippedSubviews={props.removeClippedSubviews ?? true}
+            style={[styles.scroll, props.style]}
+            contentContainerStyle={adjustedStyle}
+        />
+    );
+}
+
+export interface PageSettingsSection {
+    key: string;
+    node: React.ReactNode;
+}
+
+const renderPageSettingsSection: ListRenderItem<PageSettingsSection> = ({ item }) => <>{item.node}</>;
+
+export interface PageSettingsListProps extends Omit<FlatListProps<PageSettingsSection>, 'data' | 'renderItem' | 'keyExtractor'> {
+    sections: PageSettingsSection[];
+    listRef?: React.Ref<FlatList<PageSettingsSection>>;
+}
+
+/** Virtualizes settings by complete visual group so grouped surfaces stay intact. */
+export function PageSettingsList({ sections, listRef, contentContainerStyle, ...props }: PageSettingsListProps) {
+    const inset = usePageContentInset();
+    const adjustedStyle = useMemo(() => withTopInset(contentContainerStyle, inset), [contentContainerStyle, inset]);
+    return (
+        <FlatList
+            {...props}
+            ref={listRef}
+            data={sections}
+            keyExtractor={(section) => section.key}
+            renderItem={renderPageSettingsSection}
+            initialNumToRender={props.initialNumToRender ?? 2}
+            maxToRenderPerBatch={props.maxToRenderPerBatch ?? 2}
+            windowSize={props.windowSize ?? 3}
+            removeClippedSubviews={props.removeClippedSubviews ?? false}
+            style={[styles.scroll, props.style]}
+            contentContainerStyle={adjustedStyle}
+        />
+    );
 }
 
 /** Non-scrolling page content that also clears a floating TopAppBar. */

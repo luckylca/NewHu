@@ -2,7 +2,9 @@ import { PressIndication } from '../primitives';
 import { cardSink, cardTilt } from '../motion';
 import { useReducedMotionPreference } from '../motion/MotionProvider';
 import { useTheme } from '../theme';
+import { useSurfaceEnvironment } from './SurfaceEnvironmentContext';
 import { GlassSurface } from '@newhu/react-native-liquid-glass';
+import type { GlassVariant } from '@newhu/react-native-liquid-glass';
 import React, { useCallback, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
@@ -33,6 +35,8 @@ export interface AppCardProps {
     showIndication?: boolean;
     /** Latch the press feedback on (e.g. while a long-press dialog is open). */
     holdDown?: boolean;
+    /** Local Glass material role. Defaults to the standard card material. */
+    glassVariant?: GlassVariant;
     accessibilityLabel?: string;
     onPress?: () => void;
     onPressIn?: () => void;
@@ -46,8 +50,9 @@ const SINK_AMOUNT = 0.94;
 const TILT_AMOUNT = 9;
 const TILT_PERSPECTIVE_FACTOR = 1.6;
 
-export const Card = React.memo(function Card({ feedback = 'sink', showIndication, holdDown, accessibilityLabel, onPress, onPressIn, onLongPress, style, contentStyle, children }: AppCardProps) {
+export const Card = React.memo(function Card({ feedback = 'sink', showIndication, holdDown, glassVariant = 'card', accessibilityLabel, onPress, onPressIn, onLongPress, style, contentStyle, children }: AppCardProps) {
     const theme = useTheme();
+    const surfaceEnvironment = useSurfaceEnvironment();
     const reducedMotion = useReducedMotionPreference();
     const radius = theme.components.card.radius;
     const pressed = useSharedValue(0);
@@ -62,7 +67,9 @@ export const Card = React.memo(function Card({ feedback = 'sink', showIndication
     const longPressFired = useRef(false);
 
     const interactive = feedback === 'tilt' || !!onPress || !!onLongPress;
-    const usesLocalGlass = theme.presentation.content.cardMaterial === 'glass' && theme.glass.enabled;
+    const liquidGlassCard = theme.presentation.content.cardMaterial === 'glass' && theme.glass.enabled;
+    const embeddedInGlassOverlay = liquidGlassCard && surfaceEnvironment === 'glassOverlay';
+    const usesLocalGlass = liquidGlassCard && !embeddedInGlassOverlay;
     const glassContentStyle = useMemo(() => {
         const flattened = StyleSheet.flatten(contentStyle);
         if (!flattened || !('backgroundColor' in flattened)) return contentStyle;
@@ -170,7 +177,7 @@ export const Card = React.memo(function Card({ feedback = 'sink', showIndication
         >
             {usesLocalGlass ? (
                 <GlassSurface
-                    variant="card"
+                    variant={glassVariant}
                     positioning="inFlow"
                     sampling="local"
                     style={[
@@ -189,13 +196,17 @@ export const Card = React.memo(function Card({ feedback = 'sink', showIndication
                 <Animated.View
                     style={[
                         {
-                            backgroundColor: theme.colors.surfaceContainer,
+                            backgroundColor: embeddedInGlassOverlay
+                                ? theme.glass.tint[theme.dark ? 'dark' : 'light']
+                                : theme.colors.surfaceContainer,
                             borderRadius: radius,
                             overflow: 'hidden',
                             flexDirection: 'column',
+                            borderWidth: embeddedInGlassOverlay ? StyleSheet.hairlineWidth : 0,
+                            borderColor: embeddedInGlassOverlay ? theme.colors.dividerLine : 'transparent',
                         },
                         feedback === 'tilt' ? { transformOrigin: '50% 50%' } : undefined,
-                        contentStyle,
+                        embeddedInGlassOverlay ? glassContentStyle : contentStyle,
                         animatedStyle,
                     ]}
                 >

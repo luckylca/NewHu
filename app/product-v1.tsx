@@ -14,7 +14,7 @@ import {
   warmProductV1Runtime,
 } from '@/src/product-v1';
 import type { ProductV1Settings, ProductV1Trace } from '@/src/product-v1/types';
-import { Button, Card, Dialog, Divider, Icon, ListRow, PageContent, PageScaffold, PageScrollView, SegmentedControl, Slider, Switch, Text, TopAppBar } from '@/src/ui';
+import { Button, Card, Dialog, Divider, Icon, ListRow, PageContent, PageScaffold, PageSettingsList, SegmentedControl, Slider, Switch, Text, TopAppBar } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { notify } from '@/src/stores/useNotificationStore';
 import { getApiInstance } from '@/src/api/ZhihuApi';
@@ -331,8 +331,11 @@ export default function ProductV1Screen() {
 
   return (
     <PageScaffold topBar={topBar}>
-      <PageScrollView contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl, gap: theme.spacing.lg }}>
-        <Card feedback="none">
+      <PageSettingsList
+        sections={[
+          {
+            key: 'runtime',
+            node: <Card feedback="none">
           <ListRow title="本地推荐运行时" summary={statusText} summaryNumberOfLines={2} trailing={<Switch value={settings.enabled} interactive={false} />} onPress={() => void patchSettings({ enabled: !settings.enabled })} />
           <Divider style={{ marginLeft: theme.spacing.lg }} />
           <ListRow
@@ -371,9 +374,11 @@ export default function ProductV1Screen() {
             <Text type="footnote1" weight="bold" color={theme.colors.primary} style={{ marginBottom: theme.spacing.sm }}>运行模式</Text>
             <SegmentedControl tabs={['实时排序', '影子评估']} selected={settings.mode === 'live' ? 0 : 1} onSelect={(index) => void patchSettings({ mode: index === 0 ? 'live' : 'shadow' })} />
           </View>
-        </Card>
-
-        <Card feedback="none">
+            </Card>,
+          },
+          {
+            key: 'sources',
+            node: <Card feedback="none">
           <View style={{ padding: theme.spacing.lg }}>
             <Text type="footnote1" weight="bold" color={theme.colors.primary} style={{ marginBottom: theme.spacing.sm }}>官方推荐候选源</Text>
             <SegmentedControl
@@ -403,9 +408,11 @@ export default function ProductV1Screen() {
           <ListRow title="高质量模式" summary="500 赞 / 250 收藏 / 50 评论，或收藏数高于赞数" summaryNumberOfLines={2} trailing={<Switch value={settings.highQualityEnabled} interactive={false} />} onPress={() => void patchSettings({ highQualityEnabled: !settings.highQualityEnabled })} />
           <Divider style={{ marginLeft: theme.spacing.lg }} />
           <ListRow title="兴趣破圈" summary="探索画像之外的内容（默认关闭）" trailing={<Switch value={settings.bubbleBreakEnabled} interactive={false} />} onPress={() => void patchSettings({ bubbleBreakEnabled: !settings.bubbleBreakEnabled })} />
-        </Card>
-
-        <Card feedback="none" contentStyle={{ paddingBottom: theme.spacing.md }}>
+            </Card>,
+          },
+          {
+            key: 'interests',
+            node: <Card feedback="none" contentStyle={{ paddingBottom: theme.spacing.md }}>
           <View style={{ padding: theme.spacing.lg }}>
             <Text type="footnote1" weight="bold" color={theme.colors.primary} style={{ marginBottom: theme.spacing.sm }}>兴趣比例</Text>
             <SegmentedControl tabs={['AUTO', '显式比例']} selected={ratio.mode === 'AUTO' ? 0 : 1} onSelect={(index) => void setRatioMode(index === 0 ? 'AUTO' : 'EXPLICIT')} />
@@ -432,9 +439,11 @@ export default function ProductV1Screen() {
               <Icon name="plus" size={20} color={theme.colors.onSecondaryVariant} /><Text type="button" style={{ marginLeft: 6 }}>选择兴趣</Text>
             </Button>
           ) : null}
-        </Card>
-
-        <Card feedback="none">
+            </Card>,
+          },
+          {
+            key: 'latest-run',
+            node: <Card feedback="none">
           <ListRow
             title="最近运行"
             summary={trace
@@ -444,8 +453,12 @@ export default function ProductV1Screen() {
             icon={<Icon name="chart-timeline-variant" size={24} color={theme.colors.primary} />}
           />
           {trace?.error ? <Text type="footnote1" color={theme.colors.error} style={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.lg }}>{trace.error}</Text> : null}
-        </Card>
-      </PageScrollView>
+            </Card>,
+          },
+        ]}
+        contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl, gap: theme.spacing.lg }}
+        showsVerticalScrollIndicator={false}
+      />
 
       <Dialog visible={pickerVisible} onClose={() => setPickerVisible(false)} title="选择兴趣">
         <ScrollView style={{ maxHeight: 360 }}>

@@ -156,7 +156,7 @@ const PeopleScreen = () => {
     const [isLoadingActivities, setIsLoadingActivities] = React.useState(false)
     const [hasMoreActivities, setHasMoreActivities] = React.useState(true)
 
-    const handleToggleFollow = async () => {
+    const handleToggleFollow = React.useCallback(async () => {
         if (!urlToken || isFollowPending) return;
 
         const previousFollowing = isFollowing;
@@ -195,7 +195,7 @@ const PeopleScreen = () => {
         } finally {
             setIsFollowPending(false);
         }
-    }
+    }, [isFollowPending, isFollowing, urlToken]);
 
 
     const fetchActivities = React.useCallback(async (
@@ -221,6 +221,7 @@ const PeopleScreen = () => {
                             id: activity.id,
                             actionText: activity.action_text,
                             createdTime: activity.created_time,
+                            displayTime: new Date(activity.created_time * 1000).toLocaleString(),
                             feedType: target.type,
                             item: {
                                 id: target.id,
@@ -284,48 +285,52 @@ const PeopleScreen = () => {
         void fetchActivities(urlToken, "", 1, true);
     }, [fetchActivities, urlToken])
 
+    const peopleHeader = React.useMemo(() => userInfo ? (
+        <PeopleHeader
+            userInfo={userInfo}
+            isFollowing={isFollowing}
+            isFollowPending={isFollowPending}
+            onToggleFollow={handleToggleFollow}
+        />
+    ) : null, [handleToggleFollow, isFollowPending, isFollowing, userInfo]);
+
+    const renderActivity = React.useCallback(({ item }: { item: any }) => (
+        <View style={{ paddingHorizontal: 16, marginBottom: 16, alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 4 }}>
+                <Icon name="history" size={16} color={secondaryText} />
+                <Text type="footnote1" color={secondaryText}>
+                    {item.actionText} · {item.displayTime}
+                </Text>
+            </View>
+            <RenderItem item={item.item} type={item.feedType} needToGet={true} />
+        </View>
+    ), [secondaryText]);
+
+    const keyExtractor = React.useCallback((item: any, index: number) => item.id + index, []);
+    const handleEndReached = React.useCallback(() => {
+        if (!isLoadingActivities && hasMoreActivities) {
+            void fetchActivities(urlToken, offsetString, pageNum);
+        }
+    }, [fetchActivities, hasMoreActivities, isLoadingActivities, offsetString, pageNum, urlToken]);
+    const activityFooter = React.useMemo(() => (
+        <View style={{ marginVertical: 20, alignItems: 'center' }}>
+            {isLoadingActivities && <Text type="body2" color={secondaryText}>加载中...</Text>}
+            {!hasMoreActivities && activities.length > 0 && <Text type="body2" color={secondaryText}>没有更多了</Text>}
+        </View>
+    ), [activities.length, hasMoreActivities, isLoadingActivities, secondaryText]);
+
     return (
         <PageScaffold topBar={<TopAppBar title={userInfo ? userInfo.name : "人物信息"} back={() => router.back()} />}>
             {userInfo ? (
                 <PageFlatList
                     data={activities}
-                    keyExtractor={(item, index) => item.id + index}
+                    keyExtractor={keyExtractor}
                     contentContainerStyle={{ paddingBottom: 40 }}
-                    ListHeaderComponent={
-                        <PeopleHeader
-                            userInfo={userInfo}
-                            isFollowing={isFollowing}
-                            isFollowPending={isFollowPending}
-                            onToggleFollow={handleToggleFollow}
-                        />
-                    }
-                    renderItem={({ item }) => (
-                        <View style={{ paddingHorizontal: 16, marginBottom: 16, alignItems: 'center' }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 4 }}>
-                                <Icon name="history" size={16} color={secondaryText} />
-                                <Text type="footnote1" color={secondaryText}>
-                                    {item.actionText} · {new Date(item.createdTime * 1000).toLocaleString()}
-                                </Text>
-                            </View>
-                            <RenderItem
-                                item={item.item}
-                                type={item.feedType}
-                                needToGet={true}
-                            />
-                        </View>
-                    )}
-                    onEndReached={() => {
-                        if (!isLoadingActivities && hasMoreActivities) {
-                            void fetchActivities(urlToken, offsetString, pageNum);
-                        }
-                    }}
+                    ListHeaderComponent={peopleHeader}
+                    renderItem={renderActivity}
+                    onEndReached={handleEndReached}
                     onEndReachedThreshold={0.5}
-                    ListFooterComponent={() => (
-                        <View style={{ marginVertical: 20, alignItems: 'center' }}>
-                            {isLoadingActivities && <Text type="body2" color={secondaryText}>加载中...</Text>}
-                            {!hasMoreActivities && activities.length > 0 && <Text type="body2" color={secondaryText}>没有更多了</Text>}
-                        </View>
-                    )}
+                    ListFooterComponent={activityFooter}
                 />
             ) : (
                 <PageContent style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>

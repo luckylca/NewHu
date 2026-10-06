@@ -23,6 +23,7 @@ function GuestFeedCard({ item, open }: { item: FeedItemInfo; open: (item: FeedIt
         <Card
             feedback="none"
             showIndication
+            glassVariant="preferencePanel"
             onPress={() => open(item)}
             style={{ width: '100%', marginBottom: theme.spacing.md }}
             contentStyle={{ backgroundColor: theme.colors.surfaceContainer, padding: theme.spacing.lg }}

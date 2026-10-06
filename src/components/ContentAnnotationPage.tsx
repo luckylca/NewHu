@@ -14,7 +14,7 @@ import { notify } from '@/src/stores/useNotificationStore';
 import { useContentStore } from '@/src/stores/useContentStore';
 import { useExportContentStore } from '@/src/stores/useExportContentStore';
 import { useUserStore } from '@/src/stores/useUserStore';
-import { BottomSheet, Button, Card, Dialog, Input, Pressable, TopAppBar } from '@/src/ui';
+import { BottomSheet, Button, Card, Dialog, Input, PageContent, PageScaffold, Pressable, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import {
@@ -29,6 +29,7 @@ import {
     StyleSheet,
     View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 type SelectionPageParams = { type: 'answer' | 'article'; id: string };
@@ -90,6 +91,7 @@ export default function ContentAnnotationPage() {
     const id = String(rawId ?? '');
     const theme = useTheme();
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const webViewRef = useRef<WebView>(null);
 
     const cookies = useUserStore((state) => state.cookies);
@@ -219,13 +221,16 @@ export default function ContentAnnotationPage() {
         hasNote: Boolean(annotation.noteText),
     })), [annotations]);
 
+    const floatingTopInset = theme.presentation.topBar.mode === 'floating' && theme.presentation.topBar.contentUnderlay
+        ? insets.top + theme.components.navigationBar.topBarCollapsedHeight
+        : 0;
     const selectionHtml = useMemo(() => {
         const descriptorJson = JSON.stringify(annotationDescriptors).replace(/</g, '\\u003c');
         return `<!doctype html>
 <html><head><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" /><style>
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: ${theme.colors.background}; color: ${theme.colors.onBackground}; }
-body { padding: 18px 20px 40px; font-family: sans-serif; font-size: 17px; line-height: 1.75; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+body { padding: ${floatingTopInset + 18}px 20px 40px; font-family: sans-serif; font-size: 17px; line-height: 1.75; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 #content { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
 mark.newhu-annotation { color: inherit; border-radius: 4px; padding: 1px 2px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 mark[data-kind="highlight"] { background: ${annotationVisual('highlight', theme.dark).background}; border-bottom: 2px solid ${annotationVisual('highlight', theme.dark).accent}; }
@@ -325,6 +330,7 @@ mark[data-kind="note"] { background: ${annotationVisual('note', theme.dark).back
 </script></body></html>`;
     }, [
         annotationDescriptors,
+        floatingTopInset,
         selectableText,
         theme.colors.background,
         theme.colors.onBackground,
@@ -440,36 +446,45 @@ mark[data-kind="note"] { background: ${annotationVisual('note', theme.dark).back
         }
     }, []);
 
+    const topBar = (
+        <TopAppBar
+            title="划线与笔记"
+            back={() => router.back()}
+            actions={(
+                <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="查看本页标注"
+                    onPress={() => setManagerVisible(true)}
+                    hitSlop={8}
+                    style={{ minHeight: 40, justifyContent: 'center' }}
+                >
+                    <Text type="body2" weight="medium" color={theme.colors.primary}>
+                        标注 {annotations.length}
+                    </Text>
+                </Pressable>
+            )}
+        />
+    );
+
     if (!document) {
         return error ? (
-            <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
-                <Text type="body1" color={theme.colors.onBackground}>{error}</Text>
-            </View>
-        ) : <LoadingView message="正在准备可标注文章…" />;
+            <PageScaffold topBar={topBar}>
+                <PageContent style={styles.center}>
+                    <Text type="body1" color={theme.colors.onBackground}>{error}</Text>
+                </PageContent>
+            </PageScaffold>
+        ) : (
+            <PageScaffold topBar={topBar}>
+                <PageContent style={{ flex: 1 }}>
+                    <LoadingView message="正在准备可标注文章…" />
+                </PageContent>
+            </PageScaffold>
+        );
     }
 
     return (
-        <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
-            <TopAppBar
-                title="划线与笔记"
-                back={() => router.back()}
-                actions={(
-                    <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="查看本页标注"
-                        onPress={() => setManagerVisible(true)}
-                        hitSlop={8}
-                        style={{
-                            minHeight: 40,
-                            justifyContent: 'center',
-                        }}
-                    >
-                        <Text type="body2" weight="medium" color={theme.colors.primary}>
-                            标注 {annotations.length}
-                        </Text>
-                    </Pressable>
-                )}
-            />
+        <PageScaffold topBar={topBar}>
+        <View style={{ flex: 1 }}>
 
             <WebView
                 ref={webViewRef}
@@ -679,11 +694,11 @@ mark[data-kind="note"] { background: ${annotationVisual('note', theme.dark).back
                 }}
             />
         </View>
+        </PageScaffold>
     );
 }
 
 const styles = StyleSheet.create({
-    root: { flex: 1 },
     webView: { flex: 1, backgroundColor: 'transparent' },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
     hintBar: {

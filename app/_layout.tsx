@@ -7,7 +7,7 @@ import { ThemeProvider as UiThemeProvider } from '@/src/ui/theme';
 import { MotionProvider } from '@/src/ui/motion';
 import { hasCurrentRequiredConsent, useConsentStore } from '@/src/stores/useConsentStore';
 import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
-import { ThemeProvider as NavigationThemeProvider, useIsFocused } from '@react-navigation/native'; // React Navigation 的导航主题
+import { ThemeProvider as NavigationThemeProvider, useIsFocused, useNavigation, useRoute } from '@react-navigation/native'; // React Navigation 的导航主题
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import React, { useEffect } from 'react';
@@ -25,16 +25,67 @@ import { useSettingStore } from '@/src/stores/useSettingStore';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { recoverSyncingActions } from '@/src/db/repositories/outboxRepository';
 import { getApiInstance } from '@/src/api/ZhihuApi';
+import { glassController, setGlassRuntime } from '@newhu/react-native-liquid-glass';
+
+type RouteTransitionNavigation = {
+	isFocused: () => boolean;
+	addListener: (
+		event: 'transitionStart' | 'transitionEnd' | 'focus' | 'blur',
+		listener: (value: { data?: { closing?: boolean } }) => void,
+	) => () => void;
+};
 
 function RouteGlassScene({ children }: { children: ReactNode }) {
-	const focused = useIsFocused();
+	const navigation = useNavigation() as RouteTransitionNavigation;
+	const route = useRoute();
+	const providerId = React.useId();
+	const openingTransition = React.useRef(false);
+
+	React.useEffect(() => {
+		const unsubscribeStart = navigation.addListener('transitionStart', (event) => {
+			const focused = navigation.isFocused();
+			if (event.data?.closing) {
+				openingTransition.current = false;
+				if (focused) glassController.freeze(providerId);
+			} else if (focused) {
+				openingTransition.current = true;
+				glassController.oneShot(providerId);
+			} else {
+				glassController.freeze(providerId);
+			}
+		});
+		const unsubscribeEnd = navigation.addListener('transitionEnd', (event) => {
+			const focused = navigation.isFocused();
+			if (!event.data?.closing && focused) {
+				openingTransition.current = false;
+				glassController.resume(providerId);
+			}
+		});
+		const unsubscribeFocus = navigation.addListener('focus', () => {
+			if (navigation.isFocused() && !openingTransition.current) glassController.resume(providerId);
+		});
+		const unsubscribeBlur = navigation.addListener('blur', () => glassController.freeze(providerId));
+		return () => {
+			unsubscribeStart();
+			unsubscribeEnd();
+			unsubscribeFocus();
+			unsubscribeBlur();
+		};
+	}, [navigation, providerId]);
+
+	const routeParams = route.params as { settingsBenchCase?: string } | undefined;
 	return (
-		<AppBackground glassBackdrop={focused}>
+		<AppBackground providerId={providerId} settingsBenchCase={routeParams?.settingsBenchCase}>
 			{children}
-			{focused ? <GlobalNotificationHost /> : null}
-			{focused ? <LaterReadFloatingBubble /> : null}
+			<FocusedRouteExtras />
 		</AppBackground>
 	);
+}
+
+function FocusedRouteExtras() {
+	const focused = useIsFocused();
+	if (!focused) return null;
+	return <><GlobalNotificationHost /><LaterReadFloatingBubble /></>;
 }
 
 void SplashScreen.preventAutoHideAsync();
@@ -42,6 +93,9 @@ SplashScreen.setOptions({ duration: 180, fade: true });
 
 export default function RootLayout() {
 	const uiTheme = useAppTheme();
+	React.useLayoutEffect(() => {
+		setGlassRuntime({ engine: uiTheme.name === 'liquidGlass' ? 'core' : 'legacy' });
+	}, [uiTheme.name]);
 	const networkStatus = useNetworkStore((state) => state.status);
 	const consentHydrated = useStoreHydrated(useConsentStore);
 	const userHydrated = useStoreHydrated(useUserStore);
@@ -119,7 +173,7 @@ export default function RootLayout() {
 									headerShown: false,
 									animation: reducedMotion ? 'fade' : 'slide_from_right',
 									presentation: 'card',
-									freezeOnBlur: false,
+									freezeOnBlur: true,
 								}}
 							>
 								<Stack.Protected guard={!consentReady}>
@@ -153,6 +207,7 @@ export default function RootLayout() {
 								<Stack.Screen name="question" options={{ title: '问题详情' }} />
 								<Stack.Screen name="dev/design-system" options={{ title: 'UI Showcase' }} />
 								<Stack.Screen name="dev/performance-benchmark" options={{ title: 'Hyper UI Performance Benchmark' }} />
+								<Stack.Screen name="dev/local-glass-benchmark" options={{ title: 'Local Glass Performance Benchmark' }} />
 								<Stack.Screen name="dev/glass-lens" options={{ title: 'Glass Lens Debug' }} />
 								<Stack.Screen name="dev/hyper-glow" options={{ title: '动态柔光预览' }} />
 								</Stack.Protected>

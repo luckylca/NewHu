@@ -3,8 +3,23 @@ export type GlassVariant =
     | 'tabSelectionIdle' | 'tabSelectionInteractive' | 'tabSelectionLens' | 'tabPreview'
     | 'search' | 'menu' | 'notification' | 'floating' | 'sheet' | 'dialog' | 'control' | 'preferencePanel' | 'lens';
 export type GlassQuality = 'high' | 'balanced' | 'fallback';
+export type GlassOpticsModel = 'heightField' | 'sdfScaleLens';
+
+export interface SdfScaleLensMaterial {
+    contrast: number;
+    brightness: number;
+    saturation: number;
+    outerShadowAlpha: number;
+    outerShadowBlurRadius: number;
+    outerShadowOffsetY: number;
+    innerShadowAlpha: number;
+    innerShadowExtent: number;
+}
 
 export interface GlassMaterialTokens {
+    /** Renderer selected by the optional Android Core engine. */
+    opticsModel?: GlassOpticsModel;
+    sdfScaleLens?: SdfScaleLensMaterial;
     radius: number;
     /** Multiplies the local procedural material alpha; higher values make a lens denser than its shell. */
     opacity?: number;

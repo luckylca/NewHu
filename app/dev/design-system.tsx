@@ -1,11 +1,11 @@
-import { BottomSheet, Button, Card, Checkbox, Dialog, GlassMaterialProvider, GlassSurface, Icon, Input, ListRow, Menu, NavigationBar, NumberWheel, PageScaffold, PageScrollView, PreferenceGroup, ProgressIndicator, SearchBar, SegmentedControl, Slider, Snackbar, Switch, TopAppBar } from '@/src/ui';
+import { BottomSheet, Button, Card, Checkbox, Dialog, GlassMaterialProvider, GlassSurface, Icon, Input, ListRow, Menu, NavigationBar, NumberWheel, PageFlatList, PageScaffold, PreferenceGroup, ProgressIndicator, SearchBar, SegmentedControl, Slider, Snackbar, Switch, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { ThemeProvider, liquidGlassDarkTheme, liquidGlassLightTheme, useTheme } from '@/src/ui/theme';
 import { GlassAppearanceProvider, GlassTabBar } from '@newhu/react-native-liquid-glass';
 import type { GlassQuality } from '@newhu/react-native-liquid-glass';
 import { MotionProvider } from '@/src/ui/motion';
 import { router } from 'expo-router';
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
@@ -25,6 +25,27 @@ function Section({ title, children, onLayout }: { title: string; children: React
             </Text>
             {children}
         </View>
+    );
+}
+
+function VirtualizedSections({ children }: { children: ReactNode }) {
+    const sections = React.Children.toArray(children) as React.ReactElement[];
+    const renderSection = useCallback(({ item }: { item: React.ReactElement }) => item, []);
+    const sectionKey = useCallback((_: React.ReactElement, index: number) => `showcase-section-${index}`, []);
+
+    return (
+        <PageFlatList
+            data={sections}
+            renderItem={renderSection}
+            keyExtractor={sectionKey}
+            contentContainerStyle={{ paddingBottom: 48 }}
+            initialNumToRender={4}
+            maxToRenderPerBatch={3}
+            windowSize={5}
+            updateCellsBatchingPeriod={48}
+            removeClippedSubviews
+            showsVerticalScrollIndicator={false}
+        />
     );
 }
 
@@ -151,7 +172,7 @@ function DesignSystemShowcaseContent({
 
     return (
         <PageScaffold topBar={<TopAppBar title="UI Showcase" back={() => router.back()} />}>
-            <PageScrollView contentContainerStyle={{ paddingBottom: 48 }}>
+            <VirtualizedSections>
                 <Section title="Liquid Glass Preview Settings">
                     <View style={{ paddingHorizontal: 16, gap: 10 }}>
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -462,7 +483,7 @@ function DesignSystemShowcaseContent({
                         />
                     </View>
                 </Section>
-            </PageScrollView>
+            </VirtualizedSections>
 
             <Dialog
                 visible={dialogOpen}

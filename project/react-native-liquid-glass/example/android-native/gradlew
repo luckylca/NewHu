@@ -1,0 +1,3 @@
+#!/bin/sh
+ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/../../../../android" && pwd)"
+exec "$ROOT_DIR/gradlew" "$@"

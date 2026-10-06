@@ -25,6 +25,13 @@ fields = {
     "effects": "effect_builds",
     "geometryLookups": "geometry_lookups",
     "uiFrames": "route_frames",
+    "descendantInvalidationReceived": "descendant_invalidation_received",
+    "descendantInvalidationCoalesced": "descendant_invalidation_coalesced",
+    "scrollEventsReceived": "scroll_events_received",
+    "glassFrameScheduled": "glass_frame_scheduled",
+    "glassFrameExecuted": "glass_frame_executed",
+    "consumerInvalidationExecuted": "consumer_invalidation_executed",
+    "settleCaptureExecuted": "settle_capture_executed",
 }
 
 

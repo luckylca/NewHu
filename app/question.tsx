@@ -69,6 +69,7 @@ const QuestionScreen = () => {
                         id: answer.id,
                         actionText: `${authorName} 回答了问题`,
                         createdTime: answer.created_time,
+                        displayTime: new Date(answer.created_time * 1000).toLocaleString(),
                         feedType: answer.type, // 'answer'
                         item: {
                             id: answer.id,
@@ -153,101 +154,104 @@ const QuestionScreen = () => {
     }, [cookies, routeAnswerCount, routeAuthorAvatar, routeAuthorName, routeCommentCount, routeCreatedAt, routeExcerpt, routeFollowerCount, routeTitle]);
     const visibleQuestionInfo = cookies ? questionInfo : guestQuestionInfo;
 
-    const renderStats = (label: string, value: number) => (
+    const renderStats = React.useCallback((label: string, value: number) => (
         <View style={{ alignItems: 'center', flex: 1 }}>
             <Text type="title4" weight="bold">{value || 0}</Text>
             <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>{label}</Text>
         </View>
-    );
+    ), [theme.colors.onSurfaceVariantSummary]);
+
+    const questionHeader = React.useMemo(() => (
+        <View style={{ padding: 16, backgroundColor: theme.colors.surface }}>
+            <Text type="title2" weight="bold" style={{ marginBottom: 12 }}>
+                {visibleQuestionInfo?.title}
+            </Text>
+
+            {!cookies && visibleQuestionInfo?.excerpt ? (
+                <Text type="body1" color={theme.colors.onSurfaceVariantSummary} style={{ marginBottom: 12, lineHeight: 25 }}>
+                    {visibleQuestionInfo.excerpt}
+                </Text>
+            ) : null}
+
+            {visibleQuestionInfo?.author && (
+                <ListRow
+                    icon={
+                        <Image
+                            source={{ uri: visibleQuestionInfo.author.avatar_url }}
+                            style={{ width: 40, height: 40, borderRadius: theme.radius.full, backgroundColor: theme.colors.secondaryContainer }}
+                        />
+                    }
+                    title={visibleQuestionInfo.author.name}
+                    summary={formatProfileText(visibleQuestionInfo.author.headline)}
+                    onPress={cookies && visibleQuestionInfo.author.url_token
+                        ? () => router.push({ pathname: '/people', params: { urlToken: visibleQuestionInfo.author.url_token } })
+                        : undefined}
+                    style={{ paddingHorizontal: 0, marginBottom: 4 }}
+                />
+            )}
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginVertical: 12, paddingVertical: 12, backgroundColor: theme.colors.secondaryContainer, borderRadius: theme.radius.tabContour }}>
+                {renderStats('关注者', visibleQuestionInfo?.follower_count)}
+                {renderStats('浏览量', visibleQuestionInfo?.visit_count)}
+                {renderStats('回答', visibleQuestionInfo?.answer_count)}
+            </View>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
+                    {visibleQuestionInfo?.created ? `提问于 ${new Date(visibleQuestionInfo.created * 1000).toLocaleDateString()}` : '知乎公开热榜'}
+                </Text>
+                <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
+                    {visibleQuestionInfo?.comment_count} 条评论
+                </Text>
+            </View>
+            {!cookies ? (
+                <Card feedback="none" style={{ marginTop: 16 }} contentStyle={{ padding: 14 }}>
+                    <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>
+                        游客模式显示 Android 推荐卡片提供的问题摘要。知乎可能限制此问题的匿名回答列表。
+                    </Text>
+                </Card>
+            ) : null}
+            <Divider style={{ marginTop: 16 }} />
+        </View>
+    ), [cookies, renderStats, router, theme.colors.onSurfaceVariantSummary, theme.colors.secondaryContainer, theme.colors.surface, theme.radius.full, theme.radius.tabContour, visibleQuestionInfo]);
+
+    const renderActivity = React.useCallback(({ item }: { item: any }) => (
+        <View style={{ paddingHorizontal: 16, marginBottom: 16, alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 4 }}>
+                <Icon name="history" size={16} color={theme.colors.onSurfaceVariantSummary} />
+                <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
+                    {item.actionText} · {item.displayTime}
+                </Text>
+            </View>
+            <RenderItem item={item.item} type={item.feedType} needToGet={true} hideTitle={true} />
+        </View>
+    ), [theme.colors.onSurfaceVariantSummary]);
+
+    const keyExtractor = React.useCallback((item: any, index: number) => item.id + index, []);
+    const handleEndReached = React.useCallback(() => {
+        if (!isLoadingActivities && hasMoreActivities) {
+            void fetchActivities(id, offsetString, pageNum);
+        }
+    }, [fetchActivities, hasMoreActivities, id, isLoadingActivities, offsetString, pageNum]);
+    const activityFooter = React.useMemo(() => (
+        <View style={{ marginVertical: 20, alignItems: 'center' }}>
+            {isLoadingActivities && <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>加载中...</Text>}
+            {!hasMoreActivities && activities.length > 0 && <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>没有更多了</Text>}
+        </View>
+    ), [activities.length, hasMoreActivities, isLoadingActivities, theme.colors.onSurfaceVariantSummary]);
 
     return (
         <PageScaffold topBar={<TopAppBar title={visibleQuestionInfo ? visibleQuestionInfo.title : "问题信息"} back={() => router.back()} />}>
             {visibleQuestionInfo ? (
                 <PageFlatList
                     data={activities}
-                    keyExtractor={(item, index) => item.id + index}
+                    keyExtractor={keyExtractor}
                     contentContainerStyle={{ paddingBottom: 40 }}
-                    ListHeaderComponent={() => (
-                        <View style={{ padding: 16, backgroundColor: theme.colors.surface }}>
-                            <Text type="title2" weight="bold" style={{ marginBottom: 12 }}>
-                                {visibleQuestionInfo.title}
-                            </Text>
-
-                            {!cookies && visibleQuestionInfo.excerpt ? (
-                                <Text type="body1" color={theme.colors.onSurfaceVariantSummary} style={{ marginBottom: 12, lineHeight: 25 }}>
-                                    {visibleQuestionInfo.excerpt}
-                                </Text>
-                            ) : null}
-
-                            {visibleQuestionInfo.author && (
-                                <ListRow
-                                    icon={
-                                        <Image
-                                            source={{ uri: visibleQuestionInfo.author.avatar_url }}
-                                            style={{ width: 40, height: 40, borderRadius: theme.radius.full, backgroundColor: theme.colors.secondaryContainer }}
-                                        />
-                                    }
-                                    title={visibleQuestionInfo.author.name}
-                                    summary={formatProfileText(visibleQuestionInfo.author.headline)}
-                                    onPress={cookies && visibleQuestionInfo.author.url_token
-                                        ? () => router.push({ pathname: '/people', params: { urlToken: visibleQuestionInfo.author.url_token } })
-                                        : undefined}
-                                    style={{ paddingHorizontal: 0, marginBottom: 4 }}
-                                />
-                            )}
-
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginVertical: 12, paddingVertical: 12, backgroundColor: theme.colors.secondaryContainer, borderRadius: theme.radius.tabContour }}>
-                                {renderStats("关注者", visibleQuestionInfo.follower_count)}
-                                {renderStats("浏览量", visibleQuestionInfo.visit_count)}
-                                {renderStats("回答", visibleQuestionInfo.answer_count)}
-                            </View>
-
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                                <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
-                                    {visibleQuestionInfo.created ? `提问于 ${new Date(visibleQuestionInfo.created * 1000).toLocaleDateString()}` : '知乎公开热榜'}
-                                </Text>
-                                <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
-                                    {visibleQuestionInfo.comment_count} 条评论
-                                </Text>
-                            </View>
-                            {!cookies ? (
-                                <Card feedback="none" style={{ marginTop: 16 }} contentStyle={{ padding: 14 }}>
-                                    <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>
-                                        游客模式显示 Android 推荐卡片提供的问题摘要。知乎可能限制此问题的匿名回答列表。
-                                    </Text>
-                                </Card>
-                            ) : null}
-                            <Divider style={{ marginTop: 16 }} />
-                        </View>
-                    )}
-                    renderItem={({ item }) => (
-                        <View style={{ paddingHorizontal: 16, marginBottom: 16, alignItems: 'center' }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 4 }}>
-                                <Icon name="history" size={16} color={theme.colors.onSurfaceVariantSummary} />
-                                <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
-                                    {item.actionText} · {new Date(item.createdTime * 1000).toLocaleString()}
-                                </Text>
-                            </View>
-                            <RenderItem
-                                item={item.item}
-                                type={item.feedType}
-                                needToGet={true}
-                                hideTitle={true}
-                            />
-                        </View>
-                    )}
-                    onEndReached={() => {
-                        if (!isLoadingActivities && hasMoreActivities) {
-                            void fetchActivities(id, offsetString, pageNum);
-                        }
-                    }}
+                    ListHeaderComponent={questionHeader}
+                    renderItem={renderActivity}
+                    onEndReached={handleEndReached}
                     onEndReachedThreshold={0.5}
-                    ListFooterComponent={() => (
-                        <View style={{ marginVertical: 20, alignItems: 'center' }}>
-                            {isLoadingActivities && <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>加载中...</Text>}
-                            {!hasMoreActivities && activities.length > 0 && <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>没有更多了</Text>}
-                        </View>
-                    )}
+                    ListFooterComponent={activityFooter}
                 />
             ) : (
                 <PageContent style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>

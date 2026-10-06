@@ -9,17 +9,27 @@ export interface GlassRuntime {
 }
 export declare function useGlassReducedMotion(): boolean;
 export declare function useGlassAppearance(): GlassRuntime | null;
+export type GlassSamplingSource = 'routeScene' | 'themeBackdrop';
+export declare function RouteGlassCaptureScope({ children }: {
+    children: React.ReactNode;
+}): import("react/jsx-runtime").JSX.Element;
+export declare function RouteGlassCaptureSource({ children }: {
+    children: React.ReactNode;
+}): import("react/jsx-runtime").JSX.Element;
 /**
- * A route-scoped host for backdrop-mode surfaces. Keep this boundary mounted
- * while the route is alive: disabling the theme turns off Glass consumers but
- * preserves the React parent path for navigation screens and scroll state.
- * With no consumers, the native provider remains idle. Active surfaces use
- * display cadence up to the renderer's 120 Hz ceiling.
+ * A route-scoped host for backdrop-mode surfaces. Theme capability controls
+ * whether Glass surfaces exist; capture mode is controlled imperatively by
+ * the native provider without changing the React surface tree.
  */
 export interface GlassMaterialProviderProps {
     children: React.ReactNode;
     /** Scene layer recorded behind route content. When supplied, route views render as normal siblings. */
     backdrop?: React.ReactNode;
+    /** Separate visible backdrop/source used by sheets and other stable overlays. */
+    themeBackdrop?: React.ReactNode;
+    /** Changes only when the theme backdrop image or palette itself changes. */
+    themeBackdropRevision?: string;
+    providerId?: string;
     style?: StyleProp<ViewStyle>;
     tokens: GlassTokens;
     dark: boolean;
@@ -33,13 +43,17 @@ export interface GlassAppearanceProviderProps {
     reducedMotion?: boolean;
 }
 export declare function GlassAppearanceProvider({ children, tokens, dark, reducedMotion }: GlassAppearanceProviderProps): import("react/jsx-runtime").JSX.Element;
-export declare function GlassMaterialProvider({ children, backdrop, style, tokens, dark, reducedMotion }: GlassMaterialProviderProps): import("react/jsx-runtime").JSX.Element;
+export declare function GlassMaterialProvider({ children, backdrop, themeBackdrop, themeBackdropRevision, providerId: providerIdProp, style, tokens, dark, reducedMotion }: GlassMaterialProviderProps): import("react/jsx-runtime").JSX.Element;
 export interface GlassSurfaceProps {
     variant?: GlassVariant;
     /** Semantic placement role. The parent owns actual layout and coordinates. */
     positioning?: 'inFlow' | 'floating';
     /** Optical sampling source. Backdrop sampling is explicitly opt-in. */
     sampling?: 'local' | 'backdrop';
+    /** Select live route content for bars or the stable ThemeBackdrop for sheets. */
+    samplingSource?: GlassSamplingSource;
+    /** Draw the optical backing in place beneath its ordinary route children. */
+    inlineBackdrop?: boolean;
     /** @deprecated Use sampling; kept for source compatibility. */
     renderMode?: 'local' | 'backdrop';
     pointerEvents?: ViewProps['pointerEvents'];
@@ -62,13 +76,13 @@ export interface GlassSurfaceProps {
     placement?: 'layout' | 'bottom' | 'center';
     bottomInset?: number;
     zIndex?: number;
-    /** Lightweight layout-only anchor for backdrop placement; never pass business children here. */
     placeholderChildren?: React.ReactNode;
     children?: React.ReactNode;
 }
 /** Theme-driven glass material. Callers select a role; all optical settings live in AppTheme. */
 export declare const GlassSurface: React.NamedExoticComponent<GlassSurfaceProps>;
-/** Full-screen overlay portal, used by sheets/dialogs so they sample the live app backdrop. */
+export declare function useGlassProviderId(): string | null;
+/** Route-level view overlay for sheets/dialogs; its children remain ordinary native views. */
 export declare function GlassOverlay({ children, zIndex }: {
     children: React.ReactNode;
     zIndex?: number;

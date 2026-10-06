@@ -1,13 +1,23 @@
-import { LiquidGlassProvider, LiquidGlassView } from 'liquid-glass-kit';
-import React, { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { findNodeHandle, Platform, StyleSheet, View } from 'react-native';
 import type { LayoutChangeEvent, StyleProp, ViewProps, ViewStyle } from 'react-native';
 import Animated, { useAnimatedProps } from 'react-native-reanimated';
 import type { AnimatedStyle, SharedValue } from 'react-native-reanimated';
 import { LocalGlassMaterial } from './LocalGlassMaterial';
+import { getGlassNativeEngine, subscribeGlassNativeEngine } from './glassNativeEngine';
+import type { GlassNativeEngine } from './glassNativeEngine';
+import { CoreGlassCaptureSource, CoreGlassSurfaceView, LegacyGlassCaptureSource, LegacyGlassSurfaceView } from './nativeGlassViews';
+import type { GlassCaptureSourceProps, NativeGlassSurfaceProps } from './nativeGlassViews';
 import type { GlassMaterialTokens, GlassTokens, GlassVariant } from './types';
 
-const AnimatedLiquidGlassView = Animated.createAnimatedComponent(LiquidGlassView);
+type NativeBackdropSurfaceProps = NativeGlassSurfaceProps & {
+    animatedProps?: Partial<Pick<NativeGlassSurfaceProps, 'interactionProgress' | 'motionX' | 'motionY'>>;
+};
+
+const AnimatedLegacyGlassSurfaceView = Animated.createAnimatedComponent(LegacyGlassSurfaceView) as unknown as React.ComponentType<NativeBackdropSurfaceProps>;
+const AnimatedCoreGlassSurfaceView = CoreGlassSurfaceView
+    ? Animated.createAnimatedComponent(CoreGlassSurfaceView) as unknown as React.ComponentType<NativeBackdropSurfaceProps>
+    : null;
 
 export interface GlassRuntime {
     tokens: GlassTokens;
@@ -16,6 +26,8 @@ export interface GlassRuntime {
 }
 
 const GlassRuntimeContext = createContext<GlassRuntime | null>(null);
+const GlassCaptureSourceContext = createContext<string | null>(null);
+const GlassNativeEngineContext = createContext<GlassNativeEngine>('legacy');
 
 export function useGlassReducedMotion() {
     return useContext(GlassRuntimeContext)?.reducedMotion ?? false;
@@ -32,11 +44,13 @@ interface SurfaceFrame {
     height: number;
 }
 
+export type GlassSamplingSource = 'routeScene' | 'themeBackdrop';
+
 interface SurfaceEntry {
     frame: SurfaceFrame;
     positioning: 'inFlow' | 'floating';
-    children: React.ReactNode;
     variant: GlassVariant;
+    samplingSource: GlassSamplingSource;
     interactive: boolean;
     continuous: boolean;
     opticalProgress?: SharedValue<number>;
@@ -44,7 +58,6 @@ interface SurfaceEntry {
     opticalMotionY?: SharedValue<number>;
     materialOverrides?: Partial<GlassMaterialTokens>;
     displacementOnlyDebug: boolean;
-    contentStyle?: StyleProp<ViewStyle>;
     animatedStyle?: AnimatedStyle<ViewStyle>;
     placement?: 'layout' | 'bottom' | 'center';
     bottomInset?: number;
@@ -57,43 +70,163 @@ interface OverlayEntry {
     zIndex: number;
 }
 
-type HostEntry =
-    | { kind: 'surface'; value: SurfaceEntry }
-    | { kind: 'overlay'; value: OverlayEntry };
-
-function entryZIndex(entry: HostEntry) {
-    return entry.value.zIndex;
+interface EntryRegistry<Entry> {
+    getSnapshot: () => [string, Entry][];
+    subscribe: (listener: () => void) => () => void;
+    update: (id: string, entry: Entry, equals: (previous: Entry, next: Entry) => boolean) => void;
+    remove: (id: string) => void;
 }
 
-function selectBalancedShaderSurfaces(entries: Record<string, HostEntry>) {
+function createEntryRegistry<Entry>(): EntryRegistry<Entry> {
+    const entries = new Map<string, Entry>();
+    const listeners = new Set<() => void>();
+    let snapshot: [string, Entry][] = [];
+    const publish = () => {
+        snapshot = Array.from(entries.entries());
+        for (const listener of listeners) listener();
+    };
+    return {
+        getSnapshot: () => snapshot,
+        subscribe: (listener) => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+        },
+        update: (id, entry, equals) => {
+            const previous = entries.get(id);
+            if (previous !== undefined && equals(previous, entry)) return;
+            entries.set(id, entry);
+            publish();
+        },
+        remove: (id) => {
+            if (!entries.delete(id)) return;
+            publish();
+        },
+    };
+}
+
+function useRegistrySnapshot<Entry>(registry: EntryRegistry<Entry>) {
+    return React.useSyncExternalStore(registry.subscribe, registry.getSnapshot, registry.getSnapshot);
+}
+
+function sameSurface(previous: SurfaceEntry, next: SurfaceEntry) {
+    return previous.frame.x === next.frame.x && previous.frame.y === next.frame.y &&
+        previous.frame.width === next.frame.width && previous.frame.height === next.frame.height &&
+        previous.positioning === next.positioning && previous.samplingSource === next.samplingSource &&
+        previous.variant === next.variant && previous.interactive === next.interactive && previous.continuous === next.continuous &&
+        previous.opticalProgress === next.opticalProgress && previous.opticalMotionX === next.opticalMotionX && previous.opticalMotionY === next.opticalMotionY &&
+        previous.materialOverrides === next.materialOverrides && previous.displacementOnlyDebug === next.displacementOnlyDebug &&
+        previous.animatedStyle === next.animatedStyle && previous.placement === next.placement &&
+        previous.bottomInset === next.bottomInset && previous.zIndex === next.zIndex;
+}
+
+function sameOverlay(previous: OverlayEntry, next: OverlayEntry) {
+    return previous.children === next.children && previous.style === next.style && previous.zIndex === next.zIndex;
+}
+
+function selectBalancedShaderSurfaces(entries: [string, SurfaceEntry][]) {
     // Every mounted backdrop surface keeps the same renderer regardless of
     // quality preset; display cadence is selected by the native provider.
-    return new Set(Object.entries(entries)
-        .filter((entry) => entry[1].kind === 'surface')
-        .map(([id]) => id));
+    return new Set(entries.map(([id]) => id));
 }
 
 interface GlassHostContextValue {
     providerId: string;
+    themeBackdropProviderId: string;
     hostRef: React.RefObject<View | null>;
     updateSurface: (id: string, entry: SurfaceEntry) => void;
-    updateOverlay: (id: string, entry: OverlayEntry) => void;
     remove: (id: string) => void;
 }
 
 const GlassHostContext = createContext<GlassHostContextValue | null>(null);
 
+export function RouteGlassCaptureScope({ children }: { children: React.ReactNode }) {
+    const host = useContext(GlassHostContext);
+    const providerId = host ? `${host.providerId}:page-content` : null;
+    return <GlassCaptureSourceContext.Provider value={providerId}>{children}</GlassCaptureSourceContext.Provider>;
+}
+
+export function RouteGlassCaptureSource({ children }: { children: React.ReactNode }) {
+    const host = useContext(GlassHostContext);
+    const runtime = useContext(GlassRuntimeContext);
+    const providerId = useContext(GlassCaptureSourceContext);
+    if (!host || !providerId || !runtime?.tokens.enabled) return <>{children}</>;
+    return (
+        <GlassCaptureSourceView
+            providerId={providerId}
+            underlayProviderId={host.themeBackdropProviderId}
+            captureMode="live"
+            pointerEvents="box-none"
+            style={styles.captureSource}
+        >
+            {children}
+        </GlassCaptureSourceView>
+    );
+}
+
+function NativeBackdropSurface({
+    opticsModel,
+    sdfDisplacementMapDebug,
+    sdfContrast,
+    sdfBrightness,
+    sdfSaturation,
+    sdfOuterShadowAlpha,
+    sdfOuterShadowBlurRadius,
+    sdfOuterShadowOffsetY,
+    sdfInnerShadowAlpha,
+    sdfInnerShadowExtent,
+    ...props
+}: NativeBackdropSurfaceProps) {
+    const nativeEngine = useContext(GlassNativeEngineContext);
+    if (nativeEngine === 'core' && AnimatedCoreGlassSurfaceView) {
+        return (
+            <AnimatedCoreGlassSurfaceView
+                {...props}
+                opticsModel={opticsModel}
+                sdfDisplacementMapDebug={sdfDisplacementMapDebug}
+                sdfContrast={sdfContrast}
+                sdfBrightness={sdfBrightness}
+                sdfSaturation={sdfSaturation}
+                sdfOuterShadowAlpha={sdfOuterShadowAlpha}
+                sdfOuterShadowBlurRadius={sdfOuterShadowBlurRadius}
+                sdfOuterShadowOffsetY={sdfOuterShadowOffsetY}
+                sdfInnerShadowAlpha={sdfInnerShadowAlpha}
+                sdfInnerShadowExtent={sdfInnerShadowExtent}
+            />
+        );
+    }
+    return <AnimatedLegacyGlassSurfaceView {...props} />;
+}
+
+function GlassCaptureSourceView({ children, ...props }: GlassCaptureSourceProps) {
+    const nativeEngine = useContext(GlassNativeEngineContext);
+    if (nativeEngine === 'core' && CoreGlassCaptureSource) {
+        return <CoreGlassCaptureSource {...props}>{children}</CoreGlassCaptureSource>;
+    }
+    return <LegacyGlassCaptureSource {...props}>{children}</LegacyGlassCaptureSource>;
+}
+
+interface GlassOverlayHostContextValue {
+    providerId: string;
+    updateOverlay: (id: string, entry: OverlayEntry) => void;
+    remove: (id: string) => void;
+}
+
+const GlassOverlayHostContext = createContext<GlassOverlayHostContextValue | null>(null);
+
 /**
- * A route-scoped host for backdrop-mode surfaces. Keep this boundary mounted
- * while the route is alive: disabling the theme turns off Glass consumers but
- * preserves the React parent path for navigation screens and scroll state.
- * With no consumers, the native provider remains idle. Active surfaces use
- * display cadence up to the renderer's 120 Hz ceiling.
+ * A route-scoped host for backdrop-mode surfaces. Theme capability controls
+ * whether Glass surfaces exist; capture mode is controlled imperatively by
+ * the native provider without changing the React surface tree.
  */
 export interface GlassMaterialProviderProps {
     children: React.ReactNode;
     /** Scene layer recorded behind route content. When supplied, route views render as normal siblings. */
     backdrop?: React.ReactNode;
+    /** Separate visible backdrop/source used by sheets and other stable overlays. */
+    themeBackdrop?: React.ReactNode;
+    /** Changes only when the theme backdrop image or palette itself changes. */
+    themeBackdropRevision?: string;
+    providerId?: string;
     style?: StyleProp<ViewStyle>;
     tokens: GlassTokens;
     dark: boolean;
@@ -113,88 +246,106 @@ export function GlassAppearanceProvider({ children, tokens, dark, reducedMotion 
     return <GlassRuntimeContext.Provider value={runtime}>{children}</GlassRuntimeContext.Provider>;
 }
 
-export function GlassMaterialProvider({ children, backdrop, style, tokens, dark, reducedMotion = false }: GlassMaterialProviderProps) {
+export function GlassMaterialProvider({ children, backdrop, themeBackdrop, themeBackdropRevision, providerId: providerIdProp, style, tokens, dark, reducedMotion = false }: GlassMaterialProviderProps) {
     const hostRef = useRef<View>(null);
-    const providerId = useId();
-    const [entries, setEntries] = useState<Record<string, HostEntry>>({});
-    const balancedShaderSurfaces = useMemo(() => selectBalancedShaderSurfaces(entries), [entries]);
-    const orderedEntries = useMemo(
-        () => Object.entries(entries).sort((left, right) => entryZIndex(left[1]) - entryZIndex(right[1])),
-        [entries],
-    );
+    const generatedProviderId = useId();
+    const providerId = providerIdProp ?? generatedProviderId;
+    const themeBackdropProviderId = useId();
+    const surfaceRegistryRef = useRef<EntryRegistry<SurfaceEntry> | null>(null);
+    const overlayRegistryRef = useRef<EntryRegistry<OverlayEntry> | null>(null);
+    if (!surfaceRegistryRef.current) surfaceRegistryRef.current = createEntryRegistry();
+    if (!overlayRegistryRef.current) overlayRegistryRef.current = createEntryRegistry();
+    const surfaceRegistry = surfaceRegistryRef.current;
+    const overlayRegistry = overlayRegistryRef.current;
     const runtime = useMemo(() => ({ tokens, dark, reducedMotion }), [tokens, dark, reducedMotion]);
+    const nativeEngine = useSyncExternalStore(subscribeGlassNativeEngine, getGlassNativeEngine, getGlassNativeEngine);
 
     const updateSurface = useCallback((id: string, entry: SurfaceEntry) => {
-        setEntries((current) => {
-            const previous = current[id]?.kind === 'surface' ? current[id].value : undefined;
-            if (previous && previous.frame.x === entry.frame.x && previous.frame.y === entry.frame.y &&
-                previous.frame.width === entry.frame.width && previous.frame.height === entry.frame.height &&
-                previous.positioning === entry.positioning &&
-                previous.children === entry.children && previous.variant === entry.variant && previous.interactive === entry.interactive && previous.continuous === entry.continuous &&
-                previous.opticalProgress === entry.opticalProgress && previous.opticalMotionX === entry.opticalMotionX && previous.opticalMotionY === entry.opticalMotionY &&
-                previous.materialOverrides === entry.materialOverrides && previous.displacementOnlyDebug === entry.displacementOnlyDebug &&
-                previous.contentStyle === entry.contentStyle && previous.animatedStyle === entry.animatedStyle &&
-                previous.placement === entry.placement && previous.bottomInset === entry.bottomInset && previous.zIndex === entry.zIndex) {
-                return current;
-            }
-            return { ...current, [id]: { kind: 'surface', value: entry } };
-        });
-    }, []);
+        surfaceRegistry.update(id, entry, sameSurface);
+    }, [surfaceRegistry]);
 
     const updateOverlay = useCallback((id: string, entry: OverlayEntry) => {
-        setEntries((current) => {
-            const previous = current[id]?.kind === 'overlay' ? current[id].value : undefined;
-            if (previous && previous.children === entry.children && previous.style === entry.style && previous.zIndex === entry.zIndex) return current;
-            return { ...current, [id]: { kind: 'overlay', value: entry } };
-        });
-    }, []);
+        overlayRegistry.update(id, entry, sameOverlay);
+    }, [overlayRegistry]);
 
     const remove = useCallback((id: string) => {
-        setEntries((current) => {
-            if (!(id in current)) return current;
-            const next = { ...current };
-            delete next[id];
-            return next;
-        });
-    }, []);
+        surfaceRegistry.remove(id);
+        overlayRegistry.remove(id);
+    }, [surfaceRegistry, overlayRegistry]);
 
-    const context = useMemo(() => ({ providerId, hostRef, updateSurface, updateOverlay, remove }), [providerId, updateSurface, updateOverlay, remove]);
+    const context = useMemo(() => ({ providerId, themeBackdropProviderId, hostRef, updateSurface, remove }), [providerId, themeBackdropProviderId, updateSurface, remove]);
+    const overlayContext = useMemo(() => ({ providerId, updateOverlay, remove }), [providerId, updateOverlay, remove]);
     const hasSeparateBackdrop = backdrop !== undefined;
 
     return (
+        <GlassNativeEngineContext.Provider value={nativeEngine}>
         <GlassRuntimeContext.Provider value={runtime}>
             <GlassHostContext.Provider value={context}>
+            <GlassOverlayHostContext.Provider value={overlayContext}>
                 <View ref={hostRef} collapsable={false} style={[styles.root, style]}>
-                    <LiquidGlassProvider
+                    {themeBackdrop !== undefined ? (
+                        <GlassCaptureSourceView
+                            providerId={themeBackdropProviderId}
+                            captureMode="static"
+                            sourceRevision={themeBackdropRevision}
+                            pointerEvents="none"
+                            style={StyleSheet.absoluteFill}
+                        >
+                            {themeBackdrop}
+                        </GlassCaptureSourceView>
+                    ) : null}
+                    <GlassCaptureSourceView
                         providerId={providerId}
+                        underlayProviderId={themeBackdrop !== undefined ? themeBackdropProviderId : undefined}
+                        captureMode={tokens.enabled ? 'live' : 'frozen'}
                         style={StyleSheet.absoluteFill}
                     >
                         {hasSeparateBackdrop ? backdrop : children}
-                    </LiquidGlassProvider>
+                    </GlassCaptureSourceView>
                     {hasSeparateBackdrop ? (
                         <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
                             {children}
                         </View>
                     ) : null}
-                    <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-                        {(tokens.enabled ? orderedEntries : []).map(([id, entry]) => (
-                            entry.kind === 'surface'
-                                ? <PortalGlassSurface
-                                    key={id}
-                                    providerId={providerId}
-                                    entry={entry.value}
-                                    shaderEnabled={tokens.quality === 'high' || (tokens.quality === 'balanced' && balancedShaderSurfaces.has(id))}
-                                />
-                                : <PortalOverlay key={id} entry={entry.value} />
-                        ))}
-                    </View>
+                    <GlassSurfacePortalLayer registry={surfaceRegistry} providerId={providerId} themeBackdropProviderId={themeBackdropProviderId} tokens={tokens} />
+                    <GlassRouteOverlayLayer registry={overlayRegistry} enabled={tokens.enabled} />
                 </View>
+            </GlassOverlayHostContext.Provider>
             </GlassHostContext.Provider>
         </GlassRuntimeContext.Provider>
+        </GlassNativeEngineContext.Provider>
     );
 }
 
-const PortalOverlay = React.memo(function PortalOverlay({ entry }: { entry: OverlayEntry }) {
+function GlassSurfacePortalLayer({ registry, providerId, themeBackdropProviderId, tokens }: { registry: EntryRegistry<SurfaceEntry>; providerId: string; themeBackdropProviderId: string; tokens: GlassTokens }) {
+    const entries = useRegistrySnapshot(registry);
+    const balancedShaderSurfaces = useMemo(() => selectBalancedShaderSurfaces(entries), [entries]);
+    if (!tokens.enabled) return null;
+    return (
+        <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+            {entries.map(([id, entry]) => (
+                <PortalGlassSurface
+                    key={id}
+                    providerId={entry.samplingSource === 'themeBackdrop' ? themeBackdropProviderId : providerId}
+                    entry={entry}
+                    shaderEnabled={tokens.quality === 'high' || (tokens.quality === 'balanced' && balancedShaderSurfaces.has(id))}
+                />
+            ))}
+        </View>
+    );
+}
+
+function GlassRouteOverlayLayer({ registry, enabled }: { registry: EntryRegistry<OverlayEntry>; enabled: boolean }) {
+    const entries = useRegistrySnapshot(registry);
+    if (!enabled) return null;
+    return (
+        <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+            {entries.map(([id, entry]) => <RouteOverlayView key={id} entry={entry} />)}
+        </View>
+    );
+}
+
+const RouteOverlayView = React.memo(function RouteOverlayView({ entry }: { entry: OverlayEntry }) {
     return (
         <Animated.View pointerEvents="box-none" style={[StyleSheet.absoluteFill, entry.style, { zIndex: entry.zIndex }]}>
             {entry.children}
@@ -222,8 +373,17 @@ const PortalGlassSurface = React.memo(function PortalGlassSurface({ providerId, 
     if (!shaderEnabled) return <PortalFallbackSurface entry={entry} />;
 
     const nativeSurface = (
-        <AnimatedLiquidGlassView
+        <NativeBackdropSurface
             providerId={providerId}
+            opticsModel={material.opticsModel}
+            sdfContrast={material.sdfScaleLens?.contrast}
+            sdfBrightness={material.sdfScaleLens?.brightness}
+            sdfSaturation={material.sdfScaleLens?.saturation}
+            sdfOuterShadowAlpha={material.sdfScaleLens?.outerShadowAlpha}
+            sdfOuterShadowBlurRadius={material.sdfScaleLens?.outerShadowBlurRadius}
+            sdfOuterShadowOffsetY={material.sdfScaleLens?.outerShadowOffsetY}
+            sdfInnerShadowAlpha={material.sdfScaleLens?.innerShadowAlpha}
+            sdfInnerShadowExtent={material.sdfScaleLens?.innerShadowExtent}
             cornerRadius={material.radius}
             blurRadius={material.blurRadius * qualityScale}
             refractionHeight={material.refractionHeight * qualityScale}
@@ -254,17 +414,7 @@ const PortalGlassSurface = React.memo(function PortalGlassSurface({ providerId, 
                     : { width: entry.frame.width > 0 ? entry.frame.width : undefined },
                 { borderRadius: material.radius },
             ]}
-        >
-            <View
-                style={[
-                    entry.placement === 'layout' ? styles.portalContentLayout : styles.portalContentWrap,
-                    entry.contentStyle,
-                    { borderRadius: material.radius },
-                ]}
-            >
-                {entry.children}
-            </View>
-        </AnimatedLiquidGlassView>
+        />
     );
 
     if (entry.placement === 'bottom' || entry.placement === 'center') {
@@ -318,15 +468,6 @@ const PortalFallbackSurface = React.memo(function PortalFallbackSurface({ entry 
                 },
             ]}
         >
-            <View
-                style={[
-                    entry.placement === 'layout' ? styles.portalContentLayout : styles.portalContentWrap,
-                    entry.contentStyle,
-                    { borderRadius: material.radius },
-                ]}
-            >
-                {entry.children}
-            </View>
         </View>
     );
 
@@ -368,6 +509,10 @@ export interface GlassSurfaceProps {
     positioning?: 'inFlow' | 'floating';
     /** Optical sampling source. Backdrop sampling is explicitly opt-in. */
     sampling?: 'local' | 'backdrop';
+    /** Select live route content for bars or the stable ThemeBackdrop for sheets. */
+    samplingSource?: GlassSamplingSource;
+    /** Draw the optical backing in place beneath its ordinary route children. */
+    inlineBackdrop?: boolean;
     /** @deprecated Use sampling; kept for source compatibility. */
     renderMode?: 'local' | 'backdrop';
     pointerEvents?: ViewProps['pointerEvents'];
@@ -390,7 +535,6 @@ export interface GlassSurfaceProps {
     placement?: 'layout' | 'bottom' | 'center';
     bottomInset?: number;
     zIndex?: number;
-    /** Lightweight layout-only anchor for backdrop placement; never pass business children here. */
     placeholderChildren?: React.ReactNode;
     children?: React.ReactNode;
 }
@@ -400,6 +544,8 @@ export const GlassSurface = React.memo(function GlassSurface({
     variant = 'surface',
     positioning,
     sampling,
+    samplingSource = 'routeScene',
+    inlineBackdrop = false,
     renderMode,
     pointerEvents,
     interactive = false,
@@ -416,10 +562,10 @@ export const GlassSurface = React.memo(function GlassSurface({
     bottomInset,
     zIndex = 1,
     children,
-    placeholderChildren = null,
 }: GlassSurfaceProps) {
     const runtime = useContext(GlassRuntimeContext);
     const host = useContext(GlassHostContext);
+    const captureSourceProviderId = useContext(GlassCaptureSourceContext);
     const resolvedPositioning = positioning ?? (renderMode === 'backdrop' ? 'floating' : 'inFlow');
     const resolvedSampling = sampling ?? renderMode ?? (resolvedPositioning === 'floating' ? 'backdrop' : 'local');
     const resolvedRenderMode = runtime?.tokens.enabled && resolvedSampling === 'backdrop' && Platform.OS === 'android' && host && runtime.tokens.quality !== 'fallback'
@@ -456,14 +602,14 @@ export const GlassSurface = React.memo(function GlassSurface({
 
     useEffect(() => {
         if (!host) return;
-        if (!runtime?.tokens.enabled || resolvedRenderMode !== 'backdrop' || !frame || frame.width <= 0 || frame.height <= 0) {
+        if (!runtime?.tokens.enabled || resolvedRenderMode !== 'backdrop' || inlineBackdrop || !frame || frame.width <= 0 || frame.height <= 0) {
             host.remove(id);
             return;
         }
         host.updateSurface(id, {
             frame,
             positioning: resolvedPositioning,
-            children,
+            samplingSource,
             variant,
             interactive,
             continuous,
@@ -472,13 +618,12 @@ export const GlassSurface = React.memo(function GlassSurface({
             opticalMotionY,
             materialOverrides,
             displacementOnlyDebug,
-            contentStyle,
             animatedStyle,
             placement,
             bottomInset,
             zIndex,
         });
-    }, [runtime?.tokens.enabled, resolvedRenderMode, host, id, frame, resolvedPositioning, children, variant, interactive, continuous, opticalProgress, opticalMotionX, opticalMotionY, materialOverrides, displacementOnlyDebug, contentStyle, animatedStyle, placement, bottomInset, zIndex]);
+    }, [runtime?.tokens.enabled, resolvedRenderMode, inlineBackdrop, host, id, frame, resolvedPositioning, samplingSource, variant, interactive, continuous, opticalProgress, opticalMotionX, opticalMotionY, materialOverrides, displacementOnlyDebug, animatedStyle, placement, bottomInset, zIndex]);
 
     if (!runtime?.tokens.enabled) {
         return <Animated.View style={[style, animatedStyle]}><View style={contentStyle}>{children}</View></Animated.View>;
@@ -498,18 +643,121 @@ export const GlassSurface = React.memo(function GlassSurface({
         );
     }
 
+    if (inlineBackdrop) {
+        return (
+            <Animated.View pointerEvents={pointerEvents} style={[style, animatedStyle]}>
+                <InlineBackdropSurface
+                    providerId={samplingSource === 'themeBackdrop' ? host.themeBackdropProviderId : captureSourceProviderId ?? host.themeBackdropProviderId}
+                    variant={variant}
+                    interactive={interactive}
+                    continuous={continuous}
+                    opticalProgress={opticalProgress}
+                    opticalMotionX={opticalMotionX}
+                    opticalMotionY={opticalMotionY}
+                    materialOverrides={materialOverrides}
+                    displacementOnlyDebug={displacementOnlyDebug}
+                    contentStyle={contentStyle}
+                    placement={placement}
+                >
+                    {children}
+                </InlineBackdropSurface>
+            </Animated.View>
+        );
+    }
+
     return (
         <Animated.View
             ref={viewRef}
             collapsable={false}
-            accessible={false}
-            importantForAccessibility="no-hide-descendants"
-            pointerEvents="none"
+            pointerEvents={pointerEvents}
             onLayout={onLayout}
             style={[style, animatedStyle, styles.measureOnly]}
         >
-            <View style={[contentStyle, styles.hiddenMeasureContent]}>{placeholderChildren}</View>
+            <View style={[placement === 'layout' ? styles.portalContentLayout : styles.portalContentWrap, contentStyle]}>
+                {children}
+            </View>
         </Animated.View>
+    );
+});
+
+const InlineBackdropSurface = React.memo(function InlineBackdropSurface({
+    providerId,
+    variant,
+    interactive,
+    continuous,
+    opticalProgress,
+    opticalMotionX,
+    opticalMotionY,
+    materialOverrides,
+    displacementOnlyDebug,
+    contentStyle,
+    placement,
+    children,
+}: {
+    providerId: string;
+    variant: GlassVariant;
+    interactive: boolean;
+    continuous: boolean;
+    opticalProgress?: SharedValue<number>;
+    opticalMotionX?: SharedValue<number>;
+    opticalMotionY?: SharedValue<number>;
+    materialOverrides?: Partial<GlassMaterialTokens>;
+    displacementOnlyDebug: boolean;
+    contentStyle?: StyleProp<ViewStyle>;
+    placement: 'layout' | 'bottom' | 'center';
+    children?: React.ReactNode;
+}) {
+    const runtime = useContext(GlassRuntimeContext);
+    const animatedOptics = useAnimatedProps(() => ({
+        interactionProgress: opticalProgress?.value ?? 0,
+        motionX: opticalMotionX ? Math.max(-1, Math.min(1, opticalMotionX.value / 1800)) : undefined,
+        motionY: opticalMotionY ? Math.max(-1, Math.min(1, opticalMotionY.value / 1800)) : undefined,
+    }), [opticalProgress, opticalMotionX, opticalMotionY]);
+    if (!runtime) return <>{children}</>;
+    const { tokens, dark, reducedMotion } = runtime;
+    const material = materialOverrides
+        ? { ...tokens.materials[variant], ...materialOverrides }
+        : tokens.materials[variant];
+    const qualityScale = tokens.quality === 'high' ? 1.2 : tokens.quality === 'fallback' ? 0.45 : 1;
+    return (
+        <View style={styles.inlineBackdropSurface}>
+            <NativeBackdropSurface
+                providerId={providerId}
+                opticsModel={material.opticsModel}
+                sdfContrast={material.sdfScaleLens?.contrast}
+                sdfBrightness={material.sdfScaleLens?.brightness}
+                sdfSaturation={material.sdfScaleLens?.saturation}
+                sdfOuterShadowAlpha={material.sdfScaleLens?.outerShadowAlpha}
+                sdfOuterShadowBlurRadius={material.sdfScaleLens?.outerShadowBlurRadius}
+                sdfOuterShadowOffsetY={material.sdfScaleLens?.outerShadowOffsetY}
+                sdfInnerShadowAlpha={material.sdfScaleLens?.innerShadowAlpha}
+                sdfInnerShadowExtent={material.sdfScaleLens?.innerShadowExtent}
+                cornerRadius={material.radius}
+                blurRadius={material.blurRadius * qualityScale}
+                refractionHeight={material.refractionHeight * qualityScale}
+                refractionAmount={material.refractionAmount * qualityScale}
+                bodyRefractionAmount={(material.refractionBodyAmount ?? 2.5) * qualityScale}
+                interactionProgress={0}
+                saturation={material.saturation}
+                chromaticAberration={tokens.quality === 'high' || variant === 'tabSelectionLens' ? material.chromaticAberration : 0}
+                highlightAlpha={material.highlightAlpha}
+                highlightWidth={material.highlightWidth}
+                tintAlpha={material.tintAlpha ?? 1}
+                specularStrength={material.specularStrength ?? 1}
+                fresnelStrength={material.fresnelStrength ?? 0.85}
+                innerShadowStrength={material.innerShadowStrength ?? 0.18}
+                tint={dark ? tokens.tint.dark : tokens.tint.light}
+                interactive={interactive && tokens.interaction.enabled && !reducedMotion}
+                continuous={continuous}
+                displacementOnlyDebug={displacementOnlyDebug}
+                animatedProps={animatedOptics}
+                pointerEvents={interactive ? undefined : 'none'}
+                style={[StyleSheet.absoluteFillObject, { borderRadius: material.radius }]}
+            />
+            <View style={[placement === 'layout' ? styles.portalContentLayout : styles.portalContentWrap, contentStyle]}>
+                {children}
+            </View>
+        </View>
     );
 });
 
@@ -552,10 +800,14 @@ function LocalGlassSurface({
     );
 }
 
-/** Full-screen overlay portal, used by sheets/dialogs so they sample the live app backdrop. */
+export function useGlassProviderId() {
+    return useContext(GlassHostContext)?.providerId ?? null;
+}
+
+/** Route-level view overlay for sheets/dialogs; its children remain ordinary native views. */
 export function GlassOverlay({ children, zIndex = 100 }: { children: React.ReactNode; zIndex?: number }) {
     const runtime = useContext(GlassRuntimeContext);
-    const host = useContext(GlassHostContext);
+    const host = useContext(GlassOverlayHostContext);
     const id = useId();
 
     useEffect(() => () => host?.remove(id), [host, id]);
@@ -573,7 +825,6 @@ const styles = StyleSheet.create({
     root: { flex: 1 },
     routeContent: { ...StyleSheet.absoluteFillObject },
     measureOnly: {},
-    hiddenMeasureContent: { opacity: 0 },
     localSurface: { position: 'relative', overflow: 'hidden' },
     localContent: { flex: 1, overflow: 'hidden' },
     portalSurface: { position: 'absolute', overflow: 'visible' },
@@ -581,6 +832,8 @@ const styles = StyleSheet.create({
     fallbackSurface: { backgroundColor: 'transparent', borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
     portalContentLayout: { flex: 1, overflow: 'hidden' },
     portalContentWrap: { flexGrow: 1, flexShrink: 1, overflow: 'hidden' },
+    captureSource: { flex: 1 },
+    inlineBackdropSurface: { flex: 1 },
     bottomPlacement: { alignItems: 'center', justifyContent: 'flex-end' },
     centerPlacement: { alignItems: 'center', justifyContent: 'center' },
 });

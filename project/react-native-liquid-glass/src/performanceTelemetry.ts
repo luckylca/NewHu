@@ -1,5 +1,6 @@
 import { requireNativeModule } from 'expo-modules-core';
 import { Platform } from 'react-native';
+import { getGlassNativeEngine } from './glassNativeEngine';
 
 export interface LiquidGlassPerformanceStats {
     displayRefreshRate: number;
@@ -26,11 +27,18 @@ interface LiquidGlassPerformanceNativeModule {
 const nativeModule = Platform.OS === 'android'
     ? requireNativeModule<LiquidGlassPerformanceNativeModule>('ExpoLiquidGlassProvider')
     : null;
+const coreNativeModule = Platform.OS === 'android'
+    ? requireNativeModule<LiquidGlassPerformanceNativeModule>('NewHuLiquidGlassCore')
+    : null;
+
+function activeModule() {
+    return getGlassNativeEngine() === 'core' ? coreNativeModule : nativeModule;
+}
 
 export function setLiquidGlassPerformanceTelemetryEnabled(enabled: boolean) {
-    nativeModule?.setPerformanceTelemetryEnabled(enabled);
+    activeModule()?.setPerformanceTelemetryEnabled(enabled);
 }
 
 export async function getLiquidGlassPerformanceStats(): Promise<LiquidGlassPerformanceStats | null> {
-    return nativeModule?.getPerformanceStats() ?? null;
+    return activeModule()?.getPerformanceStats() ?? null;
 }

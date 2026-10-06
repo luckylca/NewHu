@@ -5,6 +5,7 @@ import { StyleSheet, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { Card } from './Card';
 import { useTheme } from '../theme';
+import { useSurfaceEnvironment } from './SurfaceEnvironmentContext';
 
 export interface SurfaceGroupProps {
     children: ReactNode;
@@ -14,7 +15,8 @@ export interface SurfaceGroupProps {
 /** Theme-aware local material for grouped list rows. */
 export const SurfaceGroup = React.memo(function SurfaceGroup({ children, style }: SurfaceGroupProps) {
     const theme = useTheme();
-    const glass = theme.presentation.content.groupMaterial === 'glass' && theme.glass.enabled;
+    const embeddedInGlassOverlay = useSurfaceEnvironment() === 'glassOverlay';
+    const glass = theme.presentation.content.groupMaterial === 'glass' && theme.glass.enabled && !embeddedInGlassOverlay;
 
     if (glass) {
         return (

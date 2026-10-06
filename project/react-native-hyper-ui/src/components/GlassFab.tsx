@@ -56,7 +56,6 @@ export const GlassFab = React.memo(function GlassFab({
                 sampling="backdrop"
                 interactive
                 style={[{ width: size, height: size, borderRadius: radius, backgroundColor: 'transparent' }, style]}
-                placeholderChildren={<View style={{ width: size, height: size }} />}
             >
                 {content}
             </GlassSurface>

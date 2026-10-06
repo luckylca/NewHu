@@ -5,6 +5,7 @@ import {
     sliderThumbScale,
 } from '../motion';
 import { GlassSurface } from '@newhu/react-native-liquid-glass';
+import { useSurfaceEnvironment } from './SurfaceEnvironmentContext';
 import { useTheme } from '../theme';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AccessibilityActionEvent, LayoutChangeEvent, StyleProp, ViewStyle } from 'react-native';
@@ -57,8 +58,9 @@ export const Slider = memo(function Slider({
     style,
 }: AppSliderProps) {
     const theme = useTheme();
+    const embeddedInGlassOverlay = useSurfaceEnvironment() === 'glassOverlay';
     const tokens = theme.components.slider;
-    const useGlassThumb = theme.presentation.controls.sliderThumb === 'glass' && theme.glass.enabled;
+    const useGlassThumb = theme.presentation.controls.sliderThumb === 'glass' && theme.glass.enabled && !embeddedInGlassOverlay;
     const trackHeight = tokens.height;
     const range = Math.max(maximumValue - minimumValue, 0);
     const clampedValue = clamp(value, minimumValue, maximumValue);

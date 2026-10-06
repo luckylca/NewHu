@@ -1,10 +1,12 @@
 import { BottomSheet, Button, Dialog, GlassSurface, ListRow, Text, TopAppBar, useTheme } from '@/src/ui';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSettingStore } from '@/src/stores/useSettingStore';
 import {
     getLiquidGlassPerformanceStats,
     GlassTabBar,
+    getGlassNativeEngine,
     setLiquidGlassPerformanceTelemetryEnabled,
+    setGlassNativeEngine,
 } from '@newhu/react-native-liquid-glass';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text as NativeText, View } from 'react-native';
@@ -112,23 +114,32 @@ function NativeTelemetryOverlay() {
 }
 
 export default function PerformanceBenchmark() {
-    const { scene: rawScene, case: runCase, run, telemetry, nativeTelemetry, wallpaper } = useLocalSearchParams<{
+    const { scene: rawScene, case: runCase, run, telemetry, nativeTelemetry, wallpaper, engine } = useLocalSearchParams<{
         scene?: string;
         case?: string;
         run?: string;
         telemetry?: string;
         nativeTelemetry?: string;
         wallpaper?: string;
+        engine?: string;
     }>();
+    const router = useRouter();
     const scene = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].includes(rawScene ?? '') ? rawScene! : 'B';
     const theme = useTheme();
     const setThemeName = useSettingStore((state) => state.setThemeName);
     const setWallpaperUri = useSettingStore((state) => state.setWallpaperUri);
     const scrollRef = useRef<ScrollView>(null);
+    const previousGlassEngine = useRef(getGlassNativeEngine());
     const [selectedTab, setSelectedTab] = useState(0);
     const [dialogVisible, setDialogVisible] = useState(false);
     const [sheetVisible, setSheetVisible] = useState(false);
     const insets = useSafeAreaInsets();
+
+    useEffect(() => {
+        const restoreEngine = previousGlassEngine.current;
+        setGlassNativeEngine(engine === 'core' ? 'core' : 'legacy');
+        return () => setGlassNativeEngine(restoreEngine);
+    }, [engine]);
 
     useEffect(() => {
         const enabled = telemetry === '1' || nativeTelemetry === '1';
@@ -155,12 +166,40 @@ export default function PerformanceBenchmark() {
     }, [scene, setThemeName, setWallpaperUri, wallpaper]);
 
     useEffect(() => {
+        if (runCase === 'route') {
+            let step = 0;
+            let transition: ReturnType<typeof setTimeout> | undefined;
+            const navigate = () => {
+                if (step >= 10) return;
+                const action = step % 2 === 0 ? 'push' : 'back';
+                console.info(`[GLASS_ROUTE_BENCH] action=${action} step=${step + 1} at=${Date.now()}`);
+                if (action === 'push') router.push('/settings');
+                else router.back();
+                step += 1;
+                transition = setTimeout(navigate, 1_200);
+            };
+            transition = setTimeout(navigate, 1_500);
+            return () => {
+                if (transition) clearTimeout(transition);
+            };
+        }
         if (runCase !== 'scroll' && runCase !== 'dialog' && runCase !== 'sheet' && runCase !== 'tab') return;
         let tick = 0;
         let phase = false;
         let interval: ReturnType<typeof setInterval> | undefined;
         let finish: ReturnType<typeof setTimeout> | undefined;
         const start = setTimeout(() => {
+            if (runCase === 'sheet') {
+                tick = 1;
+                console.info(`[GLASS_SHEET_BENCH] action=open at=${Date.now()}`);
+                setSheetVisible(true);
+                finish = setTimeout(() => {
+                    console.info(`[GLASS_SHEET_BENCH] action=close at=${Date.now()}`);
+                    setSheetVisible(false);
+                    console.info(`[GLASS_BENCH] scene=${scene} case=${runCase} run=${run ?? '0'} durationMs=${RUN_DURATION_MS} actions=${tick}`);
+                }, RUN_DURATION_MS);
+                return;
+            }
             interval = setInterval(() => {
                 tick += 1;
                 if (runCase === 'scroll') {
@@ -190,7 +229,7 @@ export default function PerformanceBenchmark() {
             if (interval) clearInterval(interval);
             if (finish) clearTimeout(finish);
         };
-    }, [runCase, run, scene]);
+    }, [runCase, run, scene, router]);
 
     const rowContent = useMemo(() => ROWS.map((id) => <BenchmarkRow key={id} id={id} />), []);
     const noOp = useCallback(() => {}, []);

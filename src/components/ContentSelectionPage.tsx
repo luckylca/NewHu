@@ -4,13 +4,14 @@ import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
 import { useContentStore } from '@/src/stores/useContentStore';
 import { useExportContentStore } from '@/src/stores/useExportContentStore';
 import { useUserStore } from '@/src/stores/useUserStore';
-import { TopAppBar } from '@/src/ui';
+import { PageContent, PageScaffold, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { htmlToPlainText } from '@/src/utils/contentExport';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
 type SelectionPageParams = { type: 'answer' | 'article'; id: string };
@@ -38,6 +39,7 @@ export default function ContentSelectionPage({ pageTitle = '选择全文' }: { p
     const id = String(rawId ?? '');
     const theme = useTheme();
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const cookies = useUserStore((state) => state.cookies);
     const userHydrated = useStoreHydrated(useUserStore);
     const pending = useExportContentStore((state) => state.pending);
@@ -94,25 +96,36 @@ export default function ContentSelectionPage({ pageTitle = '选择全文' }: { p
             .join('\n\n');
     }, [document]);
 
+    const floatingTopInset = theme.presentation.topBar.mode === 'floating' && theme.presentation.topBar.contentUnderlay
+        ? insets.top + theme.components.navigationBar.topBarCollapsedHeight
+        : 0;
+    const topBar = <TopAppBar title={pageTitle} back={() => router.back()} />;
     const selectionHtml = useMemo(() => `<!doctype html>
 <html><head><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" /><style>
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: ${theme.colors.background}; color: ${theme.colors.onBackground}; }
-body { padding: 18px 20px 40px; font-family: sans-serif; font-size: 17px; line-height: 1.75; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+body { padding: ${floatingTopInset + 18}px 20px 40px; font-family: sans-serif; font-size: 17px; line-height: 1.75; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 #content { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
-</style></head><body><div id="content">${escapeHtml(selectableText)}</div></body></html>`, [selectableText, theme.colors.background, theme.colors.onBackground]);
+</style></head><body><div id="content">${escapeHtml(selectableText)}</div></body></html>`, [floatingTopInset, selectableText, theme.colors.background, theme.colors.onBackground]);
 
     if (!document) {
         return error ? (
-            <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
-                <Text type="body1" color={theme.colors.onBackground}>{error}</Text>
-            </View>
-        ) : <LoadingView message="正在准备可复制文章…" />;
+            <PageScaffold topBar={topBar}>
+                <PageContent style={styles.center}>
+                    <Text type="body1" color={theme.colors.onBackground}>{error}</Text>
+                </PageContent>
+            </PageScaffold>
+        ) : (
+            <PageScaffold topBar={topBar}>
+                <PageContent style={{ flex: 1 }}>
+                    <LoadingView message="正在准备可复制文章…" />
+                </PageContent>
+            </PageScaffold>
+        );
     }
 
     return (
-        <View style={[styles.root, { backgroundColor: theme.colors.background }]}> 
-            <TopAppBar title={pageTitle} back={() => router.back()} />
+        <PageScaffold topBar={topBar}>
             <WebView
                 originWhitelist={['*']}
                 source={{ html: selectionHtml }}
@@ -122,12 +135,11 @@ body { padding: 18px 20px 40px; font-family: sans-serif; font-size: 17px; line-h
                 textZoom={100}
                 androidLayerType="none"
             />
-        </View>
+        </PageScaffold>
     );
 }
 
 const styles = StyleSheet.create({
-    root: { flex: 1 },
     webView: { flex: 1, backgroundColor: 'transparent' },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
 });

@@ -1,6 +1,7 @@
 import { PressIndication, Text } from '../primitives';
 import { GlassSurface } from '@newhu/react-native-liquid-glass';
 import { useTheme } from '../theme';
+import { useSurfaceEnvironment } from './SurfaceEnvironmentContext';
 import { memo } from 'react';
 import type { ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
@@ -36,8 +37,9 @@ export interface AppButtonProps {
 
 export const Button = memo(function Button({ type = 'default', onPress, disabled, style, contentStyle, children }: AppButtonProps) {
     const theme = useTheme();
+    const embeddedInGlassOverlay = useSurfaceEnvironment() === 'glassOverlay';
     const c = theme.components.button;
-    const useGlassMaterial = theme.presentation.controls.buttonMaterial === 'glass' && theme.glass.enabled;
+    const useGlassMaterial = theme.presentation.controls.buttonMaterial === 'glass' && theme.glass.enabled && !embeddedInGlassOverlay;
     const pressed = useSharedValue(0);
 
     const backgroundColor = disabled

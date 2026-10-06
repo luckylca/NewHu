@@ -1,7 +1,7 @@
 import { fetchAiAnalysisModels } from '@/src/services/aiAnalysisService';
 import { useAiAnalysisStore } from '@/src/stores/useAiAnalysisStore';
 import { notify } from '@/src/stores/useNotificationStore';
-import { Button, Card, Input, PageScaffold, PageScrollView, Pressable, Switch, TopAppBar } from '@/src/ui';
+import { Button, Card, Input, PageScaffold, PageSettingsList, Pressable, Switch, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
@@ -39,17 +39,10 @@ export default function AiAnalysisSettingsScreen() {
         }
     }, [apiKey, baseUrl, loadingModels, model, setModel]);
 
-    return (
-        <PageScaffold topBar={<TopAppBar title="AI 分析" back={() => router.back()} />}>
-            <PageScrollView
-                contentContainerStyle={{
-                    padding: theme.spacing.lg,
-                    paddingBottom: theme.spacing.xxl,
-                    gap: theme.spacing.md,
-                }}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-            >
+    const sections = React.useMemo(() => {
+        const next = [{
+            key: 'enable',
+            node: (
                 <Card feedback="none" contentStyle={{ padding: theme.spacing.lg }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md }}>
                         <View style={{ flex: 1 }}>
@@ -67,133 +60,110 @@ export default function AiAnalysisSettingsScreen() {
                         <Switch value={enabled} onValueChange={setEnabled} />
                     </View>
                 </Card>
+            ),
+        }];
 
-                {enabled ? (
-                    <>
-                        <Card feedback="none" contentStyle={{ padding: theme.spacing.lg, gap: theme.spacing.md }}>
-                            <Text type="headline1" weight="medium" color={theme.colors.onBackground}>
-                                OpenAI 兼容 API
-                            </Text>
-                            <Text type="body2" color={theme.colors.onSurfaceVariantSummary} style={{ lineHeight: 20 }}>
-                                Base URL 例如 https://api.example.com/v1。模型列表通过 /models 获取，分析通过 /chat/completions 调用。
-                            </Text>
+        if (enabled) {
+            next.push({
+                key: 'api',
+                node: (
+                    <Card feedback="none" contentStyle={{ padding: theme.spacing.lg, gap: theme.spacing.md }}>
+                        <Text type="headline1" weight="medium" color={theme.colors.onBackground}>
+                            OpenAI 兼容 API
+                        </Text>
+                        <Text type="body2" color={theme.colors.onSurfaceVariantSummary} style={{ lineHeight: 20 }}>
+                            Base URL 例如 https://api.example.com/v1。模型列表通过 /models 获取，分析通过 /chat/completions 调用。
+                        </Text>
+                        <Input label="Base URL" value={baseUrl} onChangeText={(value) => {
+                            setModels([]);
+                            setBaseUrl(value);
+                            setModel('');
+                        }} inputProps={{ autoCapitalize: 'none', autoCorrect: false, keyboardType: 'url', placeholder: 'https://api.example.com/v1' }} />
+                        <Input label="API Key" value={apiKey} onChangeText={(value) => {
+                            setModels([]);
+                            setApiKey(value);
+                            setModel('');
+                        }} inputProps={{ autoCapitalize: 'none', autoCorrect: false, secureTextEntry: true, placeholder: 'sk-…' }} />
+                        <Input label="模型" value={model} onChangeText={setModel} inputProps={{ autoCapitalize: 'none', autoCorrect: false, placeholder: '可自动获取，也可手动填写' }} />
+                        <Button type="primary" disabled={loadingModels || !baseUrl.trim()} onPress={() => void refreshModels(false)}>
+                            {loadingModels ? '正在获取模型…' : '自动获取模型'}
+                        </Button>
+                        <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
+                            API Key 使用系统安全存储保存，不写入普通 AsyncStorage。
+                        </Text>
+                    </Card>
+                ),
+            });
 
-                            <Input
-                                label="Base URL"
-                                value={baseUrl}
-                                onChangeText={(value) => {
-                                    setModels([]);
-                                    setBaseUrl(value);
-                                    setModel('');
-                                }}
-                                inputProps={{
-                                    autoCapitalize: 'none',
-                                    autoCorrect: false,
-                                    keyboardType: 'url',
-                                    placeholder: 'https://api.example.com/v1',
-                                }}
-                            />
-
-                            <Input
-                                label="API Key"
-                                value={apiKey}
-                                onChangeText={(value) => {
-                                    setModels([]);
-                                    setApiKey(value);
-                                    setModel('');
-                                }}
-                                inputProps={{
-                                    autoCapitalize: 'none',
-                                    autoCorrect: false,
-                                    secureTextEntry: true,
-                                    placeholder: 'sk-…',
-                                }}
-                            />
-
-                            <Input
-                                label="模型"
-                                value={model}
-                                onChangeText={setModel}
-                                inputProps={{
-                                    autoCapitalize: 'none',
-                                    autoCorrect: false,
-                                    placeholder: '可自动获取，也可手动填写',
-                                }}
-                            />
-
-                            <Button
-                                type="primary"
-                                disabled={loadingModels || !baseUrl.trim()}
-                                onPress={() => void refreshModels(false)}
-                            >
-                                {loadingModels ? '正在获取模型…' : '自动获取模型'}
-                            </Button>
-
-                            <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
-                                API Key 使用系统安全存储保存，不写入普通 AsyncStorage。
-                            </Text>
-                        </Card>
-
-                        {models.length ? (
-                            <Card feedback="none" contentStyle={{ padding: theme.spacing.lg }}>
-                                <Text type="body2" weight="medium" color={theme.colors.onBackground}>
-                                    选择模型 · {models.length} 个
-                                </Text>
-                                <View style={{
-                                    flexDirection: 'row',
-                                    flexWrap: 'wrap',
-                                    gap: theme.spacing.sm,
-                                    marginTop: theme.spacing.md,
-                                }}>
-                                    {models.map((item) => {
-                                        const selected = item === model;
-                                        return (
-                                            <Pressable
-                                                key={item}
-                                                accessibilityRole="button"
-                                                accessibilityState={{ selected }}
-                                                onPress={() => setModel(item)}
-                                                style={{
-                                                    maxWidth: '100%',
-                                                    minHeight: 36,
-                                                    justifyContent: 'center',
-                                                    paddingHorizontal: theme.spacing.md,
-                                                    borderRadius: theme.radius.full,
-                                                    backgroundColor: selected
-                                                        ? theme.colors.primary
-                                                        : theme.colors.secondaryVariant,
-                                                }}
-                                            >
-                                                <Text
-                                                    type="footnote1"
-                                                    weight={selected ? 'bold' : 'medium'}
-                                                    color={selected ? theme.colors.onPrimary : theme.colors.onSecondaryVariant}
-                                                    numberOfLines={1}
-                                                >
-                                                    {item}
-                                                </Text>
-                                            </Pressable>
-                                        );
-                                    })}
-                                </View>
-                            </Card>
-                        ) : null}
-
+            if (models.length) {
+                next.push({
+                    key: 'models',
+                    node: (
                         <Card feedback="none" contentStyle={{ padding: theme.spacing.lg }}>
-                            <Text type="body2" weight="medium" color={theme.colors.onBackground}>
-                                分析会包含
-                            </Text>
-                            <Text
-                                type="body2"
-                                color={theme.colors.onSurfaceVariantSummary}
-                                style={{ marginTop: theme.spacing.xs, lineHeight: 20 }}
-                            >
-                                一句话总结、正文总结、关键词、3 条核心观点、反方/反例视角、适合谁看、信息密度、收藏价值、AI 写作特征风险，以及结构清晰度、标题党风险、广告/软文风险、模板化程度和基于真实评论样本的评论区质量。AI 写作风险只分析文本特征，不代表作者一定使用了 AI；评论正文不会发送给外部模型。
-                            </Text>
+                            <Text type="body2" weight="medium" color={theme.colors.onBackground}>选择模型 · {models.length} 个</Text>
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm, marginTop: theme.spacing.md }}>
+                                {models.map((item) => {
+                                    const selected = item === model;
+                                    return (
+                                        <Pressable
+                                            key={item}
+                                            accessibilityRole="button"
+                                            accessibilityState={{ selected }}
+                                            onPress={() => setModel(item)}
+                                            style={{
+                                                maxWidth: '100%',
+                                                minHeight: 36,
+                                                justifyContent: 'center',
+                                                paddingHorizontal: theme.spacing.md,
+                                                borderRadius: theme.radius.full,
+                                                backgroundColor: selected ? theme.colors.primary : theme.colors.secondaryVariant,
+                                            }}
+                                        >
+                                            <Text
+                                                type="footnote1"
+                                                weight={selected ? 'bold' : 'medium'}
+                                                color={selected ? theme.colors.onPrimary : theme.colors.onSecondaryVariant}
+                                                numberOfLines={1}
+                                            >
+                                                {item}
+                                            </Text>
+                                        </Pressable>
+                                    );
+                                })}
+                            </View>
                         </Card>
-                    </>
-                ) : null}
-            </PageScrollView>
+                    ),
+                });
+            }
+
+            next.push({
+                key: 'analysis-scope',
+                node: (
+                    <Card feedback="none" contentStyle={{ padding: theme.spacing.lg }}>
+                        <Text type="body2" weight="medium" color={theme.colors.onBackground}>分析会包含</Text>
+                        <Text type="body2" color={theme.colors.onSurfaceVariantSummary} style={{ marginTop: theme.spacing.xs, lineHeight: 20 }}>
+                            一句话总结、正文总结、关键词、3 条核心观点、反方/反例视角、适合谁看、信息密度、收藏价值、AI 写作特征风险，以及结构清晰度、标题党风险、广告/软文风险、模板化程度和基于真实评论样本的评论区质量。AI 写作风险只分析文本特征，不代表作者一定使用了 AI；评论正文不会发送给外部模型。
+                        </Text>
+                    </Card>
+                ),
+            });
+        }
+
+        return next;
+    }, [apiKey, baseUrl, enabled, loadingModels, model, models, refreshModels, setApiKey, setBaseUrl, setEnabled, setModel, setModels, theme]);
+
+    return (
+        <PageScaffold topBar={<TopAppBar title="AI 分析" back={() => router.back()} />}>
+            <PageSettingsList
+                sections={sections}
+                contentContainerStyle={{
+                    padding: theme.spacing.lg,
+                    paddingBottom: theme.spacing.xxl,
+                    gap: theme.spacing.md,
+                }}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+            />
         </PageScaffold>
     );
 }

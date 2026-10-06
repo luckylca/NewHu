@@ -1,0 +1,10 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": [
+      "expo.modules.localglass.ExpoLocalGlassModule",
+      "expo.modules.localglass.ExpoLocalGlassEngineModule",
+      "expo.modules.newhuliquidglass.ExpoGlassCoreModule"
+    ]
+  }
+}

@@ -1,14 +1,14 @@
 import { getChildComments } from '@/src/api/ZhihuApi';
 import { getCachedComments, getCommentById, getPageState, saveCommentPage } from '@/src/db/repositories/commentRepository';
 import type { FeedType } from '@/src/types/zhihu';
-import { Divider, Pressable } from '@/src/ui';
+import { BottomSheet, Divider } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { useSettingStore } from '@/src/stores/useSettingStore';
 import { useNetworkStore } from '@/src/stores/useNetworkStore';
 import { readCommentAuthorFlag, type CommentAuthorIdentity } from '@/src/utils/commentAuthor';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, BackHandler, FlatList, InteractionManager, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { FlatList, InteractionManager, useWindowDimensions, View } from 'react-native';
 import { CommentItem } from './CommentItem';
 import type { CommentViewModel } from './CommentItem';
 
@@ -22,15 +22,6 @@ type ChildCommentProps = {
     initialFocusId?: string;
     contentAuthor?: CommentAuthorIdentity;
 };
-
-// Miuix BottomSheet: folmeSpring(0.9, 0.38)，换算后约为 stiffness 273 / damping 30。
-const DRAWER_SPRING = {
-    stiffness: 273,
-    damping: 30,
-    mass: 1,
-    overshootClamping: true,
-    useNativeDriver: true,
-} as const;
 
 function normalizeComment(item: any): CommentViewModel | null {
     if (!item?.id) return null;
@@ -72,13 +63,10 @@ export default function ChildComment({ visible, id, contentId, contentType, onCl
     const [rootComment, setRootComment] = useState<CommentViewModel | null>(null);
     const [count, setCount] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
-    const [rendered, setRendered] = useState(false);
-    const animation = useRef(new Animated.Value(0)).current;
     const listRef = useRef<FlatList<CommentViewModel>>(null);
     const offsetRef = useRef('');
     const inFlightRef = useRef(false);
     const hasMoreRef = useRef(true);
-    const renderedRef = useRef(false);
     const visibleRef = useRef(visible);
     visibleRef.current = visible;
 
@@ -154,65 +142,17 @@ export default function ChildComment({ visible, id, contentId, contentType, onCl
     }, [contentId, contentType, id, networkStatus, visible]);
 
     useEffect(() => {
-        let frame: number | undefined;
         let interaction: ReturnType<typeof InteractionManager.runAfterInteractions> | undefined;
-        animation.stopAnimation();
 
         if (visible) {
-            renderedRef.current = true;
-            setRendered(true);
             setRefreshing(true);
-
-            const startLoading = () => {
-                interaction = InteractionManager.runAfterInteractions(() => load(true));
-            };
-
-            if (disableAnimations || !drawerAnimation) {
-                animation.setValue(1);
-                startLoading();
-            } else {
-                frame = requestAnimationFrame(() => {
-                    Animated.spring(animation, {
-                        ...DRAWER_SPRING,
-                        toValue: 1,
-                    }).start();
-                    startLoading();
-                });
-            }
-        } else if (renderedRef.current) {
-            const finishClosing = () => {
-                renderedRef.current = false;
-                setRendered(false);
-                resetComments();
-            };
-
-            if (disableAnimations || !drawerAnimation) {
-                animation.setValue(0);
-                finishClosing();
-            } else {
-                Animated.spring(animation, {
-                    ...DRAWER_SPRING,
-                    toValue: 0,
-                }).start(({ finished }) => {
-                    if (finished) finishClosing();
-                });
-            }
+            interaction = InteractionManager.runAfterInteractions(() => load(true));
         }
 
         return () => {
-            if (frame != null) cancelAnimationFrame(frame);
             interaction?.cancel();
         };
-    }, [animation, disableAnimations, drawerAnimation, load, resetComments, visible]);
-
-    useEffect(() => {
-        if (!visible) return;
-        const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-            onClose();
-            return true;
-        });
-        return () => subscription.remove();
-    }, [onClose, visible]);
+    }, [load, visible]);
 
     useEffect(() => {
         if (!visible || !initialFocusId || initialFocusId === rootComment?.id) return;
@@ -238,35 +178,17 @@ export default function ChildComment({ visible, id, contentId, contentType, onCl
         />
     ), [contentAuthor, onClose, onReply]);
 
-    if (!rendered) return null;
-
-    const pageBackground = theme.dark ? '#181818' : '#F7F7F7';
-
     return (
-        <View style={[StyleSheet.absoluteFill, styles.layer]}>
-            <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: animation }]}>
-                <Pressable showIndication={false} style={StyleSheet.absoluteFill} onPress={onClose} />
-            </Animated.View>
-            <Animated.View
-                style={[
-                    styles.sheet,
-                    {
-                        backgroundColor: pageBackground,
-                        transform: [{
-                            translateY: animation.interpolate({
-                                inputRange: [0, 1],
-                                outputRange: [windowHeight, 0],
-                            }),
-                        }],
-                    },
-                ]}
-            >
-                <View style={[styles.header, { borderBottomColor: theme.colors.dividerLine }]}>
-                    <View style={[styles.handle, { backgroundColor: theme.colors.onSurfaceVariantSummary }]} />
-                    <Text type="headline2" weight="bold">{count > 0 ? `${count} 条回复` : '回复'}</Text>
-                </View>
+        <BottomSheet
+            visible={visible}
+            onClose={onClose}
+            onDismissed={resetComments}
+            animationsEnabled={!disableAnimations && drawerAnimation}
+            title={count > 0 ? `${count} 条回复` : '回复'}
+        >
             <FlatList
                 ref={listRef}
+                style={{ height: Math.max(260, windowHeight - 150), maxHeight: windowHeight - 120 }}
                 data={comments}
                 keyExtractor={(item) => item.id}
                 renderItem={renderItem}
@@ -301,36 +223,6 @@ export default function ChildComment({ visible, id, contentId, contentType, onCl
                     </View>
                 ) : null}
             />
-            </Animated.View>
-        </View>
+        </BottomSheet>
     );
 }
-
-const styles = StyleSheet.create({
-    layer: {
-        zIndex: 1000,
-    },
-    backdrop: {
-        backgroundColor: 'rgba(0,0,0,0.48)',
-    },
-    sheet: {
-        flex: 1,
-        marginTop: 92,
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-        overflow: 'hidden',
-    },
-    header: {
-        height: 58,
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderBottomWidth: StyleSheet.hairlineWidth,
-    },
-    handle: {
-        width: 36,
-        height: 4,
-        borderRadius: 2,
-        marginBottom: 7,
-        opacity: 0.35,
-    },
-});

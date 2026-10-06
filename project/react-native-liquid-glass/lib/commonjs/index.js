@@ -1,13 +1,24 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.setLiquidGlassPerformanceTelemetryEnabled = exports.getLiquidGlassPerformanceStats = exports.GLASS_TAB_BAR_CONTENT_INSET = exports.GlassTabBar = exports.GlassTabLens = exports.useGlassReducedMotion = exports.useGlassAppearance = exports.GlassSurface = exports.GlassOverlay = exports.GlassMaterialProvider = exports.GlassAppearanceProvider = void 0;
+exports.setLocalGlassVisibleItemCount = exports.setLocalGlassTelemetryEnabled = exports.setLocalGlassNativeEngine = exports.setLocalGlassHardwareLayerExperimentEnabled = exports.getLocalGlassTelemetry = exports.getLocalGlassNativeEngine = exports.setLiquidGlassPerformanceTelemetryEnabled = exports.getLiquidGlassPerformanceStats = exports.GLASS_TAB_BAR_CONTENT_INSET = exports.GlassTabBar = exports.GlassTabLens = exports.setGlassRuntime = exports.getGlassRuntime = exports.setGlassNativeEngine = exports.getGlassNativeEngine = exports.glassController = exports.useGlassReducedMotion = exports.useGlassProviderId = exports.useGlassAppearance = exports.RouteGlassCaptureSource = exports.RouteGlassCaptureScope = exports.GlassSurface = exports.GlassOverlay = exports.GlassMaterialProvider = exports.GlassAppearanceProvider = void 0;
 var GlassSurface_1 = require("./GlassSurface");
 Object.defineProperty(exports, "GlassAppearanceProvider", { enumerable: true, get: function () { return GlassSurface_1.GlassAppearanceProvider; } });
 Object.defineProperty(exports, "GlassMaterialProvider", { enumerable: true, get: function () { return GlassSurface_1.GlassMaterialProvider; } });
 Object.defineProperty(exports, "GlassOverlay", { enumerable: true, get: function () { return GlassSurface_1.GlassOverlay; } });
 Object.defineProperty(exports, "GlassSurface", { enumerable: true, get: function () { return GlassSurface_1.GlassSurface; } });
+Object.defineProperty(exports, "RouteGlassCaptureScope", { enumerable: true, get: function () { return GlassSurface_1.RouteGlassCaptureScope; } });
+Object.defineProperty(exports, "RouteGlassCaptureSource", { enumerable: true, get: function () { return GlassSurface_1.RouteGlassCaptureSource; } });
 Object.defineProperty(exports, "useGlassAppearance", { enumerable: true, get: function () { return GlassSurface_1.useGlassAppearance; } });
+Object.defineProperty(exports, "useGlassProviderId", { enumerable: true, get: function () { return GlassSurface_1.useGlassProviderId; } });
 Object.defineProperty(exports, "useGlassReducedMotion", { enumerable: true, get: function () { return GlassSurface_1.useGlassReducedMotion; } });
+var glassController_1 = require("./glassController");
+Object.defineProperty(exports, "glassController", { enumerable: true, get: function () { return glassController_1.glassController; } });
+var glassNativeEngine_1 = require("./glassNativeEngine");
+Object.defineProperty(exports, "getGlassNativeEngine", { enumerable: true, get: function () { return glassNativeEngine_1.getGlassNativeEngine; } });
+Object.defineProperty(exports, "setGlassNativeEngine", { enumerable: true, get: function () { return glassNativeEngine_1.setGlassNativeEngine; } });
+var glassRuntime_1 = require("./glassRuntime");
+Object.defineProperty(exports, "getGlassRuntime", { enumerable: true, get: function () { return glassRuntime_1.getGlassRuntime; } });
+Object.defineProperty(exports, "setGlassRuntime", { enumerable: true, get: function () { return glassRuntime_1.setGlassRuntime; } });
 var GlassTabLens_1 = require("./GlassTabLens");
 Object.defineProperty(exports, "GlassTabLens", { enumerable: true, get: function () { return GlassTabLens_1.GlassTabLens; } });
 var GlassTabBar_1 = require("./GlassTabBar");
@@ -16,4 +27,11 @@ Object.defineProperty(exports, "GLASS_TAB_BAR_CONTENT_INSET", { enumerable: true
 var performanceTelemetry_1 = require("./performanceTelemetry");
 Object.defineProperty(exports, "getLiquidGlassPerformanceStats", { enumerable: true, get: function () { return performanceTelemetry_1.getLiquidGlassPerformanceStats; } });
 Object.defineProperty(exports, "setLiquidGlassPerformanceTelemetryEnabled", { enumerable: true, get: function () { return performanceTelemetry_1.setLiquidGlassPerformanceTelemetryEnabled; } });
+var localGlassTelemetry_1 = require("./localGlassTelemetry");
+Object.defineProperty(exports, "getLocalGlassNativeEngine", { enumerable: true, get: function () { return localGlassTelemetry_1.getLocalGlassNativeEngine; } });
+Object.defineProperty(exports, "getLocalGlassTelemetry", { enumerable: true, get: function () { return localGlassTelemetry_1.getLocalGlassTelemetry; } });
+Object.defineProperty(exports, "setLocalGlassHardwareLayerExperimentEnabled", { enumerable: true, get: function () { return localGlassTelemetry_1.setLocalGlassHardwareLayerExperimentEnabled; } });
+Object.defineProperty(exports, "setLocalGlassNativeEngine", { enumerable: true, get: function () { return localGlassTelemetry_1.setLocalGlassNativeEngine; } });
+Object.defineProperty(exports, "setLocalGlassTelemetryEnabled", { enumerable: true, get: function () { return localGlassTelemetry_1.setLocalGlassTelemetryEnabled; } });
+Object.defineProperty(exports, "setLocalGlassVisibleItemCount", { enumerable: true, get: function () { return localGlassTelemetry_1.setLocalGlassVisibleItemCount; } });
 //# sourceMappingURL=index.js.map

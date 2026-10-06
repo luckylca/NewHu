@@ -1,5 +1,6 @@
 import { Text } from '../primitives';
 import { useTheme } from '../theme';
+import { useSurfaceEnvironment } from './SurfaceEnvironmentContext';
 import { Card } from './Card';
 import { GlassSurface } from '@newhu/react-native-liquid-glass';
 import React from 'react';
@@ -11,13 +12,16 @@ export interface PreferenceGroupProps {
     title: string;
     children: ReactNode;
     style?: StyleProp<ViewStyle>;
+    /** Diagnostic override for comparing local Glass surfaces with solid cards. */
+    materialOverride?: 'theme' | 'solid';
 }
 
 /** Theme-aware grouped settings surface; row content stays the same. */
-export const PreferenceGroup = React.memo(function PreferenceGroup({ title, children, style }: PreferenceGroupProps) {
+export const PreferenceGroup = React.memo(function PreferenceGroup({ title, children, style, materialOverride = 'theme' }: PreferenceGroupProps) {
     const theme = useTheme();
+    const embeddedInGlassOverlay = useSurfaceEnvironment() === 'glassOverlay';
     const soft = theme.presentation.content.groupStyle === 'softGrouped';
-    const glass = theme.presentation.content.groupMaterial === 'glass' && theme.glass.enabled;
+    const glass = materialOverride === 'theme' && theme.presentation.content.groupMaterial === 'glass' && theme.glass.enabled && !embeddedInGlassOverlay;
     const groupBackground = soft ? theme.colors.surfaceContainerHigh : theme.colors.surfaceContainer;
     const content = (
         <>

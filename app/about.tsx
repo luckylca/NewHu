@@ -2,6 +2,7 @@ import { HyperGlowBackground } from '@/src/components/effects/HyperGlowBackgroun
 import { notify } from '@/src/stores/useNotificationStore';
 import { Button, Card, Dialog, Divider, Icon, PageScaffold, PageScrollView, Text, TopAppBar } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
+import { useIsFocused } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
@@ -12,6 +13,7 @@ const CURRENT_VERSION = `v${Constants.expoConfig?.version ?? '1.0.0'}`;
 
 export default function AboutScreen() {
     const theme = useTheme();
+    const isFocused = useIsFocused();
     const [updateVisible, setUpdateVisible] = useState(false);
     const [update, setUpdate] = useState({ loading: false, version: '' });
 
@@ -42,7 +44,7 @@ export default function AboutScreen() {
                     style={styles.heroCard}
                     contentStyle={styles.heroContent}
                 >
-                    <HyperGlowBackground intensity={0.92} />
+                    <HyperGlowBackground intensity={0.92} animated={isFocused} />
                     <View style={styles.heroBody}>
                         <Text type="footnote1" weight="medium" color="rgba(28,28,30,0.52)">ABOUT NEWHU</Text>
                         <View style={styles.brand}>

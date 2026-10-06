@@ -1,5 +1,6 @@
 import { getChildComments, getRootComments } from '@/src/api/ZhihuApi';
 import ChildComment from '@/src/components/ChildComment';
+import { CommentInteractionHost, useCommentInteractionHost } from '@/src/components/CommentInteractionHost';
 import CommentEdit from '@/src/components/CommentEdit';
 import { CommentItem } from '@/src/components/CommentItem';
 import type { CommentViewModel } from '@/src/components/CommentItem';
@@ -7,7 +8,7 @@ import { useDraftStore } from '@/src/stores/useDraftStore';
 import { useNetworkStore } from '@/src/stores/useNetworkStore';
 import { getCachedComments, getCachedCommentsForContent, getPageState, saveCommentPage } from '@/src/db/repositories/commentRepository';
 import { getContent } from '@/src/db/repositories/contentRepository';
-import { Icon, Menu, PageFlatList, PageScaffold, Pressable, TopAppBar } from '@/src/ui';
+import { Icon, PageFlatList, PageScaffold, Pressable, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { readCommentAuthorFlag, type CommentAuthorIdentity } from '@/src/utils/commentAuthor';
@@ -85,6 +86,14 @@ function InsightChip({ label, count, selected, onPress }: { label: string; count
 }
 
 export default function CommentScreen() {
+    return (
+        <CommentInteractionHost>
+            <CommentScreenContent />
+        </CommentInteractionHost>
+    );
+}
+
+function CommentScreenContent() {
     const params = useLocalSearchParams<{ id?: string; type?: string; draftId?: string; authorName?: string; authorUrlToken?: string }>();
     const id = Array.isArray(params.id) ? params.id[0] : params.id;
     const type = Array.isArray(params.type) ? params.type[0] : params.type;
@@ -108,8 +117,7 @@ export default function CommentScreen() {
     const [insightFilter, setInsightFilter] = useState<CommentInsightFilter>('all');
     const [authorReplies, setAuthorReplies] = useState<CommentViewModel[]>([]);
     const [authorLoading, setAuthorLoading] = useState(false);
-    const [menuVisible, setMenuVisible] = useState(false);
-    const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0, width: 1, height: 1 });
+    const commentInteractionHost = useCommentInteractionHost();
     const [childId, setChildId] = useState('');
     const [reply, setReply] = useState<{ id: string; name: string; rootCommentId: string; fromDraft?: boolean } | null>(null);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -358,10 +366,17 @@ export default function CommentScreen() {
 
     const openHeaderMenu = useCallback(() => {
         menuButtonRef.current?.measureInWindow((x, y, width, height) => {
-            setMenuAnchor({ x, y, width, height });
-            setMenuVisible(true);
+            commentInteractionHost?.openMenu(
+                { x, y, width, height },
+                [
+                    { label: '按热度排序', onPress: () => setSort('score') },
+                    { label: '按时间排序', onPress: () => setSort('ts') },
+                    { label: '发表评论', onPress: () => setReply({ id: '', name: '', rootCommentId: '' }) },
+                ],
+                sort === 'score' ? 0 : 1,
+            );
         });
-    }, []);
+    }, [commentInteractionHost, setReply, setSort, sort]);
 
     const insightFilterHeader = (
         <View style={{ paddingTop: theme.spacing.sm }}>
@@ -420,18 +435,6 @@ export default function CommentScreen() {
                 }
             />
         }>
-
-            <Menu
-                visible={menuVisible}
-                onClose={() => setMenuVisible(false)}
-                anchor={menuAnchor}
-                selectedIndex={sort === 'score' ? 0 : 1}
-                items={[
-                    { label: '按热度排序', onPress: () => setSort('score') },
-                    { label: '按时间排序', onPress: () => setSort('ts') },
-                    { label: '发表评论', onPress: () => setReply({ id: '', name: '', rootCommentId: '' }) },
-                ]}
-            />
 
             <PageFlatList
                 listRef={listRef}

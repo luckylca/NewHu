@@ -15,7 +15,7 @@ import {
     type LaterReadSortMode,
 } from '@/src/stores/useLaterReadStore';
 import { notify } from '@/src/stores/useNotificationStore';
-import { Button, Icon, PageContent, PageScaffold, PageScrollView, Pressable, TopAppBar } from '@/src/ui';
+import { Button, Icon, PageContent, PageFlatList, PageScaffold, Pressable, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import {
@@ -161,6 +161,90 @@ export default function LaterReadManagementScreen() {
         exitSelection();
     }, [busy, exitSelection, removeItems, selectedItems]);
 
+    const listHeader = useMemo(() => (
+        <View>
+            <Text
+                type="footnote1"
+                color={theme.colors.onSurfaceVariantSummary}
+                style={{ marginTop: theme.spacing.sm, marginBottom: theme.spacing.sm }}
+            >
+                排序
+            </Text>
+            <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: theme.spacing.sm, paddingBottom: theme.spacing.lg }}
+            >
+                {SORT_OPTIONS.map((option) => {
+                    const selected = sortMode === option.value;
+                    return (
+                        <Pressable
+                            key={option.value}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                            onPress={() => setSortMode(option.value)}
+                            style={{
+                                minHeight: 36,
+                                paddingHorizontal: theme.spacing.md,
+                                borderRadius: theme.radius.full,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                backgroundColor: selected
+                                    ? theme.colors.primary
+                                    : theme.colors.secondaryVariant,
+                            }}
+                        >
+                            <Text
+                                type="footnote1"
+                                weight={selected ? 'bold' : 'medium'}
+                                color={selected ? theme.colors.onPrimary : theme.colors.onSecondaryVariant}
+                            >
+                                {option.label}
+                            </Text>
+                        </Pressable>
+                    );
+                })}
+            </ScrollView>
+
+            {selectionMode ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: theme.spacing.md }}>
+                    <Text type="body2" color={theme.colors.onSurfaceVariantSummary} style={{ flex: 1 }}>
+                        已选择 {selectedItems.length} / {items.length}
+                    </Text>
+                    <Pressable accessibilityRole="button" onPress={toggleSelectAll} hitSlop={8}>
+                        <Text type="button" color={theme.colors.primary}>
+                            {selectedItems.length === items.length ? '取消全选' : '全选'}
+                        </Text>
+                    </Pressable>
+                </View>
+            ) : null}
+        </View>
+    ), [items.length, selectedItems.length, selectionMode, setSortMode, sortMode, theme, toggleSelectAll]);
+
+    const renderItem = useCallback(({ item }: { item: LaterReadItem }) => {
+        const runtime = runtimeStates[item.key];
+        const selected = selectedKeys.has(item.key);
+        return (
+            <View style={{ marginBottom: theme.spacing.sm }}>
+                <LaterReadManagementRow
+                    item={item}
+                    runtime={runtime}
+                    selectionMode={selectionMode}
+                    selected={selected}
+                    busy={busy}
+                    onPress={() => {
+                        if (selectionMode) toggleSelection(item.key);
+                        else openItem(item);
+                    }}
+                    onToggleSelection={() => toggleSelection(item.key)}
+                    onSaveOffline={() => void saveOffline([item])}
+                />
+            </View>
+        );
+    }, [busy, openItem, runtimeStates, saveOffline, selectedKeys, selectionMode, theme.spacing.sm, toggleSelection]);
+
+    const keyExtractor = useCallback((item: LaterReadItem) => item.key, []);
+
     return (
         <PageScaffold topBar={
             <TopAppBar
@@ -215,96 +299,17 @@ export default function LaterReadManagementScreen() {
                 </PageContent>
             ) : (
                 <>
-                    <PageScrollView
-                        style={{ flex: 1 }}
+                    <PageFlatList
+                        data={sortedItems}
+                        keyExtractor={keyExtractor}
+                        renderItem={renderItem}
+                        ListHeaderComponent={listHeader}
                         contentContainerStyle={{
                             paddingHorizontal: theme.spacing.lg,
                             paddingBottom: selectionMode ? 112 : theme.spacing.xxl,
                         }}
-                    >
-                        <Text
-                            type="footnote1"
-                            color={theme.colors.onSurfaceVariantSummary}
-                            style={{ marginTop: theme.spacing.sm, marginBottom: theme.spacing.sm }}
-                        >
-                            排序
-                        </Text>
-                        <ScrollView
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={{ gap: theme.spacing.sm, paddingBottom: theme.spacing.lg }}
-                        >
-                            {SORT_OPTIONS.map((option) => {
-                                const selected = sortMode === option.value;
-                                return (
-                                    <Pressable
-                                        key={option.value}
-                                        accessibilityRole="button"
-                                        accessibilityState={{ selected }}
-                                        onPress={() => setSortMode(option.value)}
-                                        style={{
-                                            minHeight: 36,
-                                            paddingHorizontal: theme.spacing.md,
-                                            borderRadius: theme.radius.full,
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            backgroundColor: selected
-                                                ? theme.colors.primary
-                                                : theme.colors.secondaryVariant,
-                                        }}
-                                    >
-                                        <Text
-                                            type="footnote1"
-                                            weight={selected ? 'bold' : 'medium'}
-                                            color={selected ? theme.colors.onPrimary : theme.colors.onSecondaryVariant}
-                                        >
-                                            {option.label}
-                                        </Text>
-                                    </Pressable>
-                                );
-                            })}
-                        </ScrollView>
-
-                        {selectionMode ? (
-                            <View style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                marginBottom: theme.spacing.md,
-                            }}>
-                                <Text type="body2" color={theme.colors.onSurfaceVariantSummary} style={{ flex: 1 }}>
-                                    已选择 {selectedItems.length} / {items.length}
-                                </Text>
-                                <Pressable accessibilityRole="button" onPress={toggleSelectAll} hitSlop={8}>
-                                    <Text type="button" color={theme.colors.primary}>
-                                        {selectedItems.length === items.length ? '取消全选' : '全选'}
-                                    </Text>
-                                </Pressable>
-                            </View>
-                        ) : null}
-
-                        <View style={{ gap: theme.spacing.sm }}>
-                            {sortedItems.map((item) => {
-                                const runtime = runtimeStates[item.key];
-                                const selected = selectedKeys.has(item.key);
-                                return (
-                                    <LaterReadManagementRow
-                                        key={item.key}
-                                        item={item}
-                                        runtime={runtime}
-                                        selectionMode={selectionMode}
-                                        selected={selected}
-                                        busy={busy}
-                                        onPress={() => {
-                                            if (selectionMode) toggleSelection(item.key);
-                                            else openItem(item);
-                                        }}
-                                        onToggleSelection={() => toggleSelection(item.key)}
-                                        onSaveOffline={() => void saveOffline([item])}
-                                    />
-                                );
-                            })}
-                        </View>
-                    </PageScrollView>
+                        showsVerticalScrollIndicator={false}
+                    />
 
                     {selectionMode ? (
                         <View style={{

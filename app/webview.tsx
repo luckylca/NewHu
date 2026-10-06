@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, View } from 'react-native';
 import { WebView } from 'react-native-webview';
+import type { WebViewNavigation } from 'react-native-webview';
 import { getCookieHeader } from 'expo-cookie-storage';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { PageScaffold, TopAppBar } from '@/src/ui';
@@ -12,13 +13,15 @@ import ProgressIndicator from '@/src/components/ProgressIndicator';
 import { getCookieValue } from '@/src/utils/cookieHeader';
 const ZhihuLoginWebView = () => {
 
-    const userStore = useUserStore();
+    const login = useUserStore((state) => state.login);
     const [modalVisible, setModalVisible] = useState(false);
     const [statusText, setStatusText] = useState('正在验证登录状态');
     const hasSeenSigninRef = useRef(false);
     const verifyInFlightRef = useRef(false);
     const loginCompletedRef = useRef(false);
     const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const source = useMemo(() => ({ uri: 'https://www.zhihu.com/signin' }), []);
+    const handleBack = useCallback(() => router.back(), []);
 
     useEffect(() => () => {
         if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
@@ -43,7 +46,7 @@ const ZhihuLoginWebView = () => {
             if (!data?.name) throw new Error('登录 Cookie 无效');
 
             loginCompletedRef.current = true;
-            userStore.login(data.name, cookieString, data.avatar_url, data.url_token ?? data.urlToken);
+            login(data.name, cookieString, data.avatar_url, data.url_token ?? data.urlToken);
             setStatusText(`${data.name} 登录成功，即将返回`);
             redirectTimerRef.current = setTimeout(() => {
                 setModalVisible(false);
@@ -56,12 +59,24 @@ const ZhihuLoginWebView = () => {
         } finally {
             verifyInFlightRef.current = false;
         }
-    }, [userStore]);
+    }, [login]);
+
+    const handleNavigationStateChange = useCallback((navState: WebViewNavigation) => {
+        const url = navState.url.toLowerCase();
+        if (!url.includes('zhihu.com')) return;
+
+        if (url.includes('/signin')) {
+            hasSeenSigninRef.current = true;
+            return;
+        }
+
+        if (hasSeenSigninRef.current) void extractCookie();
+    }, [extractCookie]);
 
     const theme = useTheme();
 
     return (
-        <PageScaffold topBar={<TopAppBar title="登录知乎" back={() => router.back()} />}>
+        <PageScaffold topBar={<TopAppBar title="登录知乎" back={handleBack} />}>
             <Modal visible={modalVisible} transparent>
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.windowDimming }}>
                     <View style={{ width: 160 }}><ProgressIndicator indeterminate /></View>
@@ -69,23 +84,11 @@ const ZhihuLoginWebView = () => {
                 </View>
             </Modal>
             <WebView
-                source={{ uri: 'https://www.zhihu.com/signin' }}
+                source={source}
                 style={{ flex: 1 }}
                 incognito={true} // 使用隐身模式，确保不使用之前的 Cookie
                 userAgent="Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.181 Mobile Safari/537.36" // 建议固定 UA
-                onNavigationStateChange={(navState) => {
-                    const url = navState.url.toLowerCase();
-                    if (!url.includes('zhihu.com')) return;
-
-                    if (url.includes('/signin')) {
-                        hasSeenSigninRef.current = true;
-                        return;
-                    }
-
-                    // 只有从登录页离开后才尝试读取 Cookie；读取不到 z_c0 时
-                    // extractCookie 会直接返回，WebView 仍可继续输入验证码/账号。
-                    if (hasSeenSigninRef.current) void extractCookie();
-                }}
+                onNavigationStateChange={handleNavigationStateChange}
             />
         </PageScaffold>
     );

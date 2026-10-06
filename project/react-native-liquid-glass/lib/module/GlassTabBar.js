@@ -1,11 +1,12 @@
 import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-runtime";
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { LiquidGlassProvider, LiquidGlassView } from 'liquid-glass-kit';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { cancelAnimation, createAnimatedComponent, runOnJS, useAnimatedProps, useAnimatedReaction, useAnimatedStyle, useSharedValue, withDelay, withSpring, withTiming, } from 'react-native-reanimated';
 import { GlassOverlay, GlassSurface, useGlassAppearance, useGlassReducedMotion } from './GlassSurface';
+import { getGlassNativeEngine, subscribeGlassNativeEngine } from './glassNativeEngine';
+import { CoreGlassCaptureSource, CoreGlassSurfaceView, LegacyGlassCaptureSource, LegacyGlassSurfaceView, } from './nativeGlassViews';
 const TAB_BAR_HEIGHT = 66;
 const TAB_BAR_BOTTOM_GAP = 8;
 const TAB_BAR_SCROLL_CLEARANCE = 12;
@@ -24,7 +25,10 @@ const IDLE_SPRING = { damping: 24, stiffness: 330, mass: 0.68 };
 const TAP_SELECTION_SPRING = { damping: 26, stiffness: 520, mass: 0.56 };
 const EDGE_SPRING_FAST = { damping: 31, stiffness: 620, mass: 0.62 };
 const EDGE_SPRING_SLOW = { damping: 29, stiffness: 260, mass: 0.76 };
-const AnimatedLiquidGlassView = createAnimatedComponent(LiquidGlassView);
+const AnimatedLegacyGlassSurface = createAnimatedComponent(LegacyGlassSurfaceView);
+const AnimatedCoreGlassSurface = CoreGlassSurfaceView
+    ? createAnimatedComponent(CoreGlassSurfaceView)
+    : null;
 function logGlassTabGesture(event, detail) {
     if (GESTURE_DEBUG_ENABLED) {
         const timestamp = globalThis.performance?.now?.();
@@ -44,10 +48,17 @@ function emitTargetHaptic(_index) {
  */
 export function GlassTabBar({ items, selected, bottomInset = 0, shellBackgroundColor, onSelect, onSelectFromDrag, renderIcon, renderItem, presentation = 'floating', height = TAB_BAR_HEIGHT, width: requestedWidth, horizontalPadding = TAB_BAR_HORIZONTAL_PADDING, shellRadius, lensMaxWidth = SELECTION_LENS_MAX_WIDTH, lensRefractionHeight, accessibilityHint, }) {
     const { width: windowWidth } = useWindowDimensions();
+    const nativeEngine = useSyncExternalStore(subscribeGlassNativeEngine, getGlassNativeEngine, getGlassNativeEngine);
     const appearance = useGlassAppearance();
     const reducedMotion = useGlassReducedMotion();
     const tabBarMaterial = appearance?.tokens.materials.tabBarShell ?? appearance?.tokens.materials.tabBar;
     const nativeLiveAvailable = Platform.OS === 'android' && appearance?.tokens.quality !== 'fallback';
+    const NativeCaptureSource = nativeEngine === 'core' && CoreGlassCaptureSource
+        ? CoreGlassCaptureSource
+        : LegacyGlassCaptureSource;
+    const NativeGlassSurface = nativeEngine === 'core' && AnimatedCoreGlassSurface
+        ? AnimatedCoreGlassSurface
+        : AnimatedLegacyGlassSurface;
     const dark = appearance?.dark ?? false;
     const opaqueShellColor = shellBackgroundColor ?? (dark ? '#283547' : '#EAF0F7');
     const providerId = React.useId();
@@ -706,7 +717,7 @@ export function GlassTabBar({ items, selected, bottomInset = 0, shellBackgroundC
             }
             : undefined, pointerEvents: "box-none", style: presentation === 'floating'
             ? [styles.host, { left: shellScreenLeft, bottom: bottomInset + TAB_BAR_BOTTOM_GAP, width: barWidth, height }]
-            : [styles.inlineHost, { width: requestedWidth ?? '100%', height }], children: [nativeLiveAvailable ? (_jsxs(_Fragment, { children: [_jsx(LiquidGlassProvider, { providerId: providerId, pointerEvents: "none", style: [
+            : [styles.inlineHost, { width: requestedWidth ?? '100%', height }], children: [nativeLiveAvailable ? (_jsxs(_Fragment, { children: [_jsx(NativeCaptureSource, { providerId: providerId, pointerEvents: "none", style: [
                             styles.localBackdropProvider,
                             {
                                 width: barWidth,
@@ -719,7 +730,7 @@ export function GlassTabBar({ items, selected, bottomInset = 0, shellBackgroundC
                                 shadowOffset: { width: 0, height: tabBarMaterial?.shadowOffsetY ?? 0 },
                                 elevation: tabBarMaterial?.elevation ?? 0,
                             },
-                        ], children: _jsx(View, { pointerEvents: "none", style: [styles.shell, shellStyle], children: _jsx(View, { pointerEvents: "none", style: [styles.row, { paddingHorizontal: horizontalPadding }], children: tabItems }) }) }), _jsx(AnimatedLiquidGlassView, { pointerEvents: "none", providerId: providerId, cornerRadius: appearance?.tokens.materials.tabSelectionLens.radius ?? lensBaseHeight / 2, blurRadius: (appearance?.tokens.materials.tabSelectionLens.blurRadius ?? 0.35) * (appearance?.tokens.quality === 'high' ? 1.2 : 1), refractionHeight: lensRefractionHeight ?? appearance?.tokens.materials.tabSelectionLens.refractionHeight ?? 12, refractionAmount: appearance?.tokens.materials.tabSelectionLens.refractionAmount ?? 5.5, bodyRefractionAmount: appearance?.tokens.materials.tabSelectionLens.refractionBodyAmount ?? 1.5, saturation: appearance?.tokens.materials.tabSelectionLens.saturation ?? 1.02, chromaticAberration: appearance?.tokens.materials.tabSelectionLens.chromaticAberration ?? 0.3, highlightAlpha: appearance?.tokens.materials.tabSelectionLens.highlightAlpha ?? 0.62, highlightWidth: appearance?.tokens.materials.tabSelectionLens.highlightWidth ?? 1.3, tintAlpha: appearance?.tokens.materials.tabSelectionLens.tintAlpha ?? 0.08, specularStrength: appearance?.tokens.materials.tabSelectionLens.specularStrength ?? 0.95, fresnelStrength: appearance?.tokens.materials.tabSelectionLens.fresnelStrength ?? 0.72, innerShadowStrength: appearance?.tokens.materials.tabSelectionLens.innerShadowStrength ?? 0.2, tint: appearance?.tokens.tint[dark ? 'dark' : 'light'], continuous: liveBackdropEnabled, animatedProps: liveLensAnimatedProps, style: [styles.nativeLens, liveLensStyle] })] })) : (_jsxs(View, { pointerEvents: "none", style: [styles.shell, shellStyle], children: [_jsx(GlassSurface, { variant: "tabSelectionLens", positioning: "inFlow", sampling: "local", pointerEvents: "none", style: {
+                        ], children: _jsx(View, { pointerEvents: "none", style: [styles.shell, shellStyle], children: _jsx(View, { pointerEvents: "none", style: [styles.row, { paddingHorizontal: horizontalPadding }], children: tabItems }) }) }), _jsx(NativeGlassSurface, { pointerEvents: "none", providerId: providerId, cornerRadius: appearance?.tokens.materials.tabSelectionLens.radius ?? lensBaseHeight / 2, blurRadius: (appearance?.tokens.materials.tabSelectionLens.blurRadius ?? 0.35) * (appearance?.tokens.quality === 'high' ? 1.2 : 1), refractionHeight: lensRefractionHeight ?? appearance?.tokens.materials.tabSelectionLens.refractionHeight ?? 12, refractionAmount: appearance?.tokens.materials.tabSelectionLens.refractionAmount ?? 5.5, bodyRefractionAmount: appearance?.tokens.materials.tabSelectionLens.refractionBodyAmount ?? 1.5, saturation: appearance?.tokens.materials.tabSelectionLens.saturation ?? 1.02, chromaticAberration: appearance?.tokens.materials.tabSelectionLens.chromaticAberration ?? 0.3, highlightAlpha: appearance?.tokens.materials.tabSelectionLens.highlightAlpha ?? 0.62, highlightWidth: appearance?.tokens.materials.tabSelectionLens.highlightWidth ?? 1.3, tintAlpha: appearance?.tokens.materials.tabSelectionLens.tintAlpha ?? 0.08, specularStrength: appearance?.tokens.materials.tabSelectionLens.specularStrength ?? 0.95, fresnelStrength: appearance?.tokens.materials.tabSelectionLens.fresnelStrength ?? 0.72, innerShadowStrength: appearance?.tokens.materials.tabSelectionLens.innerShadowStrength ?? 0.2, tint: appearance?.tokens.tint[dark ? 'dark' : 'light'], continuous: liveBackdropEnabled, animatedProps: liveLensAnimatedProps, style: [styles.nativeLens, liveLensStyle] })] })) : (_jsxs(View, { pointerEvents: "none", style: [styles.shell, shellStyle], children: [_jsx(GlassSurface, { variant: "tabSelectionLens", positioning: "inFlow", sampling: "local", pointerEvents: "none", style: {
                             position: 'absolute',
                             left: selectedLeft,
                             top: verticalInset,

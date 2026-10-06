@@ -46,6 +46,10 @@ export interface AppTopAppBarProps {
     expansion?: number;
     /** Render a back action at the left. */
     back?: (() => void) | boolean;
+    /** Selects the backdrop source for the optical backing; defaults to live route content. */
+    samplingSource?: 'routeScene' | 'themeBackdrop';
+    /** Diagnostic override for measuring the route without its optical backing. */
+    opticalBackingEnabled?: boolean;
     /** Trailing actions (right). */
     actions?: ReactNode;
     /** Optional left slot (nav). */
@@ -54,31 +58,115 @@ export interface AppTopAppBarProps {
 
 const HIDDEN_TRANSLATION_Y = 20;
 
-export const TopAppBar = React.memo(function TopAppBar({ title = '', largeTitle, subtitle, large = false, scrollY, expansion = 88, back, actions, navigation }: AppTopAppBarProps) {
+export const TopAppBar = React.memo(function TopAppBar({ title = '', largeTitle, subtitle, large = false, scrollY, expansion = 88, back, samplingSource = 'routeScene', opticalBackingEnabled = true, actions, navigation }: AppTopAppBarProps) {
     const theme = useTheme();
-    const reducedMotion = useReducedMotionPreference();
     const insets = useSafeAreaInsets();
     const barHeight = insets.top + theme.components.navigationBar.topBarCollapsedHeight + (large ? 42 + (subtitle != null ? 20 : 0) : 0);
     const floating = theme.presentation.topBar.mode === 'floating';
-    const useGlassMaterial = theme.presentation.topBar.material === 'glass' && theme.glass.enabled;
-    const titleColor = useGlassMaterial ? theme.colors.onGlass : theme.colors.onBackground;
-    const subtitleColor = useGlassMaterial ? theme.colors.onGlassSecondary : theme.colors.onSurfaceVariantSummary;
+    const hasGlassMaterial = theme.presentation.topBar.material === 'glass' && theme.glass.enabled;
+    const useGlassBacking = hasGlassMaterial && opticalBackingEnabled;
+    const titleColor = hasGlassMaterial ? theme.colors.onGlass : theme.colors.onBackground;
+    const subtitleColor = hasGlassMaterial ? theme.colors.onGlassSecondary : theme.colors.onSurfaceVariantSummary;
 
     const hasBack = back !== undefined && back !== false && back !== null;
 
-    // Collapse fraction 0..1 (0 = fully expanded).
+    const content = large ? (
+                <LargeTopAppBarContent
+                    title={title}
+                    largeTitle={largeTitle ?? title}
+                    subtitle={subtitle}
+                    scrollY={scrollY}
+                    expansion={expansion}
+                    navigation={navigation}
+                    hasBack={hasBack}
+                    back={back}
+                    actions={actions}
+                    titleColor={titleColor}
+                    subtitleColor={subtitleColor}
+                    topInset={insets.top}
+                    rowHeight={theme.components.navigationBar.topBarCollapsedHeight}
+                    horizontalInset={theme.spacing.lg}
+                />
+            ) : (
+                <SmallTopAppBarContent
+                    title={title}
+                    subtitle={subtitle}
+                    navigation={navigation}
+                    hasBack={hasBack}
+                    back={back}
+                    actions={actions}
+                    titleColor={titleColor}
+                    subtitleColor={subtitleColor}
+                    topInset={insets.top}
+                    rowHeight={theme.components.navigationBar.topBarCollapsedHeight}
+                    horizontalInset={theme.spacing.lg}
+                />
+            );
+
+    if (useGlassBacking) {
+        return (
+            <GlassSurface
+                variant="bar"
+                positioning={floating ? 'floating' : 'inFlow'}
+                sampling="backdrop"
+                samplingSource={samplingSource}
+                inlineBackdrop
+                style={{ width: '100%', height: barHeight, backgroundColor: 'transparent' }}
+            >
+                {content}
+            </GlassSurface>
+        );
+    }
+
+    return (
+        <View style={{ width: '100%', minHeight: hasGlassMaterial ? barHeight : undefined, backgroundColor: hasGlassMaterial ? 'transparent' : theme.colors.surface }}>
+            {content}
+        </View>
+    );
+});
+TopAppBar.displayName = 'HyperTopAppBar';
+
+type TopAppBarContentProps = Pick<AppTopAppBarProps, 'title' | 'subtitle' | 'back' | 'actions' | 'navigation'> & {
+    titleColor: string;
+    subtitleColor: string;
+    topInset: number;
+    rowHeight: number;
+    horizontalInset: number;
+    hasBack: boolean;
+};
+
+function TopAppBarRow({ title, subtitle, navigation, hasBack, back, actions, titleColor, subtitleColor, rowHeight, horizontalInset, animatedTitle }: TopAppBarContentProps & { animatedTitle?: ReactNode }) {
+    return (
+        <View style={{ minHeight: rowHeight, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ position: 'absolute', left: 0, paddingLeft: horizontalInset, minWidth: 0 }}>
+                {navigation ?? (hasBack ? <BackAction color={titleColor} onPress={typeof back === 'function' ? back : undefined} /> : null)}
+            </View>
+            {animatedTitle ?? (
+                <View style={{ alignItems: 'center', maxWidth: '68%', minWidth: 0 }}>
+                    <TitleText color={titleColor}>{title}</TitleText>
+                    {subtitle != null && <Text type="body2" color={subtitleColor} numberOfLines={1} ellipsizeMode="tail">{subtitle}</Text>}
+                </View>
+            )}
+            <View style={{ position: 'absolute', right: 0, paddingRight: horizontalInset, flexDirection: 'row', alignItems: 'center' }}>{actions}</View>
+        </View>
+    );
+}
+
+function SmallTopAppBarContent(props: TopAppBarContentProps) {
+    return (
+        <View style={{ backgroundColor: 'transparent', paddingTop: props.topInset }}>
+            <TopAppBarRow {...props} />
+        </View>
+    );
+}
+
+function LargeTopAppBarContent({ title, largeTitle, subtitle, scrollY, expansion, navigation, hasBack, back, actions, titleColor, subtitleColor, topInset, rowHeight, horizontalInset }: TopAppBarContentProps & { largeTitle: string; scrollY?: SharedValue<number>; expansion: number }) {
+    const reducedMotion = useReducedMotionPreference();
     const collapsedFraction = useDerivedValue(() => {
-        if (!large || !scrollY || expansion <= 0) return 0;
-        const f = scrollY.value / expansion;
-        return Math.max(0, Math.min(1, f));
+        if (!scrollY || expansion <= 0) return 0;
+        return Math.max(0, Math.min(1, scrollY.value / expansion));
     });
-
-    // largeTitleAlpha = 1 - (fraction * 3).coerceIn(0,1)
-    const largeAlphaStyle = useAnimatedStyle(() => ({
-        opacity: 1 - Math.max(0, Math.min(1, collapsedFraction.value * 3)),
-    }));
-
-    // Small title: visible when fraction*3 >= 1.
+    const largeAlphaStyle = useAnimatedStyle(() => ({ opacity: 1 - Math.max(0, Math.min(1, collapsedFraction.value * 3)) }));
     const smallVisible = useDerivedValue(() => collapsedFraction.value * 3 >= 1 ? 1 : 0);
     const smallTitleStyle = useAnimatedStyle(() => {
         const visible = smallVisible.value === 1;
@@ -89,47 +177,33 @@ export const TopAppBar = React.memo(function TopAppBar({ title = '', largeTitle,
     });
 
     return (
-        <GlassSurface
-            variant={useGlassMaterial ? 'bar' : 'surface'}
-            positioning={floating ? 'floating' : 'inFlow'}
-            sampling={useGlassMaterial ? 'backdrop' : 'local'}
-            style={{ width: '100%', height: useGlassMaterial ? barHeight : undefined, backgroundColor: useGlassMaterial ? 'transparent' : theme.colors.surface }}
-            placeholderChildren={useGlassMaterial ? <View style={{ width: '100%', height: barHeight }} /> : undefined}
-        >
-            <View style={{ backgroundColor: 'transparent', paddingTop: insets.top }}>
-            {/* Collapsed 52-bar */}
-            <View style={{ minHeight: theme.components.navigationBar.topBarCollapsedHeight, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-                <View style={{ position: 'absolute', left: 0, paddingLeft: theme.spacing.lg, minWidth: 0 }}>
-                    {navigation ?? (hasBack ? <BackAction color={titleColor} onPress={typeof back === 'function' ? back : undefined} /> : null)}
-                </View>
-                {large ? (
+        <View style={{ backgroundColor: 'transparent', paddingTop: topInset }}>
+            <TopAppBarRow
+                title={title}
+                subtitle={subtitle}
+                navigation={navigation}
+                hasBack={hasBack}
+                back={back}
+                actions={actions}
+                titleColor={titleColor}
+                subtitleColor={subtitleColor}
+                topInset={topInset}
+                rowHeight={rowHeight}
+                horizontalInset={horizontalInset}
+                animatedTitle={(
                     <Animated.View style={[{ alignItems: 'center', maxWidth: '68%', minWidth: 0, pointerEvents: 'none' }, smallTitleStyle]}>
                         <TitleText color={titleColor}>{title}</TitleText>
                         {subtitle != null && <Text type="body2" color={subtitleColor} numberOfLines={1} ellipsizeMode="tail">{subtitle}</Text>}
                     </Animated.View>
-                ) : (
-                    <View style={{ alignItems: 'center', maxWidth: '68%', minWidth: 0 }}>
-                        <TitleText color={titleColor}>{title}</TitleText>
-                        {subtitle != null && <Text type="body2" color={subtitleColor} numberOfLines={1} ellipsizeMode="tail">{subtitle}</Text>}
-                    </View>
                 )}
-                <View style={{ position: 'absolute', right: 0, paddingRight: theme.spacing.lg, flexDirection: 'row', alignItems: 'center' }}>{actions}</View>
-            </View>
-
-            {/* Large title (collapsing, in flow) */}
-            {large && (
-                <Animated.View style={[{ paddingHorizontal: 26, paddingBottom: 4 }, largeAlphaStyle]}>
-                    <Text type="title1" color={titleColor} numberOfLines={1} ellipsizeMode="tail">
-                        {largeTitle ?? title}
-                    </Text>
-                    {subtitle != null && <Text type="body2" color={subtitleColor} numberOfLines={1} ellipsizeMode="tail">{subtitle}</Text>}
-                </Animated.View>
-            )}
-            </View>
-        </GlassSurface>
+            />
+            <Animated.View style={[{ paddingHorizontal: 26, paddingBottom: 4 }, largeAlphaStyle]}>
+                <Text type="title1" color={titleColor} numberOfLines={1} ellipsizeMode="tail">{largeTitle}</Text>
+                {subtitle != null && <Text type="body2" color={subtitleColor} numberOfLines={1} ellipsizeMode="tail">{subtitle}</Text>}
+            </Animated.View>
+        </View>
     );
-});
-TopAppBar.displayName = 'HyperTopAppBar';
+}
 
 function TitleText({ children, color }: { children: ReactNode; color: string }) {
     return (
