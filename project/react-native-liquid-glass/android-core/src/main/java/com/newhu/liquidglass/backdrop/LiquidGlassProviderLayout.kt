@@ -7,10 +7,9 @@ import android.graphics.RenderNode
 import android.os.Build
 import android.util.AttributeSet
 import android.view.View
-import android.view.ViewTreeObserver
+import android.view.MotionEvent
 import android.widget.FrameLayout
 import com.newhu.liquidglass.telemetry.LiquidGlassPerfTelemetry
-import com.newhu.liquidglass.scheduler.GlassFrameScheduler
 import java.util.IdentityHashMap
 
 /**
@@ -18,46 +17,48 @@ import java.util.IdentityHashMap
  * glass inside this layout. On Android 10+ with hardware acceleration the
  * children are recorded into a reusable [RenderNode] that every registered
  * [LiquidGlassView] re-projects through its own blur/refraction pipeline.
- *
- * [LiquidGlassView]s must be siblings drawn above this layout (never inside it),
- * exactly like the Compose `liquidGlassProvider` / `liquidGlass` pairing.
  */
 public open class LiquidGlassProviderLayout @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0,
-) : FrameLayout(context, attrs, defStyleAttr), LiquidGlassBackdropSource {
+) : FrameLayout(context, attrs, defStyleAttr), LiquidGlassBackdropSource, GlassBackdropCoordinatorHost {
 
     private val recorder = BackdropRecorder()
     private val sourceLocation = IntArray(2)
     private val consumerLocation = IntArray(2)
     private val consumerRegions = IdentityHashMap<View, Rect>()
-    private var observingScroll = false
     private var scrollSource: GlassScrollSource? = null
     private var sourceWindowBounds: Rect? = null
     private var recordedScrollOffsetY = 0
     private var recordedContentVersion = Long.MIN_VALUE
-    private var sourceContentDirty = true
-    private val frameScheduler = GlassFrameScheduler {
-        LiquidGlassPerfTelemetry.consumerInvalidationExecuted()
-        val source = scrollSource
-        if (source == null) {
-            invalidate()
-        } else {
-            if (source.isScrolling) LiquidGlassPerfTelemetry.scrollSampleOffsetUpdated()
-            recorder.invalidateConsumers()
-            if (shouldRecordScrollWindow(source)) {
-                invalidate()
-            } else {
-                LiquidGlassPerfTelemetry.sourceRenderNodeReuse()
-                LiquidGlassPerfTelemetry.scrollWindowReused()
-            }
+    private val directChildBounds = IdentityHashMap<View, Rect>()
+    private val coordinator = GlassBackdropCoordinator(
+        sourceView = this,
+        providerId = { "android-core" },
+        host = this,
+        externalScrollActive = { scrollSource?.isScrolling == true },
+    )
+
+    private val directChildLayoutListener = View.OnLayoutChangeListener { child, left, top, right, bottom, _, _, _, _ ->
+        val next = Rect(left, top, right, bottom)
+        val previous = directChildBounds.put(child, next)
+        if (previous != next) {
+            coordinator.markDirty(GlassBackdropDirtyReason.SOURCE_GEOMETRY)
         }
     }
-    private val scrollChangedListener = ViewTreeObserver.OnScrollChangedListener {
-        LiquidGlassPerfTelemetry.scrollEventReceived()
-        scheduleRefresh()
+
+    override val hasBackdropConsumers: Boolean
+        get() = recorder.hasConsumers
+
+    /** Opt-in native scroll-offset telemetry for host benchmarks. */
+    public fun setScrollTelemetryEnabled(enabled: Boolean) {
+        coordinator.setDetailedScrollTelemetryEnabled(enabled)
     }
+
+    override val canCaptureBackdrop: Boolean
+        get() = isAttachedToWindow && width > 0 && height > 0
+
     override val sourceView: View
         get() = this
 
@@ -70,6 +71,11 @@ public open class LiquidGlassProviderLayout @JvmOverloads constructor(
     override val requiresCaptureOnConsumerMovement: Boolean
         get() = false
 
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        coordinator.onMotionEvent(event)
+        return super.dispatchTouchEvent(event)
+    }
+
     override fun renderNodeFor(consumer: View): RenderNode? =
         if (scrollSource == null) recorder.regionNodeFor(consumer) ?: recorder.contentNode else recorder.contentNode
 
@@ -80,26 +86,52 @@ public open class LiquidGlassProviderLayout @JvmOverloads constructor(
         return recorder.originY - (source.scrollOffsetY - recordedScrollOffsetY)
     }
 
+    override fun requestBackdropSourceRecord() {
+        postInvalidateOnAnimation()
+    }
+
+    override fun refreshBackdropConsumers() {
+        recorder.invalidateConsumers()
+    }
+
+    override fun onBackdropScrollReuseFrame() {
+        val source = scrollSource
+        if (source != null && source.isScrolling) LiquidGlassPerfTelemetry.scrollSampleOffsetUpdated()
+        if (source != null && shouldRecordScrollWindow(source) &&
+            !(coordinator.hasPendingSourceRerecord && coordinator.isScrollActive)
+        ) {
+            postInvalidateOnAnimation()
+        } else {
+            recorder.invalidateConsumers()
+            if (source != null) {
+                LiquidGlassPerfTelemetry.sourceRenderNodeReuse()
+                LiquidGlassPerfTelemetry.scrollWindowReused()
+            }
+        }
+    }
+
     override fun setScrollSource(source: GlassScrollSource?) {
         if (scrollSource === source) return
         scrollSource = source
         sourceWindowBounds = null
         recordedContentVersion = Long.MIN_VALUE
-        sourceContentDirty = true
         recorder.clearConsumerRegions()
+        coordinator.markDirty(GlassBackdropDirtyReason.SOURCE_REVISION)
+        coordinator.refreshScrollTargets()
         invalidate()
     }
 
     override fun registerConsumer(consumer: View) {
         recorder.register(consumer)
         updateScrollObservation()
-        scheduleRefresh()
+        coordinator.refreshScrollTargets()
+        coordinator.markDirty(if (recorder.hasRecording) GlassBackdropDirtyReason.CONSUMER_GEOMETRY else GlassBackdropDirtyReason.INITIAL_CAPTURE)
     }
 
     override fun unregisterConsumer(consumer: View) {
         recorder.unregister(consumer)
         updateScrollObservation()
-        if (!recorder.hasConsumers) frameScheduler.cancel()
+        if (!recorder.hasConsumers) coordinator.cancel(clearSourceDirties = true)
     }
 
     override fun dispatchDraw(canvas: Canvas) {
@@ -113,7 +145,13 @@ public open class LiquidGlassProviderLayout @JvmOverloads constructor(
         if (scroll != null && Build.VERSION.SDK_INT >= 29 && canvas.isHardwareAccelerated) {
             updateConsumerGeometry()
             super.dispatchDraw(canvas)
-            if (shouldRecordScrollWindow(scroll)) {
+            if (scroll.contentVersion != recordedContentVersion && !coordinator.hasPendingSourceRerecord) {
+                coordinator.markDirty(GlassBackdropDirtyReason.SOURCE_REVISION)
+            }
+            val pendingSourceStructure = coordinator.hasPendingSourceRerecord
+            val shouldRecordWindow = shouldRecordScrollWindow(scroll) &&
+                !(pendingSourceStructure && coordinator.isScrollActive)
+            if (shouldRecordWindow) {
                 val bounds = calculateScrollWindowBounds(scroll)
                 val recorded = recorder.recordWindow(width, height, bounds) { target ->
                     super.dispatchDraw(target)
@@ -122,8 +160,8 @@ public open class LiquidGlassProviderLayout @JvmOverloads constructor(
                     sourceWindowBounds = bounds
                     recordedScrollOffsetY = scroll.scrollOffsetY
                     recordedContentVersion = scroll.contentVersion
-                    sourceContentDirty = false
-                    recorder.invalidateConsumers()
+                    coordinator.sourceRecordCompleted()
+                    coordinator.requestConsumerRefresh()
                 }
             } else {
                 LiquidGlassPerfTelemetry.sourceRenderNodeReuse()
@@ -131,43 +169,82 @@ public open class LiquidGlassProviderLayout @JvmOverloads constructor(
             }
             return
         }
-        val recorded = recorder.drawShared(canvas, width, height, recordBackdrop = true) { target ->
+        val shouldRecord = coordinator.shouldRecordSourceNow || !recorder.hasRecording
+        val recorded = recorder.drawShared(canvas, width, height, shouldRecord) { target ->
             super.dispatchDraw(target)
         }
-        if (recorded) updateConsumerRegions()
+        if (recorded && shouldRecord) {
+            coordinator.sourceRecordCompleted()
+            updateConsumerRegions()
+        } else if (coordinator.hasPendingSourceRerecord && !coordinator.isScrollActive) {
+            coordinator.sourceRecordDeferred()
+        }
     }
 
     override fun onDescendantInvalidated(child: View, target: View) {
         if (recorder.hasConsumers) {
             LiquidGlassPerfTelemetry.descendantInvalidationReceived()
-            if (scrollSource == null || scrollSource?.isScrolling != true) sourceContentDirty = true
-            if (!frameScheduler.schedule()) LiquidGlassPerfTelemetry.descendantInvalidationCoalesced()
+            // Existing descendants record their own display lists. Only the direct
+            // child identity/geometry callbacks below alter this provider's commands.
+            if (!recorder.isConsumerSubtree(target, this)) {
+                coordinator.markDirty(GlassBackdropDirtyReason.SOURCE_PAINT)
+            }
         }
         super.onDescendantInvalidated(child, target)
     }
 
-    override fun requestCaptureFrame() {
-        scheduleRefresh()
+    override fun onViewAdded(child: View) {
+        super.onViewAdded(child)
+        directChildBounds[child] = Rect(child.left, child.top, child.right, child.bottom)
+        child.addOnLayoutChangeListener(directChildLayoutListener)
+        coordinator.refreshScrollTargets()
+        coordinator.markDirty(GlassBackdropDirtyReason.SOURCE_STRUCTURE)
     }
 
-    override fun onConsumerGeometryChanged(consumer: View) {
-        scheduleRefresh()
+    override fun onViewRemoved(child: View) {
+        child.removeOnLayoutChangeListener(directChildLayoutListener)
+        directChildBounds.remove(child)
+        super.onViewRemoved(child)
+        coordinator.refreshScrollTargets()
+        coordinator.markDirty(GlassBackdropDirtyReason.SOURCE_STRUCTURE)
+    }
+
+    override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
+        super.onSizeChanged(width, height, oldWidth, oldHeight)
+        if (width != oldWidth || height != oldHeight) {
+            coordinator.markDirty(GlassBackdropDirtyReason.SOURCE_GEOMETRY)
+            updateScrollObservation()
+        }
     }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        coordinator.setDetailedScrollTelemetryEnabled(LiquidGlassPerfTelemetry.isEnabled())
         updateScrollObservation()
+        coordinator.refreshScrollTargets()
+        if (recorder.hasConsumers && !recorder.hasRecording) {
+            coordinator.markDirty(GlassBackdropDirtyReason.INITIAL_CAPTURE)
+        }
     }
 
     override fun onDetachedFromWindow() {
-        frameScheduler.cancel()
-        if (observingScroll) {
-            val observer = viewTreeObserver
-            if (observer.isAlive) observer.removeOnScrollChangedListener(scrollChangedListener)
-            observingScroll = false
-        }
+        coordinator.setScrollObservationEnabled(false)
+        coordinator.cancel(clearSourceDirties = true)
         super.onDetachedFromWindow()
         recorder.release()
+    }
+
+    override fun requestCaptureFrame() {
+        coordinator.markDirty(GlassBackdropDirtyReason.SOURCE_PAINT)
+    }
+
+    override fun onConsumerGeometryChanged(consumer: View) {
+        updateConsumerGeometry()
+        coordinator.markDirty(GlassBackdropDirtyReason.CONSUMER_GEOMETRY)
+    }
+
+    override fun onConsumerDirty(consumer: View, reason: GlassBackdropDirtyReason) {
+        coordinator.markDirty(reason, consumerAlreadyInvalidated = true)
     }
 
     private fun updateConsumerRegions() {
@@ -200,7 +277,7 @@ public open class LiquidGlassProviderLayout @JvmOverloads constructor(
     }
 
     private fun shouldRecordScrollWindow(source: GlassScrollSource): Boolean {
-        if (sourceContentDirty || sourceWindowBounds == null || !recorder.hasRecording ||
+        if (coordinator.hasPendingSourceRerecord || sourceWindowBounds == null || !recorder.hasRecording ||
             source.contentVersion != recordedContentVersion
         ) return true
         val bounds = sourceWindowBounds ?: return true
@@ -225,23 +302,7 @@ public open class LiquidGlassProviderLayout @JvmOverloads constructor(
         return Rect(0, clampedTop, width, clampedBottom)
     }
 
-    private fun scheduleRefresh() {
-        if (!recorder.hasConsumers) return
-        if (!frameScheduler.schedule()) LiquidGlassPerfTelemetry.captureSkippedAlreadyDirty()
-    }
-
     private fun updateScrollObservation() {
-        val shouldObserve = recorder.hasConsumers && isAttachedToWindow
-        if (shouldObserve && !observingScroll) {
-            val observer = viewTreeObserver
-            if (observer.isAlive) {
-                observer.addOnScrollChangedListener(scrollChangedListener)
-                observingScroll = true
-            }
-        } else if (!shouldObserve && observingScroll) {
-            val observer = viewTreeObserver
-            if (observer.isAlive) observer.removeOnScrollChangedListener(scrollChangedListener)
-            observingScroll = false
-        }
+        coordinator.setScrollObservationEnabled(recorder.hasConsumers && isAttachedToWindow)
     }
 }

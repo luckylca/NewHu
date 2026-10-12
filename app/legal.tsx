@@ -1,4 +1,4 @@
-import { Card, PageScaffold, PageScrollView, SegmentedControl, Text, TopAppBar } from '@/src/ui';
+import { Card, SegmentedControl, StaticSettingsPage, Text } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { router, useLocalSearchParams } from 'expo-router';
 import React from 'react';
@@ -34,8 +34,12 @@ export default function LegalScreen() {
     const copy = COPY[type];
 
     return (
-        <PageScaffold topBar={<TopAppBar title={copy.title} back={() => router.back()} />}>
-            <PageScrollView contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }} showsVerticalScrollIndicator={false}>
+        <StaticSettingsPage
+            title={copy.title}
+            back={() => router.back()}
+            contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
+            showsVerticalScrollIndicator={false}
+        >
                 <SegmentedControl
                     tabs={['隐私政策', '用户协议']}
                     selected={type === 'privacy' ? 0 : 1}
@@ -52,7 +56,6 @@ export default function LegalScreen() {
                 <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary} style={{ marginTop: theme.spacing.lg, textAlign: 'center' }}>
                     当前版本：2026-08-22
                 </Text>
-            </PageScrollView>
-        </PageScaffold>
+        </StaticSettingsPage>
     );
 }

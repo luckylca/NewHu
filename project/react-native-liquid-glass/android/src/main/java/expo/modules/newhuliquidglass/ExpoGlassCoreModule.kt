@@ -3,6 +3,7 @@ package expo.modules.newhuliquidglass
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import com.newhu.liquidglass.backdrop.CORNER_RADIUS_CAPSULE
+import com.newhu.liquidglass.telemetry.EffectiveScrollFpsProbe
 import com.newhu.liquidglass.telemetry.LiquidGlassPerfTelemetry
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.modules.Module
@@ -63,14 +64,26 @@ internal class ExpoGlassCoreModule : Module() {
             val isDebuggable = appContext.currentActivity?.applicationInfo?.let {
                 it.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
             } ?: false
-            LiquidGlassPerfTelemetry.setEnabled(enabled && isDebuggable)
-            if (enabled && isDebuggable) {
-                LiquidGlassPerfTelemetry.displayRefreshRate(
-                    appContext.currentActivity?.window?.decorView?.display?.refreshRate ?: 0f,
-                )
+            val shouldEnable = enabled && isDebuggable
+            val activity = appContext.currentActivity
+            EffectiveScrollInputBridge.setActivityInputObservation(activity, shouldEnable)
+            LiquidGlassPerfTelemetry.setEnabled(shouldEnable)
+            CoreLiquidGlassRegistry.setScrollTelemetryEnabled(shouldEnable)
+            if (shouldEnable) {
+                val window = activity?.window
+                val refreshRate = window?.decorView?.display?.refreshRate ?: 0f
+                LiquidGlassPerfTelemetry.displayRefreshRate(refreshRate)
+                window?.decorView?.let { EffectiveScrollFpsProbe.start(it, refreshRate, window) }
+            } else {
+                EffectiveScrollFpsProbe.stop()
             }
         }
-        AsyncFunction("getPerformanceStats") { LiquidGlassPerfTelemetry.snapshot() }
+        Function("beginEffectiveScrollFpsSession") { page: String ->
+            EffectiveScrollFpsProbe.beginSession(page)
+        }
+        AsyncFunction("getPerformanceStats") {
+            LiquidGlassPerfTelemetry.snapshot() + EffectiveScrollFpsProbe.snapshot()
+        }
         Function("setCaptureMode") { providerId: String, mode: String ->
             CoreLiquidGlassRegistry.setCaptureMode(providerId, mode)
         }

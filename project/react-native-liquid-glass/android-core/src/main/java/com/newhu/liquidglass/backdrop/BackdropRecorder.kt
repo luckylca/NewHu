@@ -58,6 +58,9 @@ public interface LiquidGlassBackdropSource {
     public fun onConsumerGeometryChanged(consumer: View) {
         if (requiresCaptureOnConsumerMovement) requestCaptureFrame()
     }
+
+    /** Classifies glass consumer updates without dirtying its captured source. */
+    public fun onConsumerDirty(consumer: View, reason: GlassBackdropDirtyReason) {}
 }
 
 /**
@@ -80,6 +83,17 @@ public class BackdropRecorder {
         get() = consumers.isNotEmpty()
 
     public fun consumersSnapshot(): List<View> = consumers.toList()
+
+    public fun isConsumer(view: View): Boolean = consumers.any { it === view }
+
+    public fun isConsumerSubtree(view: View, sourceRoot: View): Boolean {
+        var current: View? = view
+        while (current != null && current !== sourceRoot) {
+            if (isConsumer(current)) return true
+            current = current.parent as? View
+        }
+        return false
+    }
 
     /** The live recording, exposed through [LiquidGlassBackdropSource]. */
     public var contentNode: RenderNode? = null

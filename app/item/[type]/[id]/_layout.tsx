@@ -9,9 +9,9 @@ export default function ItemLayout() {
 
     return (
         <Tabs
+            tabBar={() => null}
             screenOptions={{
                 swipeEnabled: true,
-                tabBarStyle: { display: 'none' },
             }}
         >
             <Tabs.Screen name="index" initialParams={params as any} />

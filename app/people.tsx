@@ -1,8 +1,10 @@
 import { followUser, getUserActivities, getUserInfo, unfollowUser } from "@/src/api/ZhihuApi";
-import { Button, Divider, Icon, PageContent, PageFlatList, PageScaffold, TopAppBar } from "@/src/ui";
+import { Button, Divider, Icon } from "@/src/ui";
 import { notify } from "@/src/stores/useNotificationStore";
 import { Text } from "@/src/ui/primitives";
 import { useTheme } from "@/src/ui/theme";
+import { ActivityFeed, normalizeActivityFeedEntry, normalizeActivityFeedItem } from '@/src/components/feed/ActivityFeed';
+import type { ActivityFeedEntry } from '@/src/components/feed/ActivityFeed';
 import { formatProfileText } from '@/src/utils/profileText';
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -142,7 +144,6 @@ PeopleHeader.displayName = 'PeopleHeader';
 const PeopleScreen = () => {
     const {urlToken} = useLocalSearchParams<PeopleParams>()
     const theme = useTheme()
-    const primaryText = theme.colors.onBackground
     const secondaryText = theme.colors.onSurfaceSecondary
     const router = useRouter()
     const [userInfo, setUserInfo] = React.useState<any>(null)
@@ -152,9 +153,15 @@ const PeopleScreen = () => {
     const [pageNum, setPageNum] = React.useState(1)
 
     // 动态列表状态
-    const [activities, setActivities] = React.useState<any[]>([])
+    const [activities, setActivities] = React.useState<ActivityFeedEntry[]>([])
     const [isLoadingActivities, setIsLoadingActivities] = React.useState(false)
     const [hasMoreActivities, setHasMoreActivities] = React.useState(true)
+    const requestGenerationRef = React.useRef(0)
+    const activeTokenRef = React.useRef<string | null>(null)
+    const inflightCursorsRef = React.useRef(new Set<string>())
+    const loadedCursorsRef = React.useRef(new Set<string>())
+    const seenActivityIdsRef = React.useRef(new Set<string>())
+    const hasUserStartedScrollingRef = React.useRef(false)
 
     const handleToggleFollow = React.useCallback(async () => {
         if (!urlToken || isFollowPending) return;
@@ -203,59 +210,90 @@ const PeopleScreen = () => {
         currentOffset: string,
         currentPage: number,
         isRefresh = false,
+        generation = requestGenerationRef.current,
     ) => {
+        if (generation !== requestGenerationRef.current || activeTokenRef.current !== token) return;
+        const cursorKey = JSON.stringify([token, currentOffset, currentPage]);
+        if (inflightCursorsRef.current.has(cursorKey) || loadedCursorsRef.current.has(cursorKey)) return;
+        inflightCursorsRef.current.add(cursorKey);
         setIsLoadingActivities(true);
-        if (isRefresh) setActivities([]);
+        if (isRefresh) {
+            seenActivityIdsRef.current.clear();
+            loadedCursorsRef.current.clear();
+            setActivities([]);
+        }
 
         try {
             const data = await getUserActivities(token, currentOffset, currentPage);
-            console.log("User activities data retrieved");
+            if (generation !== requestGenerationRef.current || activeTokenRef.current !== token) return;
 
-            if (data && data.data && data.data.length > 0) {
-                // 清洗活动数据，将其转换为类似于 home.tsx 的 feedList 结构
-                const processedActivities = data.data.map((activity: any) => {
-                    const target = activity.target;
+            const rawActivities = Array.isArray(data?.data) ? data.data : [];
+            const seenIds = seenActivityIdsRef.current;
+            if (isRefresh) seenIds.clear();
+            const freshActivities: ActivityFeedEntry[] = [];
+            for (const activity of rawActivities) {
+                const target = activity?.target;
+                if (!target || (target.type !== 'answer' && target.type !== 'article')) continue;
+                const targetId = target.id == null ? '' : String(target.id).trim();
+                if (!targetId) continue;
+                const activityId = String(activity.id ?? '').trim() ||
+                    `${target.type}:${targetId}:${Number(activity.created_time) || 0}:${String(activity.action_text ?? '')}`;
+                if (!activityId || seenIds.has(activityId)) continue;
+                seenIds.add(activityId);
+                freshActivities.push(normalizeActivityFeedEntry({
+                    id: activityId,
+                    actionText: String(activity.action_text ?? ''),
+                    createdTime: Number(activity.created_time) || 0,
+                    feedType: target.type,
+                    item: normalizeActivityFeedItem({
+                        id: targetId,
+                        title: target.title || (target.question ? target.question.title : '无标题'),
+                        authorName: target.author?.name || '匿名用户',
+                        authorUrlToken: target.author?.url_token || '',
+                        authorAvatar: target.author?.avatar_url || '',
+                        excerpt: target.excerpt || '',
+                        updatedTime: target.updated_time || target.created || 0,
+                        voteCount: target.voteup_count || 0,
+                        commentCount: target.comment_count || 0,
+                        questionTitle: target.question?.title || '未知问题',
+                        questionId: target.question?.id || '',
+                    }),
+                }));
+            }
 
-                    if (target && (target.type === 'answer' || target.type === 'article')) {
-                        return {
-                            id: activity.id,
-                            actionText: activity.action_text,
-                            createdTime: activity.created_time,
-                            displayTime: new Date(activity.created_time * 1000).toLocaleString(),
-                            feedType: target.type,
-                            item: {
-                                id: target.id,
-                                title: target.title || (target.question ? target.question.title : '无标题'),
-                                authorName: target.author?.name || '匿名用户',
-                                authorUrlToken: target.author?.url_token || '',
-                                authorAvatar: target.author?.avatar_url || '',
-                                excerpt: target.excerpt || '',
-                                updatedTime: target.updated_time || target.created || 0,
-                                voteCount: target.voteup_count || 0,
-                                commentCount: target.comment_count || 0,
+            if (__DEV__) {
+                console.info(`[PEOPLE_PAGE] ${JSON.stringify({ token, currentOffset, currentPage, rawCount: rawActivities.length, displayedCount: freshActivities.length, ids: freshActivities.map((activity) => activity.id) })}`);
+            }
 
-                                questionTitle: target.question?.title || '未知问题',
-                                questionId: target.question?.id || '',
-                            }
-                        };
-                    }
-                    return null;
-                }).filter((item: any) => item !== null);
+            setActivities((previous) => {
+                const base = isRefresh ? [] : previous;
+                const mergedIds = new Set(base.map((activity) => activity.id));
+                return [...base, ...freshActivities.filter((activity) => {
+                    if (mergedIds.has(activity.id)) return false;
+                    mergedIds.add(activity.id);
+                    return true;
+                })];
+            });
+            loadedCursorsRef.current.add(cursorKey);
 
-                setActivities(prev => isRefresh ? processedActivities : [...prev, ...processedActivities]);
-
-                if (data.paging && data.paging.is_end === false) {
-                    const nextUrl = data.paging.next;
-                    try {
-                        const urlObj = new URL(nextUrl);
-                        const nextOffset = urlObj.searchParams.get('offset') || "";
-                        setOffsetString(nextOffset);
-                        setPageNum(currentPage + 1);
-                        setHasMoreActivities(true);
-                    } catch {
+            const paging = data?.paging;
+            if (paging?.is_end === false && typeof paging.next === 'string' && paging.next.length > 0) {
+                try {
+                    const nextUrl = new URL(paging.next, 'https://www.zhihu.com');
+                    const nextOffset = nextUrl.searchParams.get('offset') ?? currentOffset;
+                    const requestedPage = Number(nextUrl.searchParams.get('page_num'));
+                    const nextPage = Number.isInteger(requestedPage) && requestedPage > 0
+                        ? requestedPage
+                        : currentPage + 1;
+                    const nextCursorKey = JSON.stringify([token, nextOffset, nextPage]);
+                    if (nextCursorKey === cursorKey || loadedCursorsRef.current.has(nextCursorKey)) {
                         setHasMoreActivities(false);
+                    } else {
+                        setOffsetString(nextOffset);
+                        setPageNum(nextPage);
+                        setHasMoreActivities(true);
                     }
-                } else {
+                } catch {
                     setHasMoreActivities(false);
                 }
             } else {
@@ -264,14 +302,26 @@ const PeopleScreen = () => {
         } catch (error) {
             console.error("Failed to fetch user activities:", error);
         } finally {
-            setIsLoadingActivities(false);
+            inflightCursorsRef.current.delete(cursorKey);
+            if (generation === requestGenerationRef.current && activeTokenRef.current === token) {
+                setIsLoadingActivities(false);
+            }
         }
     }, []);
 
     React.useEffect(() => {
         if (!urlToken) return;
+        const token = String(urlToken);
+        const generation = requestGenerationRef.current + 1;
+        requestGenerationRef.current = generation;
+        activeTokenRef.current = token;
+        inflightCursorsRef.current.clear();
+        loadedCursorsRef.current.clear();
+        seenActivityIdsRef.current.clear();
+        hasUserStartedScrollingRef.current = false;
 
-        getUserInfo(urlToken).then((data) => {
+        getUserInfo(token).then((data) => {
+            if (generation !== requestGenerationRef.current || activeTokenRef.current !== token) return;
             setUserInfo(data)
             setIsFollowing(Boolean(data?.is_following))
         }).catch((error) => {
@@ -282,8 +332,19 @@ const PeopleScreen = () => {
         setOffsetString("");
         setPageNum(1);
         setHasMoreActivities(true);
-        void fetchActivities(urlToken, "", 1, true);
+        void fetchActivities(token, "", 1, true, generation);
+
+        return () => {
+            if (requestGenerationRef.current === generation) requestGenerationRef.current += 1;
+            if (activeTokenRef.current === token) activeTokenRef.current = null;
+        };
     }, [fetchActivities, urlToken])
+
+    React.useEffect(() => {
+        if (__DEV__) {
+            console.info(`[PEOPLE_STATE] ${JSON.stringify({ token: activeTokenRef.current, userLoaded: Boolean(userInfo), displayedCount: activities.length, displayedIds: activities.map((activity) => activity.id), isLoadingActivities, hasMoreActivities })}`);
+        }
+    }, [activities, hasMoreActivities, isLoadingActivities, userInfo]);
 
     const peopleHeader = React.useMemo(() => userInfo ? (
         <PeopleHeader
@@ -294,24 +355,18 @@ const PeopleScreen = () => {
         />
     ) : null, [handleToggleFollow, isFollowPending, isFollowing, userInfo]);
 
-    const renderActivity = React.useCallback(({ item }: { item: any }) => (
-        <View style={{ paddingHorizontal: 16, marginBottom: 16, alignItems: 'center' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 4 }}>
-                <Icon name="history" size={16} color={secondaryText} />
-                <Text type="footnote1" color={secondaryText}>
-                    {item.actionText} · {item.displayTime}
-                </Text>
-            </View>
-            <RenderItem item={item.item} type={item.feedType} needToGet={true} />
-        </View>
-    ), [secondaryText]);
-
-    const keyExtractor = React.useCallback((item: any, index: number) => item.id + index, []);
+    const renderActivityContent = React.useCallback((activity: ActivityFeedEntry) => {
+        if (__DEV__) console.info(`[PEOPLE_RENDER_ITEM] ${JSON.stringify({ id: activity.id, type: activity.feedType, itemId: activity.item.id })}`);
+        return <RenderItem item={activity.item} type={activity.feedType} needToGet={true} />;
+    }, []);
     const handleEndReached = React.useCallback(() => {
-        if (!isLoadingActivities && hasMoreActivities) {
+        if (hasUserStartedScrollingRef.current && !isLoadingActivities && hasMoreActivities) {
             void fetchActivities(urlToken, offsetString, pageNum);
         }
     }, [fetchActivities, hasMoreActivities, isLoadingActivities, offsetString, pageNum, urlToken]);
+    const handleScrollBeginDrag = React.useCallback(() => {
+        hasUserStartedScrollingRef.current = true;
+    }, []);
     const activityFooter = React.useMemo(() => (
         <View style={{ marginVertical: 20, alignItems: 'center' }}>
             {isLoadingActivities && <Text type="body2" color={secondaryText}>加载中...</Text>}
@@ -320,25 +375,25 @@ const PeopleScreen = () => {
     ), [activities.length, hasMoreActivities, isLoadingActivities, secondaryText]);
 
     return (
-        <PageScaffold topBar={<TopAppBar title={userInfo ? userInfo.name : "人物信息"} back={() => router.back()} />}>
-            {userInfo ? (
-                <PageFlatList
-                    data={activities}
-                    keyExtractor={keyExtractor}
-                    contentContainerStyle={{ paddingBottom: 40 }}
-                    ListHeaderComponent={peopleHeader}
-                    renderItem={renderActivity}
-                    onEndReached={handleEndReached}
-                    onEndReachedThreshold={0.5}
-                    ListFooterComponent={activityFooter}
-                />
-            ) : (
-                <PageContent style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                    <Text type="body1" color={primaryText}>Loading...</Text>
-                </PageContent>
-            )}
-        </PageScaffold>
-    )
+        <ActivityFeed
+            title={userInfo?.name || '人物信息'}
+            back={() => router.back()}
+            data={activities}
+            renderContent={renderActivityContent}
+            header={peopleHeader}
+            footer={activityFooter}
+            emptyContent={!userInfo ? (
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <Text type="body1" color={secondaryText}>Loading...</Text>
+                </View>
+            ) : null}
+            contentContainerStyle={{ paddingBottom: 40 }}
+            onEndReached={handleEndReached}
+            onEndReachedThreshold={0.5}
+            onScrollBeginDrag={handleScrollBeginDrag}
+            testID="people-feed"
+        />
+    );
 }
 
 export default PeopleScreen

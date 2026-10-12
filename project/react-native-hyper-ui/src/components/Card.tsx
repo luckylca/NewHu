@@ -3,40 +3,29 @@ import { cardSink, cardTilt } from '../motion';
 import { useReducedMotionPreference } from '../motion/MotionProvider';
 import { useTheme } from '../theme';
 import { useSurfaceEnvironment } from './SurfaceEnvironmentContext';
-import { GlassSurface } from '@newhu/react-native-liquid-glass';
+import { Surface } from '../primitives/Surface';
+import type { SurfaceMaterialMode } from '../primitives/Surface';
 import type { GlassVariant } from '@newhu/react-native-liquid-glass';
-import React, { useCallback, useMemo, useRef } from 'react';
+import type { GlassSurfaceRole } from '@newhu/react-native-liquid-glass';
+import React, { useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 import type { GestureResponderEvent, LayoutChangeEvent, StyleProp, ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useDerivedValue, useSharedValue, withSpring } from 'react-native-reanimated';
+import type { AnimatedStyle, SharedValue } from 'react-native-reanimated';
 
 /**
- * Design System Card.
- *
- * Visual reference:
- *   miuix-vue/src/components/card/Card.vue (Card.kt + PressFeedback.kt)
- *
- * radius 16, bg surfaceContainer, content onSurfaceContainer, overflow hidden.
- * Feedback:
- *   none — inert container.
- *   sink — scale 1.0 → 0.94, folmeSpring(0.8, 600).
- *   tilt — rotateX/Y ±9° (combined visual tilt ≈13°), folmeSpring(0.6, 400),
- *          centered pivot keeps large cards from swinging around a corner.
- * Long-press after 500ms emits onLongPress and swallows the following click.
- * No default heavy shadow.
+ * Material and interaction are independent: static cards keep their themed
+ * Glass/solid surface without mounting Pressable or press animation state.
  */
-
 export type CardFeedback = 'none' | 'sink' | 'tilt';
 
 export interface AppCardProps {
     feedback?: CardFeedback;
-    /** Draw the MiuixIndication alpha overlay on press. */
     showIndication?: boolean;
-    /** Latch the press feedback on (e.g. while a long-press dialog is open). */
     holdDown?: boolean;
-    /** Local Glass material role. Defaults to the standard card material. */
     glassVariant?: GlassVariant;
+    surfaceRole?: GlassSurfaceRole;
     accessibilityLabel?: string;
     onPress?: () => void;
     onPressIn?: () => void;
@@ -50,171 +39,303 @@ const SINK_AMOUNT = 0.94;
 const TILT_AMOUNT = 9;
 const TILT_PERSPECTIVE_FACTOR = 1.6;
 
-export const Card = React.memo(function Card({ feedback = 'sink', showIndication, holdDown, glassVariant = 'card', accessibilityLabel, onPress, onPressIn, onLongPress, style, contentStyle, children }: AppCardProps) {
+export const Card = React.memo(function Card(props: AppCardProps) {
+    const hasPressAction = !!props.onPress || !!props.onLongPress || !!props.onPressIn;
+    const feedback = props.feedback ?? (hasPressAction || props.holdDown ? 'sink' : 'none');
+
+    if (feedback === 'tilt') return <TiltCard {...props} />;
+    if (feedback === 'sink' && props.holdDown && !hasPressAction && !props.showIndication) {
+        return <LatchedSinkCard {...props} />;
+    }
+    if (feedback === 'sink') return <SinkCard {...props} />;
+    if (feedback === 'none' && props.showIndication) return <IndicationCard {...props} />;
+    if (hasPressAction) return <PressOnlyCard {...props} />;
+    return <StaticCardSurface {...props} />;
+});
+Card.displayName = 'HyperCard';
+
+function CardSurface({
+    glassVariant,
+    surfaceRole,
+    contentStyle,
+    animatedStyle,
+    centeredTransformOrigin,
+    style,
+    showIndication,
+    pressed,
+    children,
+}: Pick<AppCardProps, 'glassVariant' | 'surfaceRole' | 'contentStyle' | 'showIndication' | 'children'> & {
+    style?: AppCardProps['style'];
+    animatedStyle?: AnimatedStyle<ViewStyle>;
+    centeredTransformOrigin?: boolean;
+    pressed?: SharedValue<number>;
+}) {
     const theme = useTheme();
     const surfaceEnvironment = useSurfaceEnvironment();
-    const reducedMotion = useReducedMotionPreference();
     const radius = theme.components.card.radius;
-    const pressed = useSharedValue(0);
-    const tiltX = useSharedValue(0);
-    const tiltY = useSharedValue(0);
-    // Reanimated worklets cannot reliably observe a mutable JS ref. Keep the
-    // measured width in a shared value so perspective never falls back to 1.
-    const cardWidth = useSharedValue(1000);
+    const themedGlass = theme.presentation.content.cardMaterial === 'glass' && theme.glass.enabled;
+    const embeddedInGlassOverlay = themedGlass && surfaceEnvironment === 'glassOverlay';
+    const material: SurfaceMaterialMode = themedGlass && !embeddedInGlassOverlay
+        ? 'glass'
+        : embeddedInGlassOverlay ? 'overlayTint' : 'solid';
 
-    const cardSize = useRef({ width: 0, height: 0 });
-
-    const longPressFired = useRef(false);
-
-    const interactive = feedback === 'tilt' || !!onPress || !!onLongPress;
-    const liquidGlassCard = theme.presentation.content.cardMaterial === 'glass' && theme.glass.enabled;
-    const embeddedInGlassOverlay = liquidGlassCard && surfaceEnvironment === 'glassOverlay';
-    const usesLocalGlass = liquidGlassCard && !embeddedInGlassOverlay;
-    const glassContentStyle = useMemo(() => {
-        const flattened = StyleSheet.flatten(contentStyle);
-        if (!flattened || !('backgroundColor' in flattened)) return contentStyle;
-        // The Glass material owns the card fill. Preserve content layout while
-        // preventing legacy solid-card paint from covering the local shader.
-        const layoutStyle = { ...flattened };
-        delete layoutStyle.backgroundColor;
-        return layoutStyle;
-    }, [contentStyle]);
-    const glassContainerStyle = useMemo(() => {
-        const flattened = StyleSheet.flatten(contentStyle);
-        if (!flattened) return undefined;
-
-        // Card used to apply contentStyle to its root view. Keep the sizing
-        // part of that contract on the GlassSurface frame so fixed-height
-        // cards still fill their slot; row/padding/alignment stay on content.
-        const containerStyle: ViewStyle = {};
-        const sizingKeys: Array<keyof ViewStyle> = [
-            'flex', 'flexGrow', 'flexShrink', 'flexBasis', 'alignSelf',
-            'width', 'height', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight',
-        ];
-        for (const key of sizingKeys) {
-            const value = flattened[key];
-            if (value !== undefined) {
-                // ViewStyle has heterogeneous value types, but indexed values
-                // are copied back to the same key without changing their type.
-                (containerStyle as Record<string, unknown>)[key] = value;
-            }
-        }
-        return containerStyle;
-    }, [contentStyle]);
-
-    const engaged = useDerivedValue(() => (pressed.value === 1 || holdDown ? 1 : 0));
-
-    const animatedStyle = useAnimatedStyle(() => {
-        if (feedback === 'sink') {
-            return {
-                transform: [{ scale: reducedMotion ? 1 : withSpring(engaged.value === 1 ? SINK_AMOUNT : 1, cardSink) }],
-            };
-        }
-        if (feedback === 'tilt') {
-            return {
-                transform: [
-                    { perspective: Math.max(cardWidth.value * TILT_PERSPECTIVE_FACTOR, 800) },
-                    { rotateX: reducedMotion ? '0deg' : withSpring(`${tiltX.value}deg`, cardTilt) },
-                    { rotateY: reducedMotion ? '0deg' : withSpring(`${tiltY.value}deg`, cardTilt) },
-                ],
-            };
-        }
-        return {};
-    }, [feedback, reducedMotion]);
-
-    const onLayout = useCallback((e: LayoutChangeEvent) => {
-        const { width, height } = e.nativeEvent.layout;
-        cardSize.current = { width, height };
-        cardWidth.value = width || 1000;
-    }, [cardWidth]);
-
-    const handlePressIn = useCallback(
-        (e: GestureResponderEvent) => {
-            longPressFired.current = false;
-            if (feedback === 'tilt') {
-                const { locationX, locationY } = e.nativeEvent;
-                const halfW = (cardSize.current.width || 1) / 2;
-                const halfH = (cardSize.current.height || 1) / 2;
-                tiltX.value = locationY < halfH ? TILT_AMOUNT : -TILT_AMOUNT;
-                tiltY.value = locationX < halfW ? -TILT_AMOUNT : TILT_AMOUNT;
-            }
-            pressed.value = 1;
-            onPressIn?.();
-        },
-        [feedback, onPressIn, tiltX, tiltY, pressed],
+    return (
+        <Surface
+            material={material}
+            glassVariant={glassVariant}
+            surfaceRole={surfaceRole}
+            radius={radius}
+            backgroundColor={embeddedInGlassOverlay
+                ? theme.glass.tint[theme.dark ? 'dark' : 'light']
+                : theme.colors.surfaceContainer}
+            borderWidth={embeddedInGlassOverlay ? StyleSheet.hairlineWidth : 0}
+            borderColor={embeddedInGlassOverlay ? theme.colors.dividerLine : 'transparent'}
+            contentStyle={contentStyle}
+            animatedStyle={animatedStyle}
+            centeredTransformOrigin={centeredTransformOrigin}
+            style={style}
+        >
+            {children}
+            {showIndication && pressed != null &&
+                <PressIndication pressed={pressed} color={theme.colors.onBackground} radius={radius} />}
+        </Surface>
     );
+}
 
-    const handlePressOut = useCallback(() => {
-        pressed.value = 0;
-        tiltX.value = 0;
-        tiltY.value = 0;
-    }, [tiltX, tiltY, pressed]);
+function StaticCardSurface(props: AppCardProps) {
+    return (
+        <CardSurface
+            glassVariant={props.glassVariant}
+            surfaceRole={props.surfaceRole}
+            contentStyle={props.contentStyle}
+            style={props.style}
+            showIndication={false}
+        >
+            {props.children}
+        </CardSurface>
+    );
+}
 
-    const handleLongPress = useCallback((event: GestureResponderEvent) => {
-        longPressFired.current = true;
-        onLongPress?.(event);
-    }, [onLongPress]);
-
+function PressOnlyCard(props: AppCardProps) {
+    const longPressFired = useRef(false);
     const handlePress = useCallback(() => {
-        // A completed long-press swallows the click (combinedClickable parity).
         if (longPressFired.current) {
             longPressFired.current = false;
             return;
         }
-        onPress?.();
-    }, [onPress]);
+        props.onPress?.();
+    }, [props.onPress]);
+    const handleLongPress = useCallback((event: GestureResponderEvent) => {
+        longPressFired.current = true;
+        props.onLongPress?.(event);
+    }, [props.onLongPress]);
 
     return (
         <Pressable
-            accessibilityRole={interactive ? 'button' : undefined}
-            accessibilityLabel={accessibilityLabel}
-            onPress={interactive ? handlePress : undefined}
-            onPressIn={interactive ? handlePressIn : undefined}
-            onPressOut={interactive ? handlePressOut : undefined}
-            onLongPress={interactive && !!onLongPress ? handleLongPress : undefined}
-            onLayout={feedback === 'tilt' ? onLayout : undefined}
-            style={style}
+            accessibilityRole="button"
+            accessibilityLabel={props.accessibilityLabel}
+            onPress={handlePress}
+            onPressIn={props.onPressIn}
+            onLongPress={props.onLongPress ? handleLongPress : undefined}
+            style={props.style}
         >
-            {usesLocalGlass ? (
-                <GlassSurface
-                    variant={glassVariant}
-                    positioning="inFlow"
-                    sampling="local"
-                    style={[
-                        { width: '100%', borderRadius: radius, overflow: 'hidden' },
-                        glassContainerStyle,
-                        feedback === 'tilt' ? { transformOrigin: '50% 50%' } : undefined,
-                        { backgroundColor: 'transparent' },
-                    ]}
-                    contentStyle={glassContentStyle}
-                    animatedStyle={animatedStyle}
-                >
-                    {children}
-                    {showIndication && <PressIndication pressed={pressed} color={theme.colors.onBackground} radius={radius} />}
-                </GlassSurface>
-            ) : (
-                <Animated.View
-                    style={[
-                        {
-                            backgroundColor: embeddedInGlassOverlay
-                                ? theme.glass.tint[theme.dark ? 'dark' : 'light']
-                                : theme.colors.surfaceContainer,
-                            borderRadius: radius,
-                            overflow: 'hidden',
-                            flexDirection: 'column',
-                            borderWidth: embeddedInGlassOverlay ? StyleSheet.hairlineWidth : 0,
-                            borderColor: embeddedInGlassOverlay ? theme.colors.dividerLine : 'transparent',
-                        },
-                        feedback === 'tilt' ? { transformOrigin: '50% 50%' } : undefined,
-                        embeddedInGlassOverlay ? glassContentStyle : contentStyle,
-                        animatedStyle,
-                    ]}
-                >
-                    {children}
-                    {showIndication && <PressIndication pressed={pressed} color={theme.colors.onBackground} radius={radius} />}
-                </Animated.View>
-            )}
+            <CardSurface glassVariant={props.glassVariant} surfaceRole={props.surfaceRole} contentStyle={props.contentStyle} showIndication={false}>
+                {props.children}
+            </CardSurface>
         </Pressable>
     );
-});
-Card.displayName = 'HyperCard';
+}
+
+function IndicationCard(props: AppCardProps) {
+    const pressed = useSharedValue(0);
+    const longPressFired = useRef(false);
+    const handlePress = useCallback(() => {
+        if (longPressFired.current) {
+            longPressFired.current = false;
+            return;
+        }
+        props.onPress?.();
+    }, [props.onPress]);
+    const handleLongPress = useCallback((event: GestureResponderEvent) => {
+        longPressFired.current = true;
+        props.onLongPress?.(event);
+    }, [props.onLongPress]);
+    const onPressIn = useCallback(() => {
+        pressed.value = 1;
+        props.onPressIn?.();
+    }, [props.onPressIn, pressed]);
+    const onPressOut = useCallback(() => {
+        pressed.value = 0;
+    }, [pressed]);
+
+    return (
+        <Pressable
+            accessibilityRole={props.onPress || props.onLongPress ? 'button' : undefined}
+            accessibilityLabel={props.accessibilityLabel}
+            onPress={handlePress}
+            onPressIn={onPressIn}
+            onPressOut={onPressOut}
+            onLongPress={props.onLongPress ? handleLongPress : undefined}
+            style={props.style}
+        >
+            <CardSurface
+                glassVariant={props.glassVariant}
+                surfaceRole={props.surfaceRole}
+                contentStyle={props.contentStyle}
+                showIndication
+                pressed={pressed}
+            >
+                {props.children}
+            </CardSurface>
+        </Pressable>
+    );
+}
+
+function SinkCard(props: AppCardProps) {
+    const reducedMotion = useReducedMotionPreference();
+    const pressed = useSharedValue(0);
+    const engaged = useDerivedValue(() => (pressed.value === 1 || props.holdDown ? 1 : 0));
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: reducedMotion ? 1 : withSpring(engaged.value === 1 ? SINK_AMOUNT : 1, cardSink) }],
+    }), [reducedMotion]);
+    const longPressFired = useRef(false);
+    const handlePress = useCallback(() => {
+        if (longPressFired.current) {
+            longPressFired.current = false;
+            return;
+        }
+        props.onPress?.();
+    }, [props.onPress]);
+    const handleLongPress = useCallback((event: GestureResponderEvent) => {
+        longPressFired.current = true;
+        props.onLongPress?.(event);
+    }, [props.onLongPress]);
+    const onPressIn = useCallback(() => {
+        longPressFired.current = false;
+        pressed.value = 1;
+        props.onPressIn?.();
+    }, [props.onPressIn, pressed]);
+    const onPressOut = useCallback(() => {
+        pressed.value = 0;
+    }, [pressed]);
+
+    return (
+        <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={props.accessibilityLabel}
+            onPress={handlePress}
+            onPressIn={onPressIn}
+            onPressOut={onPressOut}
+            onLongPress={props.onLongPress ? handleLongPress : undefined}
+            style={props.style}
+        >
+            <CardSurface
+                glassVariant={props.glassVariant}
+                surfaceRole={props.surfaceRole}
+                contentStyle={props.contentStyle}
+                animatedStyle={animatedStyle}
+                showIndication={props.showIndication}
+                pressed={pressed}
+            >
+                {props.children}
+            </CardSurface>
+        </Pressable>
+    );
+}
+
+function LatchedSinkCard(props: AppCardProps) {
+    const reducedMotion = useReducedMotionPreference();
+    const engaged = useDerivedValue(() => (props.holdDown ? 1 : 0), [props.holdDown]);
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: reducedMotion ? 1 : withSpring(engaged.value === 1 ? SINK_AMOUNT : 1, cardSink) }],
+    }), [reducedMotion]);
+
+    return (
+        <Animated.View style={props.style}>
+            <CardSurface
+                glassVariant={props.glassVariant}
+                surfaceRole={props.surfaceRole}
+                contentStyle={props.contentStyle}
+                animatedStyle={animatedStyle}
+                showIndication={false}
+            >
+                {props.children}
+            </CardSurface>
+        </Animated.View>
+    );
+}
+
+function TiltCard(props: AppCardProps) {
+    const reducedMotion = useReducedMotionPreference();
+    const pressed = useSharedValue(0);
+    const tiltX = useSharedValue(0);
+    const tiltY = useSharedValue(0);
+    const cardWidth = useSharedValue(1000);
+    const cardSize = useRef({ width: 0, height: 0 });
+    const longPressFired = useRef(false);
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [
+            { perspective: Math.max(cardWidth.value * TILT_PERSPECTIVE_FACTOR, 800) },
+            { rotateX: reducedMotion ? '0deg' : withSpring(tiltX.value + 'deg', cardTilt) },
+            { rotateY: reducedMotion ? '0deg' : withSpring(tiltY.value + 'deg', cardTilt) },
+        ],
+    }), [reducedMotion]);
+
+    const onLayout = useCallback((event: LayoutChangeEvent) => {
+        const { width, height } = event.nativeEvent.layout;
+        cardSize.current = { width, height };
+        cardWidth.value = width || 1000;
+    }, [cardWidth]);
+    const handlePressIn = useCallback((event: GestureResponderEvent) => {
+        longPressFired.current = false;
+        const { locationX, locationY } = event.nativeEvent;
+        const halfW = (cardSize.current.width || 1) / 2;
+        const halfH = (cardSize.current.height || 1) / 2;
+        tiltX.value = locationY < halfH ? TILT_AMOUNT : -TILT_AMOUNT;
+        tiltY.value = locationX < halfW ? -TILT_AMOUNT : TILT_AMOUNT;
+        pressed.value = 1;
+        props.onPressIn?.();
+    }, [props.onPressIn, pressed, tiltX, tiltY]);
+    const handlePressOut = useCallback(() => {
+        pressed.value = 0;
+        tiltX.value = 0;
+        tiltY.value = 0;
+    }, [pressed, tiltX, tiltY]);
+    const handleLongPress = useCallback((event: GestureResponderEvent) => {
+        longPressFired.current = true;
+        props.onLongPress?.(event);
+    }, [props.onLongPress]);
+    const handlePress = useCallback(() => {
+        if (longPressFired.current) {
+            longPressFired.current = false;
+            return;
+        }
+        props.onPress?.();
+    }, [props.onPress]);
+
+    return (
+        <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={props.accessibilityLabel}
+            onPress={handlePress}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
+            onLongPress={props.onLongPress ? handleLongPress : undefined}
+            onLayout={onLayout}
+            style={props.style}
+        >
+            <CardSurface
+                glassVariant={props.glassVariant}
+                surfaceRole={props.surfaceRole}
+                contentStyle={props.contentStyle}
+                animatedStyle={animatedStyle}
+                centeredTransformOrigin
+                showIndication={props.showIndication}
+                pressed={pressed}
+            >
+                {props.children}
+            </CardSurface>
+        </Pressable>
+    );
+}

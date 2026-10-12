@@ -1,7 +1,6 @@
 import { notify } from '@/src/stores/useNotificationStore';
 import { useSettingStore } from '@/src/stores/useSettingStore';
-import { Button, Card, Dialog, Divider, Icon, Input, ListRow, PageScaffold, PageScrollView, TopAppBar } from '@/src/ui';
-import { Text } from '@/src/ui/primitives';
+import { Button, Dialog, Divider, Icon, Input, ListRow, SettingsSection, StaticSettingsPage } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
@@ -14,13 +13,11 @@ export default function AdvancedSettingsScreen() {
     const [dialogVisible, setDialogVisible] = useState(false);
     const [draft, setDraft] = useState(cookie);
 
-    return (
-        <PageScaffold topBar={<TopAppBar title="高级设置" back={() => router.back()} />}>
-            <PageScrollView contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}>
-                <Card feedback="none" style={{ marginTop: theme.spacing.lg }}>
-                    <View style={{ paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: theme.spacing.xs }}>
-                        <Text type="footnote1" weight="bold" color={theme.colors.primary}>调试</Text>
-                    </View>
+    const sections = React.useMemo(() => [
+        {
+            key: 'debug',
+            node: (
+                <SettingsSection title="调试">
                     <ListRow
                         title="自定义 Cookie"
                         summary={cookie ? '已配置，仅用于接口调试' : '未配置'}
@@ -52,9 +49,28 @@ export default function AdvancedSettingsScreen() {
                         trailing={<Icon name="chevron-right" size={22} color={theme.colors.onSurfaceVariantActions} />}
                         onPress={() => router.push('/dev/hyper-glow')}
                     />
-                </Card>
-            </PageScrollView>
+                    <Divider style={{ marginLeft: 56 }} />
+                    <ListRow
+                        title="Settings 原生运行时采样"
+                        summary="开启 native telemetry 后进入 Settings；返回时输出计数快照"
+                        icon={<Icon name="chart-timeline-variant" size={24} color={theme.colors.primary} />}
+                        trailing={<Icon name="chevron-right" size={22} color={theme.colors.onSurfaceVariantActions} />}
+                        onPress={() => router.push({
+                            pathname: '/dev/performance-benchmark',
+                            params: { case: 'settings', nativeTelemetry: '1', engine: 'core' },
+                        })}
+                    />
+                </SettingsSection>
+            ),
+        },
+    ], [cookie, theme.colors.onSurfaceVariantActions, theme.colors.primary]);
 
+    return (
+        <StaticSettingsPage
+            title="高级设置"
+            back={() => router.back()}
+            contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
+            overlays={(
             <Dialog visible={dialogVisible} onClose={() => setDialogVisible(false)} title="自定义 Cookie">
                 <Input
                     value={draft}
@@ -68,6 +84,10 @@ export default function AdvancedSettingsScreen() {
                     <Button type="primary" onPress={() => { setCookie(draft.trim()); setDialogVisible(false); notify('Cookie 已保存'); }}>保存</Button>
                 </View>
             </Dialog>
-        </PageScaffold>
+            )}
+            testID="devmode"
+        >
+            {sections.map((section) => <React.Fragment key={section.key}>{section.node}</React.Fragment>)}
+        </StaticSettingsPage>
     );
 }

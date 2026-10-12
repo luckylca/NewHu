@@ -3,7 +3,7 @@ export type { AppTextProps, TextWeight, TextType } from './Text';
 export { Icon } from './Icon';
 export type { AppIconProps, IconName, IconWeight } from './Icon';
 export { Surface } from './Surface';
-export type { AppSurfaceProps } from './Surface';
+export type { AppSurfaceProps, SurfaceMaterialMode } from './Surface';
 export { Divider } from './Divider';
 export type { AppDividerProps } from './Divider';
 export { PressIndication } from './PressIndication';

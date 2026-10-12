@@ -5,15 +5,15 @@ import android.graphics.Canvas
 import android.graphics.Rect
 import android.graphics.RenderNode
 import android.os.Build
-import android.os.Handler
 import android.os.Looper
 import android.view.View
-import android.view.ViewGroup
-import android.view.ViewTreeObserver
+import android.view.MotionEvent
 import com.newhu.liquidglass.backdrop.BackdropRecorder
+import com.newhu.liquidglass.backdrop.GlassBackdropCoordinator
+import com.newhu.liquidglass.backdrop.GlassBackdropCoordinatorHost
+import com.newhu.liquidglass.backdrop.GlassBackdropDirtyReason
 import com.newhu.liquidglass.backdrop.FrozenBackdrop
 import com.newhu.liquidglass.backdrop.LiquidGlassBackdropSource
-import com.newhu.liquidglass.scheduler.GlassFrameScheduler
 import com.newhu.liquidglass.telemetry.LiquidGlassPerfTelemetry
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
@@ -22,72 +22,24 @@ import java.util.IdentityHashMap
 internal class ExpoGlassProviderCoreView(
     context: Context,
     appContext: AppContext,
-) : ExpoView(context, appContext), LiquidGlassBackdropSource {
+) : ExpoView(context, appContext), LiquidGlassBackdropSource, GlassBackdropCoordinatorHost {
     private val recorder = BackdropRecorder()
     private val sourceLocation = IntArray(2)
     private val consumerLocation = IntArray(2)
     private val consumerBounds = IdentityHashMap<View, Rect>()
-    private val scrollTargets = IdentityHashMap<View, IntArray>()
-    private val mainHandler = Handler(Looper.getMainLooper())
     private var frozenBackdrop: FrozenBackdrop? = null
-    private var observingScroll = false
     private var backdropDirty = true
     private var oneShotCaptured = false
-    private var scrollActive = false
-    private var contentDirtyDuringScroll = false
-    private var scrollConsumerRefreshPending = false
-    private var sourceCapturePending = false
-    private val frameScheduler = GlassFrameScheduler {
-        if (!recorder.hasConsumers) {
-            scrollConsumerRefreshPending = false
-            sourceCapturePending = false
-            return@GlassFrameScheduler
-        }
-        if (!scrollActive && sourceCapturePending) {
-            sourceCapturePending = false
-            scrollConsumerRefreshPending = false
-            LiquidGlassPerfTelemetry.sourceContentDirty()
-            markBackdropDirty()
-            return@GlassFrameScheduler
-        }
-        if (scrollConsumerRefreshPending) {
-            scrollConsumerRefreshPending = false
-            LiquidGlassPerfTelemetry.sourceContentDirty()
-            LiquidGlassPerfTelemetry.routeScrollReuse()
-            recorder.invalidateConsumers()
-            LiquidGlassPerfTelemetry.consumerInvalidationExecuted()
-        }
-    }
-    private val scrollChangedListener = ViewTreeObserver.OnScrollChangedListener {
-        LiquidGlassPerfTelemetry.scrollEventReceived()
-        if (!recorder.hasConsumers || captureMode != "live") return@OnScrollChangedListener
-        if (scrollTargets.isEmpty()) refreshScrollTargets()
-        if (!hasTrackedScrollMoved()) return@OnScrollChangedListener
-        scrollActive = true
-        if (sourceCapturePending) {
-            sourceCapturePending = false
-            contentDirtyDuringScroll = true
-        }
-        scrollConsumerRefreshPending = true
-        frameScheduler.schedule()
-        mainHandler.removeCallbacks(settleScrollCapture)
-        mainHandler.postDelayed(settleScrollCapture, 200L)
-    }
-    private val settleScrollCapture = Runnable {
-        if (captureMode == "live" && recorder.hasConsumers) {
-            scrollActive = false
-            if (contentDirtyDuringScroll) {
-                contentDirtyDuringScroll = false
-                sourceCapturePending = true
-                LiquidGlassPerfTelemetry.settleCaptureExecuted()
-                frameScheduler.schedule()
-            } else if (scrollConsumerRefreshPending) {
-                frameScheduler.schedule()
-            }
-        }
-    }
     private val consumerLayoutListener = View.OnLayoutChangeListener { consumer, _, _, _, _, _, _, _, _ ->
         updateConsumerBounds(consumer)
+    }
+    private val directChildBounds = IdentityHashMap<View, Rect>()
+    private val directChildLayoutListener = View.OnLayoutChangeListener { child, left, top, right, bottom, _, _, _, _ ->
+        val next = Rect(left, top, right, bottom)
+        val previous = directChildBounds.put(child, next)
+        if (previous != next && shouldCapture()) {
+            coordinator.markDirty(GlassBackdropDirtyReason.SOURCE_GEOMETRY)
+        }
     }
 
     var providerId: String = "default"
@@ -105,45 +57,43 @@ internal class ExpoGlassProviderCoreView(
         }
 
     var underlayProviderId: String? = null
+        set(value) {
+            if (field == value) return
+            field = value
+            if (shouldCapture()) coordinator.markDirty(GlassBackdropDirtyReason.SOURCE_REVISION)
+        }
 
     var captureMode: String = "live"
         set(value) {
             if (field == value) return
             field = value
             when (value) {
-                "oneShot" -> {
-                    clearGlassFrameWork()
-                    mainHandler.removeCallbacks(settleScrollCapture)
+                "oneShot", "oneShotPassThrough" -> {
+                    coordinator.cancel(clearSourceDirties = true)
                     oneShotCaptured = false
                     frozenBackdrop?.release()
                     frozenBackdrop = null
                     updateScrollObservation()
-                    markBackdropDirty()
+                    coordinator.markDirty(GlassBackdropDirtyReason.INITIAL_CAPTURE)
                 }
                 "frozen" -> {
-                    clearGlassFrameWork()
-                    mainHandler.removeCallbacks(settleScrollCapture)
+                    coordinator.cancel(clearSourceDirties = true)
                     backdropDirty = false
                     oneShotCaptured = true
-                    scrollTargets.clear()
                     updateScrollObservation()
                 }
                 "static" -> {
-                    clearGlassFrameWork()
-                    mainHandler.removeCallbacks(settleScrollCapture)
-                    scrollTargets.clear()
-                    if (!recorder.hasRecording) markBackdropDirty()
+                    coordinator.cancel(clearSourceDirties = true)
+                    if (!recorder.hasRecording) coordinator.markDirty(GlassBackdropDirtyReason.INITIAL_CAPTURE)
                     updateScrollObservation()
                 }
                 else -> {
-                    clearGlassFrameWork()
-                    mainHandler.removeCallbacks(settleScrollCapture)
+                    coordinator.cancel(clearSourceDirties = true)
                     oneShotCaptured = false
                     frozenBackdrop?.release()
                     frozenBackdrop = null
-                    if (recorder.hasConsumers) refreshScrollTargets()
                     updateScrollObservation()
-                    markBackdropDirty()
+                    if (recorder.hasConsumers) coordinator.markDirty(GlassBackdropDirtyReason.SOURCE_REVISION)
                 }
             }
         }
@@ -153,9 +103,9 @@ internal class ExpoGlassProviderCoreView(
             val next = value.coerceAtLeast(0f)
             if (field == next) return
             field = next
-            if (captureMode == "oneShot") {
+            if (captureMode == "oneShot" || captureMode == "oneShotPassThrough") {
                 oneShotCaptured = false
-                markBackdropDirty()
+                coordinator.markDirty(GlassBackdropDirtyReason.SOURCE_REVISION)
             }
         }
 
@@ -163,11 +113,55 @@ internal class ExpoGlassProviderCoreView(
         set(value) {
             if (field == value) return
             field = value
-            if (captureMode == "static" || captureMode == "oneShot") markBackdropDirty()
+            if (captureMode == "oneShot" || captureMode == "oneShotPassThrough") oneShotCaptured = false
+            if (shouldCapture()) coordinator.markDirty(GlassBackdropDirtyReason.SOURCE_REVISION)
         }
+
+    private val coordinator = GlassBackdropCoordinator(
+        sourceView = this,
+        providerId = { providerId },
+        host = this,
+    )
+
+    override val hasBackdropConsumers: Boolean
+        get() = recorder.hasConsumers
+
+    fun setDetailedScrollTelemetryEnabled(enabled: Boolean) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            coordinator.setDetailedScrollTelemetryEnabled(enabled)
+        } else {
+            post { coordinator.setDetailedScrollTelemetryEnabled(enabled) }
+        }
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        coordinator.onMotionEvent(event)
+        return super.dispatchTouchEvent(event)
+    }
+
+    override val canCaptureBackdrop: Boolean
+        get() = isAttachedToWindow && shouldCapture() && width > 0 && height > 0
 
     override val sourceView: View
         get() = this
+
+    override fun requestBackdropSourceRecord() {
+        if (!canCaptureBackdrop) {
+            coordinator.sourceRecordDeferred()
+            return
+        }
+        backdropDirty = true
+        postInvalidateOnAnimation()
+    }
+
+    override fun refreshBackdropConsumers() {
+        recorder.invalidateConsumers()
+    }
+
+    override fun onBackdropScrollReuseFrame() {
+        LiquidGlassPerfTelemetry.routeScrollReuse()
+        recorder.invalidateConsumers()
+    }
 
     override val contentRenderNode: RenderNode?
         get() = frozenBackdrop?.contentRenderNode ?: recorder.contentNode
@@ -196,9 +190,9 @@ internal class ExpoGlassProviderCoreView(
         recorder.register(consumer)
         if (!consumerBounds.containsKey(consumer)) consumer.addOnLayoutChangeListener(consumerLayoutListener)
         updateConsumerBounds(consumer)
-        if (captureMode == "live" && (!hadRecording || scrollTargets.isEmpty())) refreshScrollTargets()
+        coordinator.refreshScrollTargets()
         updateScrollObservation()
-        if (!hadRecording && captureMode != "frozen") markBackdropDirty()
+        if (!hadRecording && captureMode != "frozen") coordinator.markDirty(GlassBackdropDirtyReason.INITIAL_CAPTURE)
     }
 
     override fun unregisterConsumer(consumer: View) {
@@ -208,9 +202,7 @@ internal class ExpoGlassProviderCoreView(
         reportProviderGeometry()
         updateScrollObservation()
         if (!recorder.hasConsumers) {
-            clearGlassFrameWork()
-            mainHandler.removeCallbacks(settleScrollCapture)
-            scrollTargets.clear()
+            coordinator.cancel(clearSourceDirties = true)
             if (captureMode != "static") {
                 backdropDirty = false
                 recorder.release()
@@ -224,16 +216,19 @@ internal class ExpoGlassProviderCoreView(
     }
 
     override fun requestCaptureFrame() {
-        if (captureMode == "live" || captureMode == "static") markBackdropDirty()
-        if (captureMode == "oneShot" && !oneShotCaptured) markBackdropDirty()
+        if (shouldCapture()) coordinator.markDirty(GlassBackdropDirtyReason.SOURCE_PAINT)
     }
 
     override fun onConsumerGeometryChanged(consumer: View) {
         updateConsumerBounds(consumer)
     }
 
+    override fun onConsumerDirty(consumer: View, reason: GlassBackdropDirtyReason) {
+        coordinator.markDirty(reason, consumerAlreadyInvalidated = true)
+    }
+
     fun setCaptureModeImperatively(mode: String) {
-        if (mode in setOf("live", "static", "oneShot", "frozen")) captureMode = mode
+        if (mode in setOf("live", "static", "oneShot", "oneShotPassThrough", "frozen")) captureMode = mode
     }
 
     fun prepareFrozenBackdropImperatively(blurRadiusDp: Float) {
@@ -265,50 +260,66 @@ internal class ExpoGlassProviderCoreView(
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         CoreLiquidGlassRegistry.registerProvider(providerId, this)
-        if (captureMode == "oneShot") oneShotCaptured = false
+        if (captureMode == "oneShot" || captureMode == "oneShotPassThrough") oneShotCaptured = false
         if (captureMode == "frozen" && recorder.hasConsumers && !recorder.hasRecording) captureMode = "oneShot"
-        if (captureMode == "live" && recorder.hasConsumers && scrollTargets.isEmpty()) refreshScrollTargets()
         updateScrollObservation()
-        if ((captureMode == "static" || captureMode == "oneShot") && !recorder.hasRecording) markBackdropDirty()
+        coordinator.refreshScrollTargets()
+        if (recorder.hasConsumers && shouldCapture() && !recorder.hasRecording) {
+            coordinator.markDirty(GlassBackdropDirtyReason.INITIAL_CAPTURE)
+        }
     }
 
     override fun onDetachedFromWindow() {
         CoreLiquidGlassRegistry.unregisterProvider(providerId, this)
-        mainHandler.removeCallbacks(settleScrollCapture)
-        clearGlassFrameWork()
-        updateScrollObservation()
+        coordinator.setScrollObservationEnabled(false)
+        coordinator.cancel(clearSourceDirties = true)
         frozenBackdrop?.release()
         frozenBackdrop = null
         backdropDirty = false
         oneShotCaptured = false
-        scrollTargets.clear()
         LiquidGlassPerfTelemetry.removeProviderGeometry(providerId)
         recorder.release()
         super.onDetachedFromWindow()
     }
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
-        if (recorder.hasConsumers && shouldCapture() && width > 0 && height > 0) {
-            if (captureMode == "live" && scrollTargets.isEmpty()) refreshScrollTargets()
-            updateScrollObservation()
-            sourceCapturePending = true
-            frameScheduler.schedule()
-        }
         super.onSizeChanged(width, height, oldWidth, oldHeight)
+        if (shouldCapture() && width > 0 && height > 0 &&
+            (width != oldWidth || height != oldHeight)
+        ) {
+            coordinator.markDirty(GlassBackdropDirtyReason.SOURCE_GEOMETRY)
+            updateScrollObservation()
+        }
     }
 
     override fun onDescendantInvalidated(child: View, target: View) {
         if (shouldCapture() && recorder.hasConsumers) {
             LiquidGlassPerfTelemetry.descendantInvalidationReceived()
-            if (captureMode == "live" && scrollActive) {
-                contentDirtyDuringScroll = true
-                scrollConsumerRefreshPending = true
-            } else {
-                sourceCapturePending = true
+            if (!recorder.isConsumerSubtree(target, this)) {
+                coordinator.markDirty(GlassBackdropDirtyReason.SOURCE_PAINT)
             }
-            if (!frameScheduler.schedule()) LiquidGlassPerfTelemetry.descendantInvalidationCoalesced()
         }
         super.onDescendantInvalidated(child, target)
+    }
+
+    override fun onViewAdded(child: View) {
+        super.onViewAdded(child)
+        directChildBounds[child] = Rect(child.left, child.top, child.right, child.bottom)
+        child.addOnLayoutChangeListener(directChildLayoutListener)
+        coordinator.refreshScrollTargets()
+        if (shouldCapture()) {
+            coordinator.markDirty(GlassBackdropDirtyReason.SOURCE_STRUCTURE)
+        }
+    }
+
+    override fun onViewRemoved(child: View) {
+        child.removeOnLayoutChangeListener(directChildLayoutListener)
+        directChildBounds.remove(child)
+        super.onViewRemoved(child)
+        coordinator.refreshScrollTargets()
+        if (shouldCapture()) {
+            coordinator.markDirty(GlassBackdropDirtyReason.SOURCE_STRUCTURE)
+        }
     }
 
     override fun dispatchDraw(canvas: Canvas) {
@@ -318,13 +329,49 @@ internal class ExpoGlassProviderCoreView(
             super.dispatchDraw(canvas)
             return
         }
-        val shouldRecord = shouldCapture() && (backdropDirty || !recorder.hasRecording)
+        if (captureMode == "oneShotPassThrough") {
+            val shouldRecord = shouldCapture() &&
+                (backdropDirty || !recorder.hasRecording || coordinator.shouldRecordSourceNow)
+            if (shouldRecord && canvas.isHardwareAccelerated && width > 0 && height > 0) {
+                backdropDirty = false
+                recorder.recordOnly(width, height, drawContent = ::dispatchBackdropContent)
+                if (recorder.hasRecording) {
+                    oneShotCaptured = true
+                    coordinator.sourceRecordCompleted()
+                    contentRenderNode?.let(::updateConsumerRegions)
+                    LiquidGlassPerfTelemetry.routeRenderNodeRecord()
+                    LiquidGlassPerfTelemetry.routeTreeTraversal()
+                    LiquidGlassPerfTelemetry.backdropCapture(
+                        providerId = providerId,
+                        width = width,
+                        height = height,
+                        capturedPixelArea = consumerBounds.values.sumOf {
+                            it.width().coerceAtLeast(0).toLong() * it.height().coerceAtLeast(0)
+                        },
+                        mode = "oneShot-pass-through",
+                    )
+                } else {
+                    backdropDirty = true
+                    coordinator.sourceRecordDeferred()
+                }
+            } else if (shouldRecord) {
+                coordinator.sourceRecordDeferred()
+            }
+            // Keep the normal RN ScrollView draw path on screen. The Glass
+            // consumer samples the separately retained one-shot RenderNode.
+            LiquidGlassPerfTelemetry.routeTreeTraversal()
+            super.dispatchDraw(canvas)
+            return
+        }
+        val shouldRecord = shouldCapture() &&
+            (backdropDirty || !recorder.hasRecording || coordinator.shouldRecordSourceNow)
         if (shouldRecord) {
             backdropDirty = false
             if (captureMode == "oneShot") oneShotCaptured = true
         }
         val shared = recorder.drawShared(canvas, width, height, shouldRecord, ::dispatchBackdropContent)
         if (shared && shouldRecord) {
+            coordinator.sourceRecordCompleted()
             if (captureMode == "oneShot" && snapshotBlurRadiusDp > 0f) {
                 LiquidGlassPerfTelemetry.frozenSnapshotRequested()
                 frozenBackdrop?.release()
@@ -341,6 +388,9 @@ internal class ExpoGlassProviderCoreView(
                 capturedPixelArea = consumerBounds.values.sumOf { it.width().coerceAtLeast(0).toLong() * it.height().coerceAtLeast(0) },
                 mode = if (captureMode == "live") "render-node-region-slices" else captureMode,
             )
+        } else if (shouldRecord) {
+            backdropDirty = true
+            coordinator.sourceRecordDeferred()
         }
     }
 
@@ -354,13 +404,12 @@ internal class ExpoGlassProviderCoreView(
     private fun shouldCapture(): Boolean = when (captureMode) {
         "live", "static" -> true
         "oneShot" -> !oneShotCaptured
+        // Pass-through keeps the visible route on the normal View drawing path,
+        // while remaining eligible for a source rerecord when the coordinator
+        // receives an explicit structure, geometry, or revision dirty. Ordinary
+        // descendant paint invalidations stay paint-only in the coordinator.
+        "oneShotPassThrough" -> true
         else -> false
-    }
-
-    private fun markBackdropDirty() {
-        if (!shouldCapture() || !recorder.hasConsumers) return
-        backdropDirty = true
-        postInvalidateOnAnimation()
     }
 
     private fun updateConsumerBounds(consumer: View) {
@@ -379,6 +428,7 @@ internal class ExpoGlassProviderCoreView(
         consumerBounds[consumer] = next
         reportProviderGeometry()
         if (recorder.hasRecording) contentRenderNode?.let(::updateConsumerRegions)
+        coordinator.markDirty(GlassBackdropDirtyReason.CONSUMER_GEOMETRY)
     }
 
     private fun updateConsumerRegions(source: RenderNode) {
@@ -390,58 +440,9 @@ internal class ExpoGlassProviderCoreView(
         LiquidGlassPerfTelemetry.updateProviderGeometry(providerId, width, height, consumerBounds.values)
     }
 
-    private fun clearGlassFrameWork() {
-        frameScheduler.cancel()
-        sourceCapturePending = false
-        scrollConsumerRefreshPending = false
-        contentDirtyDuringScroll = false
-        scrollActive = false
-    }
-
-    private fun refreshScrollTargets() {
-        scrollTargets.clear()
-        collectScrollTargets(this)
-    }
-
-    private fun collectScrollTargets(view: View) {
-        if (view !== this && (view.canScrollVertically(-1) || view.canScrollVertically(1) ||
-                view.canScrollHorizontally(-1) || view.canScrollHorizontally(1))) {
-            scrollTargets[view] = intArrayOf(view.scrollX, view.scrollY)
-        }
-        if (view is ViewGroup) {
-            for (index in 0 until view.childCount) collectScrollTargets(view.getChildAt(index))
-        }
-    }
-
-    private fun hasTrackedScrollMoved(): Boolean {
-        var moved = false
-        val iterator = scrollTargets.entries.iterator()
-        while (iterator.hasNext()) {
-            val (view, previous) = iterator.next()
-            if (view.parent == null) {
-                iterator.remove()
-                continue
-            }
-            if (view.scrollX != previous[0] || view.scrollY != previous[1]) moved = true
-            previous[0] = view.scrollX
-            previous[1] = view.scrollY
-        }
-        if (scrollTargets.isEmpty() && recorder.hasConsumers && captureMode == "live") refreshScrollTargets()
-        return moved
-    }
-
     private fun updateScrollObservation() {
-        val shouldObserve = recorder.hasConsumers && captureMode == "live" && isAttachedToWindow
-        if (shouldObserve && !observingScroll) {
-            val observer = viewTreeObserver
-            if (observer.isAlive) {
-                observer.addOnScrollChangedListener(scrollChangedListener)
-                observingScroll = true
-            }
-        } else if (!shouldObserve && observingScroll) {
-            val observer = viewTreeObserver
-            if (observer.isAlive) observer.removeOnScrollChangedListener(scrollChangedListener)
-            observingScroll = false
-        }
+        coordinator.setScrollObservationEnabled(
+            recorder.hasConsumers && (captureMode == "live" || captureMode == "oneShotPassThrough") && isAttachedToWindow,
+        )
     }
 }

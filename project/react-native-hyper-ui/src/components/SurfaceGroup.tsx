@@ -1,11 +1,11 @@
-import { GlassSurface } from '@newhu/react-native-liquid-glass';
 import React from 'react';
 import type { ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
-import { Card } from './Card';
 import { useTheme } from '../theme';
 import { useSurfaceEnvironment } from './SurfaceEnvironmentContext';
+import { Surface } from '../primitives/Surface';
+import type { SurfaceMaterialMode } from '../primitives/Surface';
 
 export interface SurfaceGroupProps {
     children: ReactNode;
@@ -16,33 +16,33 @@ export interface SurfaceGroupProps {
 export const SurfaceGroup = React.memo(function SurfaceGroup({ children, style }: SurfaceGroupProps) {
     const theme = useTheme();
     const embeddedInGlassOverlay = useSurfaceEnvironment() === 'glassOverlay';
-    const glass = theme.presentation.content.groupMaterial === 'glass' && theme.glass.enabled && !embeddedInGlassOverlay;
-
-    if (glass) {
-        return (
-            <View style={style}>
-                <GlassSurface
-                    variant="preferencePanel"
-                    positioning="inFlow"
-                    sampling="local"
-                    style={{
-                        width: '100%',
-                        borderRadius: theme.glass.materials.preferencePanel.radius,
-                        overflow: 'hidden',
-                        borderWidth: StyleSheet.hairlineWidth,
-                        borderColor: theme.dark ? 'rgba(190,214,247,0.34)' : 'rgba(101,139,191,0.30)',
-                    }}
-                >
-                    {children}
-                </GlassSurface>
-            </View>
-        );
-    }
+    const groupGlass = theme.presentation.content.groupMaterial === 'glass' &&
+        theme.glass.enabled && !embeddedInGlassOverlay;
+    const cardGlass = theme.presentation.content.cardMaterial === 'glass' && theme.glass.enabled;
+    const material: SurfaceMaterialMode = groupGlass
+        ? 'glass'
+        : cardGlass && embeddedInGlassOverlay ? 'overlayTint'
+            : cardGlass ? 'glass' : 'solid';
 
     return (
-        <Card feedback="none" style={style} contentStyle={{ overflow: 'hidden' }}>
+        <Surface
+            material={material}
+            glassVariant={groupGlass ? 'preferencePanel' : 'card'}
+            radius={groupGlass
+                ? theme.glass.materials.preferencePanel.radius
+                : theme.components.card.radius}
+            backgroundColor={cardGlass && embeddedInGlassOverlay
+                ? theme.glass.tint[theme.dark ? 'dark' : 'light']
+                : theme.colors.surfaceContainer}
+            borderWidth={groupGlass || cardGlass && embeddedInGlassOverlay ? StyleSheet.hairlineWidth : 0}
+            borderColor={groupGlass
+                ? theme.dark ? 'rgba(190,214,247,0.34)' : 'rgba(101,139,191,0.30)'
+                : cardGlass && embeddedInGlassOverlay ? theme.colors.dividerLine : 'transparent'}
+            style={style}
+            contentStyle={groupGlass ? undefined : { overflow: 'hidden' }}
+        >
             {children}
-        </Card>
+        </Surface>
     );
 });
 

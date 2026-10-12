@@ -5,6 +5,8 @@ import { Platform, StyleSheet, View } from 'react-native';
 import type { LayoutChangeEvent, ViewProps } from 'react-native';
 import type { GlassMaterialTokens, GlassTokens } from './types';
 import { getLocalGlassNativeEngine, registerLocalGlassMaterial, subscribeLocalGlassNativeEngine } from './localGlassTelemetry';
+import { getSurfaceRendererPolicy } from './surfaceRendererPolicy';
+import type { GlassSurfaceRole } from './surfaceRendererPolicy';
 
 const GLASS_SHADER = `
 uniform float2 resolution;
@@ -240,17 +242,20 @@ export const LocalGlassMaterial = memo(function LocalGlassMaterial({
     tokens,
     material,
     dark,
+    surfaceRole = 'staticGroup',
 }: {
     tokens: GlassTokens;
     material: GlassMaterialTokens;
     dark: boolean;
+    surfaceRole?: GlassSurfaceRole;
 }) {
     const resolved = useMemo(() => resolveMaterial(tokens, material, dark), [dark, material, tokens]);
+    const renderer = getSurfaceRendererPolicy(surfaceRole);
     const supportsNativeRenderer = Platform.OS === 'android'
         && Number(Platform.Version) >= 33
         && (NativeLocalGlassView !== null || NativeLocalGlassEngineView !== null);
 
-    if (supportsNativeRenderer) {
+    if (supportsNativeRenderer && renderer === 'native') {
         return <NativeLocalGlassRenderer tokens={tokens} material={material} dark={dark} resolved={resolved} />;
     }
     return <SkiaLocalGlassRenderer tokens={tokens} material={material} dark={dark} resolved={resolved} />;

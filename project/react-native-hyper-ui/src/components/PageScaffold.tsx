@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useMemo } from 'react';
+import { FlashList } from '@shopify/flash-list';
+import type { FlashListProps, FlashListRef, ListRenderItem } from '@shopify/flash-list';
 import { RouteGlassCaptureScope, RouteGlassCaptureSource } from '@newhu/react-native-liquid-glass';
 import { FlatList, ScrollView, StyleSheet, View } from 'react-native';
-import type { FlatListProps, ListRenderItem, ScrollViewProps, StyleProp, ViewStyle } from 'react-native';
+import type { FlatListProps, ScrollViewProps, StyleProp, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
 
@@ -14,6 +16,8 @@ export function usePageContentInset() {
 
 export interface PageScaffoldProps {
     topBar?: React.ReactNode;
+    /** Debug A/B: omit the live route source; backdrop Glass then falls back to the theme provider. */
+    routeBackdropCaptureEnabled?: boolean;
     /** Full top bar height, including the safe area. Defaults to the compact bar. */
     topBarHeight?: number;
     /** Search or another theme-governed functional accessory. */
@@ -28,6 +32,7 @@ export interface PageScaffoldProps {
 /** Applies theme-level page composition while keeping page content shared. */
 export const PageScaffold = React.memo(function PageScaffold({
     topBar,
+    routeBackdropCaptureEnabled = true,
     topBarHeight,
     searchAccessory,
     searchAccessoryHeight,
@@ -51,8 +56,7 @@ export const PageScaffold = React.memo(function PageScaffold({
     const contentInset = topBarInset + searchInset;
     const transparentPage = theme.presentation.page.background === 'transparent';
 
-    return (
-        <RouteGlassCaptureScope>
+    const scaffold = (
         <View style={[{ flex: 1, backgroundColor: theme.colors.surface }, style, transparentPage ? { backgroundColor: 'transparent' } : undefined]}>
             <View
                 pointerEvents="box-none"
@@ -72,12 +76,13 @@ export const PageScaffold = React.memo(function PageScaffold({
             ) : null}
             <ContentInsetContext.Provider value={contentInset}>
                 <View style={{ flex: 1 }}>
-                    <RouteGlassCaptureSource>{children}</RouteGlassCaptureSource>
+                    {routeBackdropCaptureEnabled ? <RouteGlassCaptureSource>{children}</RouteGlassCaptureSource> : children}
                 </View>
             </ContentInsetContext.Provider>
         </View>
-        </RouteGlassCaptureScope>
     );
+
+    return routeBackdropCaptureEnabled ? <RouteGlassCaptureScope>{scaffold}</RouteGlassCaptureScope> : scaffold;
 });
 
 /** ScrollView that reserves the initial space below a floating TopAppBar. */
@@ -107,7 +112,25 @@ export function PageFlatList<ItemT>({ listRef, ...props }: PageFlatListProps<Ite
             maxToRenderPerBatch={props.maxToRenderPerBatch ?? 5}
             windowSize={props.windowSize ?? 5}
             updateCellsBatchingPeriod={props.updateCellsBatchingPeriod ?? 48}
-            removeClippedSubviews={props.removeClippedSubviews ?? true}
+            removeClippedSubviews={props.removeClippedSubviews ?? false}
+            style={[styles.scroll, props.style]}
+            contentContainerStyle={adjustedStyle}
+        />
+    );
+}
+
+/** FlashList equivalent of PageFlatList, preserving the same floating-bar inset. */
+export interface PageFlashListProps<ItemT> extends FlashListProps<ItemT> {
+    listRef?: React.Ref<FlashListRef<ItemT>>;
+}
+
+export function PageFlashList<ItemT>({ listRef, contentContainerStyle, ...props }: PageFlashListProps<ItemT>) {
+    const inset = usePageContentInset();
+    const adjustedStyle = useMemo(() => withTopInset(contentContainerStyle, inset), [contentContainerStyle, inset]);
+    return (
+        <FlashList
+            {...props}
+            ref={listRef}
             style={[styles.scroll, props.style]}
             contentContainerStyle={adjustedStyle}
         />
@@ -121,9 +144,9 @@ export interface PageSettingsSection {
 
 const renderPageSettingsSection: ListRenderItem<PageSettingsSection> = ({ item }) => <>{item.node}</>;
 
-export interface PageSettingsListProps extends Omit<FlatListProps<PageSettingsSection>, 'data' | 'renderItem' | 'keyExtractor'> {
-    sections: PageSettingsSection[];
-    listRef?: React.Ref<FlatList<PageSettingsSection>>;
+export interface PageSettingsListProps extends Omit<FlashListProps<PageSettingsSection>, 'data' | 'renderItem' | 'keyExtractor'> {
+    sections: readonly PageSettingsSection[];
+    listRef?: React.Ref<FlashListRef<PageSettingsSection>>;
 }
 
 /** Virtualizes settings by complete visual group so grouped surfaces stay intact. */
@@ -131,16 +154,12 @@ export function PageSettingsList({ sections, listRef, contentContainerStyle, ...
     const inset = usePageContentInset();
     const adjustedStyle = useMemo(() => withTopInset(contentContainerStyle, inset), [contentContainerStyle, inset]);
     return (
-        <FlatList
+        <FlashList
             {...props}
             ref={listRef}
             data={sections}
             keyExtractor={(section) => section.key}
             renderItem={renderPageSettingsSection}
-            initialNumToRender={props.initialNumToRender ?? 2}
-            maxToRenderPerBatch={props.maxToRenderPerBatch ?? 2}
-            windowSize={props.windowSize ?? 3}
-            removeClippedSubviews={props.removeClippedSubviews ?? false}
             style={[styles.scroll, props.style]}
             contentContainerStyle={adjustedStyle}
         />
@@ -154,7 +173,7 @@ export function PageContent({ style, children }: { style?: StyleProp<ViewStyle>;
     return <View style={adjustedStyle}>{children}</View>;
 }
 
-function withTopInset(style: ScrollViewProps['contentContainerStyle'] | FlatListProps<unknown>['contentContainerStyle'], inset: number) {
+export function withTopInset(style: ScrollViewProps['contentContainerStyle'] | FlatListProps<unknown>['contentContainerStyle'], inset: number) {
     if (inset <= 0) return style;
     const flattened = StyleSheet.flatten(style) ?? {};
     const currentTop = typeof flattened.paddingTop === 'number' ? flattened.paddingTop : 0;

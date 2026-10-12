@@ -1,6 +1,6 @@
 import { useSettingStore } from '@/src/stores/useSettingStore';
 import { notify } from '@/src/stores/useNotificationStore';
-import { Button, Card, Icon, ListRow, PageScaffold, PageSettingsList, SegmentedControl, Switch, Text, TopAppBar } from '@/src/ui';
+import { Button, Card, Icon, ListRow, SegmentedControl, StaticSettingsPage, Switch, Text } from '@/src/ui';
 import { getWallpaperBlurRadius, resolveBackdropSource, resolveBaseTheme, type AppTheme, type ThemeName, type WallpaperBlurLevel, useTheme, wallpaperConfig } from '../project/react-native-hyper-ui/src/theme';
 import { GlassAppearanceProvider, GlassSurface } from '@newhu/react-native-liquid-glass';
 import { DefaultAmbientBackdrop } from '@/src/components/background/DefaultAmbientBackdrop';
@@ -244,9 +244,15 @@ const ThemeSetScreen = () => {
     ]);
 
     return (
-        <PageScaffold topBar={<TopAppBar title="主题设置" back={() => router.back()} />} style={styles.container}>
-            <PageSettingsList sections={sections} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} />
-        </PageScaffold>
+        <StaticSettingsPage
+            title="主题设置"
+            back={() => router.back()}
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
+            testID="theme-settings"
+        >
+            {sections.map((section) => <React.Fragment key={section.key}>{section.node}</React.Fragment>)}
+        </StaticSettingsPage>
     );
 };
 

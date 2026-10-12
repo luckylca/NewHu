@@ -46,6 +46,8 @@ export declare function GlassAppearanceProvider({ children, tokens, dark, reduce
 export declare function GlassMaterialProvider({ children, backdrop, themeBackdrop, themeBackdropRevision, providerId: providerIdProp, style, tokens, dark, reducedMotion }: GlassMaterialProviderProps): import("react/jsx-runtime").JSX.Element;
 export interface GlassSurfaceProps {
     variant?: GlassVariant;
+    /** Surface purpose used by the shared local renderer policy. */
+    surfaceRole?: import('./surfaceRendererPolicy').GlassSurfaceRole;
     /** Semantic placement role. The parent owns actual layout and coordinates. */
     positioning?: 'inFlow' | 'floating';
     /** Optical sampling source. Backdrop sampling is explicitly opt-in. */

@@ -1,6 +1,6 @@
 import { HyperGlowBackground } from '@/src/components/effects/HyperGlowBackground';
 import { notify } from '@/src/stores/useNotificationStore';
-import { Button, Card, Dialog, Divider, Icon, PageScaffold, PageScrollView, Text, TopAppBar } from '@/src/ui';
+import { Button, Card, Dialog, Divider, Icon, StaticSettingsPage, Text } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { useIsFocused } from '@react-navigation/native';
 import Constants from 'expo-constants';
@@ -33,11 +33,12 @@ export default function AboutScreen() {
     };
 
     return (
-        <PageScaffold topBar={<TopAppBar title="关于 NewHU" back={() => router.back()} />}>
-            <PageScrollView
-                contentContainerStyle={styles.content}
-                showsVerticalScrollIndicator={false}
-            >
+        <StaticSettingsPage
+            title="关于 NewHU"
+            back={() => router.back()}
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
+        >
                 <Card
                     feedback="tilt"
                     showIndication
@@ -90,7 +91,7 @@ export default function AboutScreen() {
                         <Icon name="chevron-right" size={24} color={theme.colors.onSurfaceVariantActions} />
                     )}
                 </Card>
-            </PageScrollView>
+
 
             <Dialog visible={updateVisible} onClose={() => setUpdateVisible(false)} title="检查更新">
                 <Text type="body1" color={theme.colors.onBackground}>
@@ -104,7 +105,7 @@ export default function AboutScreen() {
                     <Button type="primary" onPress={() => setUpdateVisible(false)} disabled={update.loading}>知道了</Button>
                 </View>
             </Dialog>
-        </PageScaffold>
+        </StaticSettingsPage>
     );
 }
 

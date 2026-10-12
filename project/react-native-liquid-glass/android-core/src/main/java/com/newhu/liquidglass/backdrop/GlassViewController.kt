@@ -81,13 +81,13 @@ public class GlassViewController(private val host: View) {
 
     /** Corner radius in dp, or [CORNER_RADIUS_CAPSULE] for a capsule/circle. */
     public var cornerRadiusDp: Float = CORNER_RADIUS_CAPSULE
-        set(value) = invalidating(field, value) { field = it }
+        set(value) = invalidating(field, value, GlassDirtyKind.OPTICS_DIRTY) { field = it }
 
     public var opticsModel: GlassOpticsModel = GlassOpticsModel.HEIGHT_FIELD
         set(value) = invalidating(field, value, GlassDirtyKind.OPTICS_DIRTY) { field = it }
 
     public var sdfScaleLens: SdfScaleLensConfig = SdfScaleLensConfig()
-        set(value) = invalidating(field, value, GlassDirtyKind.MATERIAL_DIRTY) { field = it }
+        set(value) = invalidating(field, value, GlassDirtyKind.OPTICS_DIRTY) { field = it }
 
     /** Backdrop blur radius in dp — the frostiness of the glass. */
     public var blurRadiusDp: Float = 20f
@@ -95,15 +95,15 @@ public class GlassViewController(private val host: View) {
 
     /** Width of the refracting band along the rim, in dp. */
     public var refractionHeightDp: Float = 10f
-        set(value) = invalidating(field, value) { field = it }
+        set(value) = invalidating(field, value, GlassDirtyKind.OPTICS_DIRTY) { field = it }
 
     /** Peak refraction displacement in dp (negative bends outward). */
     public var refractionAmountDp: Float = 12f
-        set(value) = invalidating(field, value) { field = it }
+        set(value) = invalidating(field, value, GlassDirtyKind.OPTICS_DIRTY) { field = it }
 
     /** Full-body rounded-rect coordinate remapping in dp, separate from the rim bend. */
     public var bodyRefractionAmountDp: Float = 2.5f
-        set(value) = invalidating(field, value) { field = it }
+        set(value) = invalidating(field, value, GlassDirtyKind.OPTICS_DIRTY) { field = it }
 
     /** 0..1 animated material morph from idle to pressed/dragged optics. */
     public var interactionProgress: Float = 0f
@@ -335,7 +335,6 @@ public class GlassViewController(private val host: View) {
         relativePosition[0] = (locationSelf[0] - locationProvider[0]).toFloat()
         relativePosition[1] = (locationSelf[1] - locationProvider[1]).toFloat()
         if (previousX != relativePosition[0] || previousY != relativePosition[1]) {
-            LiquidGlassPerfTelemetry.consumerGeometryDirty()
             if (!continuousBackdrop) backdrop.onConsumerGeometryChanged(host)
         }
         return relativePosition
@@ -351,7 +350,7 @@ public class GlassViewController(private val host: View) {
             this.interpolator = interpolator
             addUpdateListener {
                 pressAmount = it.animatedValue as Float
-                LiquidGlassPerfTelemetry.opticsDirty()
+                reportConsumerDirty(GlassBackdropDirtyReason.OPTICS)
                 val scale = 1f + 0.025f * pressAmount
                 host.scaleX = scale
                 host.scaleY = scale
@@ -371,11 +370,25 @@ public class GlassViewController(private val host: View) {
             assign(new)
             when (kind) {
                 GlassDirtyKind.SOURCE_CONTENT_DIRTY -> Unit
-                GlassDirtyKind.CONSUMER_GEOMETRY_DIRTY -> LiquidGlassPerfTelemetry.consumerGeometryDirty()
-                GlassDirtyKind.OPTICS_DIRTY -> LiquidGlassPerfTelemetry.opticsDirty()
-                GlassDirtyKind.MATERIAL_DIRTY -> LiquidGlassPerfTelemetry.materialDirty()
+                GlassDirtyKind.CONSUMER_GEOMETRY_DIRTY -> reportConsumerDirty(GlassBackdropDirtyReason.CONSUMER_GEOMETRY)
+                GlassDirtyKind.OPTICS_DIRTY -> reportConsumerDirty(GlassBackdropDirtyReason.OPTICS)
+                GlassDirtyKind.MATERIAL_DIRTY -> reportConsumerDirty(GlassBackdropDirtyReason.MATERIAL)
             }
             host.invalidate()
+        }
+    }
+
+    private fun reportConsumerDirty(reason: GlassBackdropDirtyReason) {
+        val backdrop = provider
+        if (backdrop != null) {
+            backdrop.onConsumerDirty(host, reason)
+            return
+        }
+        when (reason) {
+            GlassBackdropDirtyReason.CONSUMER_GEOMETRY -> LiquidGlassPerfTelemetry.consumerGeometryDirty()
+            GlassBackdropDirtyReason.OPTICS -> LiquidGlassPerfTelemetry.opticsDirty()
+            GlassBackdropDirtyReason.MATERIAL -> LiquidGlassPerfTelemetry.materialDirty()
+            else -> Unit
         }
     }
 }

@@ -3,18 +3,197 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSettingStore } from '@/src/stores/useSettingStore';
 import {
     getLiquidGlassPerformanceStats,
+    beginEffectiveScrollFpsSession,
     GlassTabBar,
     getGlassNativeEngine,
     setLiquidGlassPerformanceTelemetryEnabled,
     setGlassNativeEngine,
+    getSurfaceRendererPolicyOverride,
+    setSurfaceRendererPolicyOverride,
+    getSurfaceRendererPolicy,
+    getLocalGlassTelemetry,
+    setLocalGlassTelemetryEnabled,
 } from '@newhu/react-native-liquid-glass';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text as NativeText, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { beginPageRenderDiagnostics, snapshotPageRenderDiagnostics } from '@/src/components/feed/pageRenderDiagnostics';
+import { beginCommentRenderDiagnostics, snapshotCommentRenderDiagnostics } from '@/src/components/commentRenderDiagnostics';
 
 const ROWS = Array.from({ length: 160 }, (_, index) => index + 1);
 const TABS = [{ label: '推荐' }, { label: '关注' }, { label: '热榜' }];
 const RUN_DURATION_MS = 12_000;
+const SNAPSHOT_FIELDS = [
+    'displayRefreshRate',
+    'routeTreeTraversalCount',
+    'routeRenderNodeRecordCount',
+    'sourceRenderNodeReuseCount',
+    'scrollWindowRefreshCount',
+    'scrollWindowReuseFrameCount',
+    'routeScreenCompositeCount',
+    'routeScrollReuseCount',
+    'descendantInvalidationReceivedCount',
+    'paintDirtyReceived',
+    'structureDirtyReceived',
+    'sourceGeometryDirtyReceived',
+    'consumerGeometryDirtyReceived',
+    'scrollDirtyReceived',
+    'scrollTouchDownEvents',
+    'scrollTouchMoveEvents',
+    'scrollTouchUpEvents',
+    'scrollTouchCancelEvents',
+    'scrollOffsetUpdateCount',
+    'scrollOffsetIntervalCount',
+    'scrollOffsetIntervalUnder8Ms',
+    'scrollOffsetInterval8To12Ms',
+    'scrollOffsetInterval12To17Ms',
+    'scrollOffsetIntervalOver17Ms',
+    'scrollTouchToOffsetLatencyCount',
+    'scrollTouchToOffsetLatencySumMs',
+    'scrollTouchToOffsetLatencyMaxMs',
+    'scrollDragOffsetUpdateCount',
+    'scrollFrameSampleCount',
+    'scrollFrameOffsetChangedCount',
+    'scrollFrameRepeatedOffsetCount',
+    'scrollFrameIntervalUnder8Ms',
+    'scrollFrameInterval8To12Ms',
+    'scrollFrameInterval12To17Ms',
+    'scrollFrameIntervalOver17Ms',
+    'scrollDragFrameSampleCount',
+    'scrollDragFrameOffsetChangedCount',
+    'scrollDragFrameRepeatedOffsetCount',
+    'sourceRerecordRequired',
+    'sourceRerecordAvoided',
+    'consumerRefreshOnly',
+    'sourceRerecordExecuted',
+    'sourceRerecordByStructure',
+    'sourceRerecordByGeometry',
+    'sourceRerecordByRevision',
+    'sourceRerecordByInitialCapture',
+    'scrollReuseFrame',
+    'scrollSettleRerecord',
+];
+
+function compactNativeSnapshot(stats: Record<string, number>) {
+    const providerFields = SNAPSHOT_FIELDS.filter((field) => field.startsWith('paint') || field.startsWith('scroll') || [
+        'structureDirtyReceived', 'sourceGeometryDirtyReceived', 'consumerGeometryDirtyReceived',
+        'scrollDirtyReceived', 'sourceRerecordRequired', 'sourceRerecordAvoided', 'consumerRefreshOnly',
+        'sourceRerecordExecuted', 'sourceRerecordByStructure', 'sourceRerecordByGeometry',
+        'sourceRerecordByRevision', 'sourceRerecordByInitialCapture', 'scrollReuseFrame',
+        'scrollSettleRerecord',
+    ].includes(field));
+    const providers = new Map<string, Record<string, number>>();
+    const scrollViews = new Map<string, Record<string, number>>();
+    for (const [key, value] of Object.entries(stats)) {
+        if (key.startsWith('provider.')) {
+            const field = providerFields.find((candidate) => key.endsWith(`.${candidate}`));
+            if (!field) continue;
+            const id = key.slice('provider.'.length, -field.length - 1);
+            const counters = providers.get(id) ?? {};
+            counters[field] = value;
+            providers.set(id, counters);
+        } else if (key.startsWith('scrollView.')) {
+            const parts = key.split('.');
+            if (parts.length !== 4) continue;
+            const id = `${parts[1]}:${parts[2]}`;
+            const counters = scrollViews.get(id) ?? {};
+            counters[parts[3]] = value;
+            scrollViews.set(id, counters);
+        }
+    }
+    return {
+        totals: Object.fromEntries(SNAPSHOT_FIELDS.filter((key) => key in stats).map((key) => [key, stats[key]])),
+        providers: Object.fromEntries([...providers.entries()].filter(([, counters]) => Object.values(counters).some(Boolean))),
+        scrollViews: Object.fromEntries([...scrollViews.entries()].filter(([, counters]) => Object.values(counters).some(Boolean))),
+    };
+}
+
+function logGlassSnapshot(
+    label: string,
+    metadata: Record<string, string | null>,
+    stats: Record<string, number>,
+    localGlass: Awaited<ReturnType<typeof getLocalGlassTelemetry>>,
+) {
+    const compact = compactNativeSnapshot(stats);
+    const effectiveScrollProbe = Object.fromEntries(
+        Object.entries(stats).filter(([key]) => key.startsWith('effectiveScrollProbe.')),
+    );
+    // Keep the single-line Android log below logcat's per-record limit. The full
+    // numeric map remains in the benchmark snapshot; this line is the compact,
+    // auditable summary with drag input and post-touch motion separated.
+    const probeTargetFields = [
+        'identityHash', 'nativeViewId', 'vsyncSamples', 'effectiveContentFrames',
+        'duplicateContentFrames', 'effectiveScrollFps', 'activeScrollDurationMs',
+        'dragContentFps', 'dragOffsetIntervalCount', 'dragOffsetIntervalP50Ms', 'dragOffsetIntervalP95Ms',
+        'postTouchContentFps', 'postTouchOffsetIntervalCount', 'postTouchOffsetIntervalP50Ms',
+        'postTouchOffsetIntervalP95Ms', 'touchMoveEventCount', 'touchMoveEventFps',
+        'touchMoveIntervalP50Ms', 'touchMoveIntervalP95Ms', 'touchMoveMaxIntervalMs',
+        'touchMoveDispatchCount', 'touchMoveDispatchFps', 'touchMoveDispatchIntervalP50Ms',
+        'touchMoveDispatchIntervalP95Ms', 'touchHistoricalSampleCount',
+        'nativeScrollChangeCount', 'nativeScrollEventFps', 'nativeScrollEventIntervalP50Ms',
+        'nativeScrollEventIntervalP95Ms', 'nativeDragScrollEventFps',
+        'nativeDragScrollEventIntervalP50Ms', 'nativeDragScrollEventIntervalP95Ms',
+        'nativePostTouchScrollEventFps', 'nativePostTouchScrollEventIntervalP50Ms',
+        'nativePostTouchScrollEventIntervalP95Ms',
+        'postUpScrollerCaptured', 'postUpScrollerPresent', 'postUpScrollerFinished',
+        'postUpScrollerCurrentY', 'postUpScrollerFinalY', 'postUpScrollerDistancePx',
+        'postUpScrollerVelocityPxPerSec', 'postUpMaxScrollY', 'postUpViewScrollY',
+        'postTouchScrollerFrameSamples', 'postTouchScrollerActiveFrameSamples',
+        'postTouchScrollerFirstCurrentY', 'postTouchScrollerLastCurrentY',
+        'postTouchScrollerLastFinalY', 'postTouchScrollerMaxCurrentDeltaPx',
+        'postTouchViewFirstY', 'postTouchViewLastY',
+        'contentIntervalP50Ms', 'contentIntervalP95Ms', 'contentIntervalP99Ms',
+        'contentIntervalWithinOneVsyncRatio', 'interval16_67msPlusRatio', 'interval33_3msPlusRatio',
+        'interval50msPlusRatio', 'interval100msPlusRatio', 'maxContentStallMs',
+        'drawEffectiveFps', 'drawContentIntervalP95Ms', 'drawMaxContentStallMs',
+        'windowFrameEffectiveFps', 'windowFrameContentIntervalP95Ms', 'windowFrameMaxContentStallMs',
+    ];
+    const targetCount = Math.round(effectiveScrollProbe['effectiveScrollProbe.targetCount'] ?? 0);
+    const scrollTargets = Array.from({ length: targetCount }, (_, index) => {
+        const prefix = `effectiveScrollProbe.target${index}.`;
+        return Object.fromEntries(probeTargetFields.flatMap((field) => {
+            const value = effectiveScrollProbe[prefix + field];
+            return value === undefined ? [] : [[field, value]];
+        }));
+    });
+    console.info(`[EFFECTIVE_SCROLL_PROBE_SUMMARY] ${JSON.stringify({
+        ...metadata,
+        displayRefreshHz: stats.displayRefreshRate ?? effectiveScrollProbe['effectiveScrollProbe.displayRefreshHz'] ?? 0,
+        estimatedDisplayVsyncFrames: effectiveScrollProbe['effectiveScrollProbe.vsyncSamples'] ?? 0,
+        estimatedDisplayVsyncFps: effectiveScrollProbe['effectiveScrollProbe.vsyncFps'] ?? 0,
+        estimatedMissedVsyncSlots: effectiveScrollProbe['effectiveScrollProbe.missedVsyncSlots'] ?? 0,
+        choreographerCallbackSamples: effectiveScrollProbe['effectiveScrollProbe.choreographerCallbackSamples'] ?? 0,
+        choreographerCallbackFps: effectiveScrollProbe['effectiveScrollProbe.choreographerCallbackFps'] ?? 0,
+        choreographerCallbackIntervalP50Ms: effectiveScrollProbe['effectiveScrollProbe.choreographerCallbackIntervalP50Ms'] ?? 0,
+        choreographerCallbackIntervalP95Ms: effectiveScrollProbe['effectiveScrollProbe.choreographerCallbackIntervalP95Ms'] ?? 0,
+        windowFrameSamples: effectiveScrollProbe['effectiveScrollProbe.windowFrameSamples'] ?? 0,
+        windowFrameFps: effectiveScrollProbe['effectiveScrollProbe.windowFrameFps'] ?? 0,
+        windowFrameProbeAttached: effectiveScrollProbe['effectiveScrollProbe.windowFrameProbeAttached'] ?? 0,
+        windowFrameDroppedCallbacks: effectiveScrollProbe['effectiveScrollProbe.windowFrameDroppedCallbacks'] ?? 0,
+        windowFrameIntervalP50Ms: effectiveScrollProbe['effectiveScrollProbe.windowFrameIntervalP50Ms'] ?? 0,
+        windowFrameIntervalP95Ms: effectiveScrollProbe['effectiveScrollProbe.windowFrameIntervalP95Ms'] ?? 0,
+        elapsedMs: effectiveScrollProbe['effectiveScrollProbe.elapsedMs'] ?? 0,
+        targets: scrollTargets,
+    })}`);
+    console.info(`[${label}_TOTALS] ${JSON.stringify({ ...metadata, totals: compact.totals, scrollViews: compact.scrollViews, effectiveScrollProbe, localGlass })}`);
+    for (const [providerId, counters] of Object.entries(compact.providers)) {
+        console.info(`[${label}_PROVIDER] ${JSON.stringify({ ...metadata, providerId, counters })}`);
+    }
+}
+
+function subtractNativeSnapshot(
+    current: NonNullable<Awaited<ReturnType<typeof getLiquidGlassPerformanceStats>>>,
+    baseline: NonNullable<Awaited<ReturnType<typeof getLiquidGlassPerformanceStats>>> | null,
+) {
+    if (!baseline) return current;
+    const delta: Record<string, number> = {};
+    for (const [key, value] of Object.entries(current)) {
+        delta[key] = key === 'displayRefreshRate' || key.startsWith('effectiveScrollProbe.')
+            ? value
+            : value - (baseline[key] ?? 0);
+    }
+    return delta;
+}
 
 const BenchmarkRow = memo(function BenchmarkRow({ id }: { id: number }) {
     return <ListRow title={`Benchmark row ${id}`} summary="固定原生行；滚动期间父级不更新" />;
@@ -114,7 +293,7 @@ function NativeTelemetryOverlay() {
 }
 
 export default function PerformanceBenchmark() {
-    const { scene: rawScene, case: runCase, run, telemetry, nativeTelemetry, wallpaper, engine } = useLocalSearchParams<{
+    const { scene: rawScene, case: runCase, run, telemetry, nativeTelemetry, wallpaper, engine, surfaceRole, localRenderer, homeMode: homeModeParam, questionId: questionIdParam, questionRuntime: questionRuntimeParam, settingsRuntime: settingsRuntimeParam, routeCapture: routeCaptureParam, urlToken: urlTokenParam, contentId: contentIdParam, contentType: contentTypeParam, durationMs: durationMsParam, directComments: directCommentsParam, commentPerfMode: commentPerfModeParam, commentsExpectedRows: commentsExpectedRowsParam, commentListEngine: commentListEngineParam } = useLocalSearchParams<{
         scene?: string;
         case?: string;
         run?: string;
@@ -122,13 +301,39 @@ export default function PerformanceBenchmark() {
         nativeTelemetry?: string;
         wallpaper?: string;
         engine?: string;
+        surfaceRole?: string;
+        localRenderer?: string;
+        homeMode?: string;
+        questionRuntime?: string | string[];
+        settingsRuntime?: string | string[];
+        routeCapture?: string | string[];
+        questionId?: string | string[];
+        urlToken?: string | string[];
+        contentId?: string | string[];
+        contentType?: string | string[];
+        durationMs?: string | string[];
+        directComments?: string | string[];
+        commentPerfMode?: string | string[];
+        commentsExpectedRows?: string | string[];
+        commentListEngine?: string | string[];
     }>();
     const router = useRouter();
     const scene = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].includes(rawScene ?? '') ? rawScene! : 'B';
+    const durationValue = Array.isArray(durationMsParam) ? durationMsParam[0] : durationMsParam;
+    const parsedDurationMs = Number.parseInt(durationValue ?? '', 10);
+    const runDurationMs = Number.isFinite(parsedDurationMs)
+        ? Math.max(RUN_DURATION_MS, Math.min(parsedDurationMs, 60_000))
+        : RUN_DURATION_MS;
+    const homeModeValue = Array.isArray(homeModeParam) ? homeModeParam[0] : homeModeParam;
+    const requestedHomeMode = __DEV__ && (homeModeValue === 'normal' || homeModeValue === 'card' || homeModeValue === 'waterfall')
+        ? homeModeValue
+        : null;
     const theme = useTheme();
     const setThemeName = useSettingStore((state) => state.setThemeName);
     const setWallpaperUri = useSettingStore((state) => state.setWallpaperUri);
     const scrollRef = useRef<ScrollView>(null);
+    const openedScenarioForSnapshot = useRef(false);
+    const telemetryBaseline = useRef<Awaited<ReturnType<typeof getLiquidGlassPerformanceStats>>>(null);
     const previousGlassEngine = useRef(getGlassNativeEngine());
     const [selectedTab, setSelectedTab] = useState(0);
     const [dialogVisible, setDialogVisible] = useState(false);
@@ -142,9 +347,26 @@ export default function PerformanceBenchmark() {
     }, [engine]);
 
     useEffect(() => {
+        const role = surfaceRole === 'staticGroup' || surfaceRole === 'recycledCard' ? surfaceRole : null;
+        const renderer = localRenderer === 'native' || localRenderer === 'skia' ? localRenderer : null;
+        if (!role || !renderer) return;
+        const previous = getSurfaceRendererPolicyOverride(role);
+        setSurfaceRendererPolicyOverride(role, renderer);
+        return () => setSurfaceRendererPolicyOverride(role, previous);
+    }, [localRenderer, surfaceRole]);
+
+    useEffect(() => {
         const enabled = telemetry === '1' || nativeTelemetry === '1';
         setLiquidGlassPerformanceTelemetryEnabled(enabled);
-        return () => setLiquidGlassPerformanceTelemetryEnabled(false);
+        setLocalGlassTelemetryEnabled(enabled);
+        console.info(
+            `[GLASS_BENCH_CONFIG] runtime=${getGlassNativeEngine()} staticGroup=${getSurfaceRendererPolicy('staticGroup')} ` +
+            `recycledCard=${getSurfaceRendererPolicy('recycledCard')} telemetry=${enabled}`,
+        );
+        return () => {
+            setLiquidGlassPerformanceTelemetryEnabled(false);
+            setLocalGlassTelemetryEnabled(false);
+        };
     }, [nativeTelemetry, run, telemetry]);
 
     useEffect(() => {
@@ -166,6 +388,105 @@ export default function PerformanceBenchmark() {
     }, [scene, setThemeName, setWallpaperUri, wallpaper]);
 
     useEffect(() => {
+        if (runCase === 'settings') {
+            if (openedScenarioForSnapshot.current) return;
+            let snapshotTimer: ReturnType<typeof setTimeout> | undefined;
+            let active = true;
+            const transition = setTimeout(() => {
+                beginEffectiveScrollFpsSession('settings');
+                void getLiquidGlassPerformanceStats().then((stats) => {
+                    if (!active) return;
+                    telemetryBaseline.current = stats;
+                    openedScenarioForSnapshot.current = true;
+                    console.info(`[GLASS_SETTINGS_TELEMETRY] action=open-settings engine=${getGlassNativeEngine()} stats=${JSON.stringify(stats)}`);
+                    const settingsRuntime = Array.isArray(settingsRuntimeParam) ? settingsRuntimeParam[0] : settingsRuntimeParam;
+                    const routeCapture = Array.isArray(routeCaptureParam) ? routeCaptureParam[0] : routeCaptureParam;
+                    router.push({ pathname: '/settings', params: { runtime: settingsRuntime ?? '', routeCapture: routeCapture ?? '' } });
+                    snapshotTimer = setTimeout(() => {
+                        void Promise.all([getLiquidGlassPerformanceStats(), getLocalGlassTelemetry()]).then(([current, localGlass]) => {
+                            if (!active || !current) return;
+                            const delta = subtractNativeSnapshot(current, telemetryBaseline.current);
+                            logGlassSnapshot('GLASS_SETTINGS_SNAPSHOT', { route: 'settings' }, delta, localGlass);
+                        });
+                    }, runDurationMs + 750);
+                });
+            }, 1_200);
+            return () => {
+                active = false;
+                clearTimeout(transition);
+                if (snapshotTimer) clearTimeout(snapshotTimer);
+            };
+        }
+        if (runCase === 'home' || runCase === 'question' || runCase === 'people' || runCase === 'comments') {
+            if (openedScenarioForSnapshot.current) return;
+            let snapshotTimer: ReturnType<typeof setTimeout> | undefined;
+            let active = true;
+            let previousHomeMode: 'normal' | 'card' | 'waterfall' | null = null;
+            const restoreHomeMode = () => {
+                if (previousHomeMode == null) return;
+                useSettingStore.getState().setMode(previousHomeMode);
+                console.info(`[GLASS_BENCH_HOME_MODE] restored=${previousHomeMode}`);
+                previousHomeMode = null;
+            };
+            const transition = setTimeout(() => {
+                if (runCase === 'home' || runCase === 'question') beginPageRenderDiagnostics();
+                if (runCase === 'comments') beginCommentRenderDiagnostics();
+                beginEffectiveScrollFpsSession(runCase);
+                void getLiquidGlassPerformanceStats().then((stats) => {
+                    if (!active || !stats) return;
+                    telemetryBaseline.current = stats;
+                    openedScenarioForSnapshot.current = true;
+                    const questionId = Array.isArray(questionIdParam) ? questionIdParam[0] : questionIdParam;
+                    const urlToken = Array.isArray(urlTokenParam) ? urlTokenParam[0] : urlTokenParam;
+                    const contentId = Array.isArray(contentIdParam) ? contentIdParam[0] : contentIdParam;
+                    const contentType = Array.isArray(contentTypeParam) ? contentTypeParam[0] : contentTypeParam;
+                    const directComments = Array.isArray(directCommentsParam) ? directCommentsParam[0] : directCommentsParam;
+                    const commentPerfMode = Array.isArray(commentPerfModeParam) ? commentPerfModeParam[0] : commentPerfModeParam;
+                    const commentsExpectedRows = Array.isArray(commentsExpectedRowsParam) ? commentsExpectedRowsParam[0] : commentsExpectedRowsParam;
+                    const commentListEngine = Array.isArray(commentListEngineParam) ? commentListEngineParam[0] : commentListEngineParam;
+                    const questionRuntime = Array.isArray(questionRuntimeParam) ? questionRuntimeParam[0] : questionRuntimeParam;
+                    const target = runCase === 'question'
+                        ? { pathname: '/question' as const, params: { id: questionId ?? '', questionRuntime: questionRuntime ?? '' } }
+                            : runCase === 'people'
+                                ? { pathname: '/people' as const, params: { urlToken: urlToken ?? '' } }
+                                : runCase === 'comments'
+                                    ? { pathname: '/item/[type]/[id]/comment' as const, params: { id: contentId ?? '', type: contentType === 'article' ? 'article' : 'answer', perfRunId: run ?? 'adhoc', perfDurationMs: String(runDurationMs), perfMode: commentPerfMode ?? '', perfExpectedRows: commentsExpectedRows ?? '', perfGlassEngine: engine === 'core' ? 'core' : '', perfListEngine: commentListEngine === 'flashlist' ? 'flashlist' : 'flatlist' } }
+                                    : '/(tabs)' as const;
+                    if ((runCase === 'question' && !questionId) || (runCase === 'people' && !urlToken) || (runCase === 'comments' && !contentId)) {
+                        console.error(`[GLASS_SCENARIO] missing target parameter for ${runCase}`);
+                        return;
+                    }
+                    if (runCase === 'home' && requestedHomeMode) {
+                        previousHomeMode = useSettingStore.getState().mode;
+                        useSettingStore.getState().setMode(requestedHomeMode);
+                        console.info(`[GLASS_BENCH_HOME_MODE] previous=${previousHomeMode} selected=${requestedHomeMode}`);
+                    }
+                    console.info(`[GLASS_SCENARIO] action=open route=${runCase} questionId=${questionId ?? ''} urlToken=${urlToken ?? ''}`);
+                    if (runCase === 'comments' && directComments === '1') router.replace(target);
+                    else router.push(target);
+                    snapshotTimer = setTimeout(() => {
+                        void Promise.all([getLiquidGlassPerformanceStats(), getLocalGlassTelemetry()]).then(([current, localGlass]) => {
+                            if (!active || !current) return;
+                            const delta = subtractNativeSnapshot(current, telemetryBaseline.current);
+                            logGlassSnapshot('GLASS_SCENARIO_SNAPSHOT', { route: runCase, questionId: questionId ?? null, urlToken: urlToken ?? null, contentId: contentId ?? null, contentType: contentType ?? null }, delta, localGlass);
+                            if (runCase === 'comments') {
+                                console.info(`[COMMENTS_RENDER_DIAGNOSTICS] ${JSON.stringify(snapshotCommentRenderDiagnostics())}`);
+                            }
+                            if (runCase === 'home' || runCase === 'question') {
+                                console.info(`[PAGE_RENDER_DIAGNOSTICS] route=${runCase} ${JSON.stringify(snapshotPageRenderDiagnostics())}`);
+                            }
+                            restoreHomeMode();
+                        });
+                    }, runDurationMs + 750);
+                });
+            }, 1_200);
+            return () => {
+                active = false;
+                clearTimeout(transition);
+                if (snapshotTimer) clearTimeout(snapshotTimer);
+                restoreHomeMode();
+            };
+        }
         if (runCase === 'route') {
             let step = 0;
             let transition: ReturnType<typeof setTimeout> | undefined;
@@ -229,7 +550,7 @@ export default function PerformanceBenchmark() {
             if (interval) clearInterval(interval);
             if (finish) clearTimeout(finish);
         };
-    }, [runCase, run, scene, router]);
+    }, [runCase, run, scene, router, engine, questionIdParam, questionRuntimeParam, settingsRuntimeParam, routeCaptureParam, urlTokenParam, contentIdParam, contentTypeParam, durationMsParam, directCommentsParam, commentPerfModeParam, commentsExpectedRowsParam, commentListEngineParam, runDurationMs, requestedHomeMode]);
 
     const rowContent = useMemo(() => ROWS.map((id) => <BenchmarkRow key={id} id={id} />), []);
     const noOp = useCallback(() => {}, []);

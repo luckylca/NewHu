@@ -4,11 +4,12 @@ import { CommentInteractionHost, useCommentInteractionHost } from '@/src/compone
 import CommentEdit from '@/src/components/CommentEdit';
 import { CommentItem } from '@/src/components/CommentItem';
 import type { CommentViewModel } from '@/src/components/CommentItem';
+import { beginCommentRenderDiagnostics, recordCommentScreenRender, snapshotCommentRenderDiagnostics } from '@/src/components/commentRenderDiagnostics';
 import { useDraftStore } from '@/src/stores/useDraftStore';
 import { useNetworkStore } from '@/src/stores/useNetworkStore';
 import { getCachedComments, getCachedCommentsForContent, getPageState, saveCommentPage } from '@/src/db/repositories/commentRepository';
 import { getContent } from '@/src/db/repositories/contentRepository';
-import { Icon, PageFlatList, PageScaffold, Pressable, TopAppBar } from '@/src/ui';
+import { Icon, PageFlashList, PageFlatList, PageScaffold, Pressable, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { readCommentAuthorFlag, type CommentAuthorIdentity } from '@/src/utils/commentAuthor';
@@ -20,6 +21,8 @@ import {
     type CommentInsightFilter,
 } from '@/src/utils/commentInsights';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import type { FlashListRef } from '@shopify/flash-list';
+import { beginEffectiveScrollFpsSession, getGlassNativeEngine, getLiquidGlassPerformanceStats, setGlassNativeEngine, setLiquidGlassPerformanceTelemetryEnabled } from '@newhu/react-native-liquid-glass';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, Modal, ScrollView, View } from 'react-native';
 import type { FlatList } from 'react-native';
@@ -52,6 +55,67 @@ function nextOffset(next?: string) {
     } catch {
         return '';
     }
+}
+
+function commentIdFingerprint(rows: CommentViewModel[]) {
+    let hash = 2166136261;
+    for (const id of rows.map((row) => row.id).sort()) {
+        for (let index = 0; index < id.length; index += 1) {
+            hash ^= id.charCodeAt(index);
+            hash = Math.imul(hash, 16777619);
+        }
+    }
+    return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+function summarizeCommentPerfNativeStats(stats: Record<string, number>) {
+    const totalFields = [
+        'displayRefreshRate', 'backdropRequestCount', 'backdropCaptureCount', 'backdropCapturedPixelCount',
+        'sourceContentDirtyCount', 'consumerDrawCount', 'routeTreeTraversalCount', 'routeRenderNodeRecordCount',
+        'sourceRenderNodeRecordCount', 'sourceRenderNodeReuseCount', 'routeScreenCompositeCount', 'routeScrollReuseCount',
+        'descendantInvalidationReceivedCount', 'descendantInvalidationCoalescedCount', 'scrollEventsReceivedCount',
+        'scrollOffsetUpdateCount', 'scrollOffsetIntervalCount', 'scrollOffsetIntervalUnder8Ms', 'scrollOffsetInterval8To12Ms',
+        'scrollOffsetInterval12To17Ms', 'scrollOffsetIntervalOver17Ms', 'scrollFrameSampleCount', 'scrollFrameOffsetChangedCount',
+        'scrollFrameRepeatedOffsetCount', 'scrollFrameIntervalUnder8Ms', 'scrollFrameInterval8To12Ms',
+        'scrollFrameInterval12To17Ms', 'scrollFrameIntervalOver17Ms', 'scrollTouchDownEvents', 'scrollTouchMoveEvents',
+        'scrollTouchUpEvents', 'sourceRerecordRequired', 'sourceRerecordAvoided', 'sourceRerecordExecuted',
+        'consumerRefreshOnly', 'scrollReuseFrame', 'scrollSettleRerecord',
+    ];
+    const probeFields = [
+        'identityHash', 'nativeViewId', 'scrollY', 'vsyncSamples', 'effectiveContentFrames', 'duplicateContentFrames',
+        'effectiveScrollFps', 'activeScrollDurationMs', 'dragContentFps', 'dragOffsetIntervalP50Ms', 'dragOffsetIntervalP95Ms',
+        'postTouchContentFps', 'postTouchOffsetIntervalP50Ms', 'postTouchOffsetIntervalP95Ms', 'touchMoveEventCount',
+        'touchMoveEventFps', 'touchMoveDispatchCount', 'touchMoveDispatchFps', 'touchMoveDispatchIntervalP50Ms',
+        'touchMoveDispatchIntervalP95Ms', 'nativeScrollChangeCount', 'nativeScrollEventFps', 'nativeDragScrollEventFps',
+        'nativePostTouchScrollEventFps', 'postUpScrollerCaptured', 'postUpScrollerPresent', 'postUpScrollerDistancePx',
+        'postUpScrollerVelocityPxPerSec', 'contentIntervalCount', 'contentIntervalP50Ms', 'contentIntervalP95Ms',
+        'contentIntervalP99Ms', 'contentIntervalWithinOneVsyncRatio', 'interval16_67msPlusRatio', 'interval33_3msPlusRatio',
+        'maxContentStallMs', 'drawEffectiveFps', 'drawContentIntervalP95Ms', 'drawMaxContentStallMs',
+        'windowFrameEffectiveFps', 'windowFrameContentIntervalP95Ms', 'windowFrameMaxContentStallMs',
+    ];
+    const effectiveScrollProbe = Object.fromEntries(Object.entries(stats).filter(([key]) => (
+        key.startsWith('effectiveScrollProbe.') && !/effectiveScrollProbe\.target\d+\./.test(key)
+    )));
+    const targetCount = Math.round(stats['effectiveScrollProbe.targetCount'] ?? 0);
+    const targets = Array.from({ length: targetCount }, (_, index) => {
+        const prefix = `effectiveScrollProbe.target${index}.`;
+        return Object.fromEntries(probeFields.flatMap((field) => {
+            const value = stats[prefix + field];
+            return value === undefined ? [] : [[field, value]];
+        }));
+    });
+    const providers = Object.fromEntries(Object.entries(stats).flatMap(([key, value]) => {
+        if (!key.startsWith('provider.')) return [];
+        const field = ['sourceRerecordRequired', 'sourceRerecordAvoided', 'sourceRerecordExecuted', 'consumerRefreshOnly', 'scrollReuseFrame', 'scrollDirtyReceived', 'paintDirtyReceived']
+            .find((name) => key.endsWith(`.${name}`));
+        return field && value !== 0 ? [[key, value]] : [];
+    }));
+    return {
+        totals: Object.fromEntries(totalFields.flatMap((field) => stats[field] === undefined ? [] : [[field, stats[field]]])),
+        effectiveScrollProbe,
+        targets,
+        providers,
+    };
 }
 
 const INSIGHT_FILTERS: { value: CommentInsightFilter; label: string }[] = [
@@ -94,14 +158,29 @@ export default function CommentScreen() {
 }
 
 function CommentScreenContent() {
-    const params = useLocalSearchParams<{ id?: string; type?: string; draftId?: string; authorName?: string; authorUrlToken?: string }>();
+    recordCommentScreenRender();
+    const params = useLocalSearchParams<{ id?: string; type?: string; draftId?: string; authorName?: string; authorUrlToken?: string; perfRunId?: string; perfDurationMs?: string; perfMode?: string; perfExpectedRows?: string; perfGlassEngine?: string; perfListEngine?: string }>();
     const id = Array.isArray(params.id) ? params.id[0] : params.id;
     const type = Array.isArray(params.type) ? params.type[0] : params.type;
     const draftId = Array.isArray(params.draftId) ? params.draftId[0] : params.draftId;
     const routeAuthorName = Array.isArray(params.authorName) ? params.authorName[0] : params.authorName;
     const routeAuthorUrlToken = Array.isArray(params.authorUrlToken) ? params.authorUrlToken[0] : params.authorUrlToken;
+    const perfRunId = Array.isArray(params.perfRunId) ? params.perfRunId[0] : params.perfRunId;
+    const perfModeParam = Array.isArray(params.perfMode) ? params.perfMode[0] : params.perfMode;
+    const perfMode = __DEV__ && ['full-cache', 'network-page', 'append-only'].includes(perfModeParam ?? '') ? perfModeParam : '';
+    const expectedRowsParam = Array.isArray(params.perfExpectedRows) ? params.perfExpectedRows[0] : params.perfExpectedRows;
+    const perfExpectedRows = __DEV__ ? Number.parseInt(expectedRowsParam ?? '', 10) || 0 : 0;
+    const perfGlassEngineParam = Array.isArray(params.perfGlassEngine) ? params.perfGlassEngine[0] : params.perfGlassEngine;
+    const perfGlassEngine = __DEV__ && perfGlassEngineParam === 'core' ? 'core' : '';
+    const perfListEngineParam = Array.isArray(params.perfListEngine) ? params.perfListEngine[0] : params.perfListEngine;
+    const perfListEngine = __DEV__ && perfRunId && perfListEngineParam === 'flatlist' ? 'flatlist' : 'flashlist';
+    const perfDurationValue = Array.isArray(params.perfDurationMs) ? params.perfDurationMs[0] : params.perfDurationMs;
+    const perfDurationMs = Math.max(1_000, Math.min(Number.parseInt(perfDurationValue ?? '', 10) || 12_000, 60_000));
     const contentType = type === 'answer' ? 'answer' : 'article';
     const normalizedType = contentType === 'answer' ? 'answers' : 'articles';
+    useEffect(() => {
+        if (__DEV__) console.info(`[COMMENTS_ROUTE_DATA] contentId=${id ?? ''} contentType=${contentType}`);
+    }, [contentType, id]);
     const networkStatus = useNetworkStore((state) => state.status);
     const theme = useTheme();
     const router = useRouter();
@@ -111,6 +190,7 @@ function CommentScreenContent() {
     }));
 
     const [comments, setComments] = useState<CommentViewModel[]>([]);
+    const commentsLengthRef = useRef(0);
     const [commentCount, setCommentCount] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
     const [sort, setSort] = useState('score');
@@ -125,12 +205,89 @@ function CommentScreenContent() {
     const [childFocusId, setChildFocusId] = useState('');
 
     const menuButtonRef = useRef<View>(null);
-    const listRef = useRef<FlatList<CommentViewModel>>(null);
+    const flatListRef = useRef<FlatList<CommentViewModel>>(null);
+    const flashListRef = useRef<FlashListRef<CommentViewModel>>(null);
+    const scrollToCommentIndex = useCallback((index: number, animated = true) => {
+        if (perfListEngine === 'flashlist') {
+            void flashListRef.current?.scrollToIndex({ index, animated, viewPosition: 0.45 }).catch(() => {
+                flashListRef.current?.scrollToOffset({ offset: index * 220, animated });
+            });
+        } else {
+            flatListRef.current?.scrollToIndex({ index, animated, viewPosition: 0.45 });
+        }
+    }, [perfListEngine]);
+    const scrollToCommentOffset = useCallback((offset: number, animated = true) => {
+        if (perfListEngine === 'flashlist') {
+            flashListRef.current?.scrollToOffset({ offset, animated });
+        } else {
+            flatListRef.current?.scrollToOffset({ offset, animated });
+        }
+    }, [perfListEngine]);
     const offsetRef = useRef('');
     const inFlightRef = useRef(false);
     const hasMoreRef = useRef(true);
+    const perfCachedRowsRef = useRef<CommentViewModel[]>([]);
+    const perfCachedIndexRef = useRef(0);
+    const perfNativeBaselineRef = useRef<Record<string, number> | null>(null);
+    const perfPendingCommitRef = useRef<{ source: string; queuedAt: number; addedRows: number } | null>(null);
     const openedDraftRef = useRef('');
     const authorProbeRef = useRef(new Set<string>());
+
+    useEffect(() => {
+        commentsLengthRef.current = comments.length;
+        const pending = perfPendingCommitRef.current;
+        if (__DEV__ && perfRunId && pending) {
+            console.info(`[COMMENTS_PERF_REACT_COMMIT] ${JSON.stringify({ runId: perfRunId, source: pending.source, addedRows: pending.addedRows, totalRows: comments.length, ids: commentIdFingerprint(comments), stateToEffectMs: Date.now() - pending.queuedAt })}`);
+            perfPendingCommitRef.current = null;
+        }
+    }, [comments, perfRunId]);
+
+    useEffect(() => {
+        if (!perfRunId || perfGlassEngine !== 'core') return;
+        const previousEngine = getGlassNativeEngine();
+        setGlassNativeEngine('core');
+        console.info(`[COMMENTS_PERF_ENGINE] runId=${perfRunId} active=core restored=${previousEngine}`);
+        return () => setGlassNativeEngine(previousEngine);
+    }, [perfGlassEngine, perfRunId]);
+
+    useEffect(() => {
+        if (!__DEV__ || !perfRunId) return;
+        beginCommentRenderDiagnostics();
+        setLiquidGlassPerformanceTelemetryEnabled(true);
+        beginEffectiveScrollFpsSession('comments');
+        let active = true;
+        let snapshotTimer: ReturnType<typeof setTimeout> | undefined;
+        let startTimer: ReturnType<typeof setTimeout> | undefined;
+        console.info(`[COMMENTS_PERF_ROUTE] ${JSON.stringify({ runId: perfRunId, contentId: id ?? '', mode: perfMode || 'production-path', listEngine: perfListEngine, durationMs: perfDurationMs, networkStatus })}`);
+        startTimer = setTimeout(() => {
+            void getLiquidGlassPerformanceStats().then((stats) => {
+                if (!active || !stats) return;
+                perfNativeBaselineRef.current = stats;
+                console.info(`[COMMENTS_PERF_READY] runId=${perfRunId} at=${Date.now()}`);
+                snapshotTimer = setTimeout(() => {
+                    void getLiquidGlassPerformanceStats().then((current) => {
+                        if (!active) return;
+                        const baseline = perfNativeBaselineRef.current;
+                        const delta = current && baseline
+                            ? Object.fromEntries(Object.entries(current).map(([key, value]) => [
+                                key,
+                                key === 'displayRefreshRate' || key.startsWith('effectiveScrollProbe.') ? value : value - (baseline[key] ?? 0),
+                            ]))
+                            : current;
+                        console.info(`[COMMENTS_PERF_NATIVE_DELTA] ${JSON.stringify({ runId: perfRunId, ...summarizeCommentPerfNativeStats(delta ?? {}) })}`);
+                        console.info(`[COMMENTS_RENDER_DIAGNOSTICS] ${JSON.stringify({ runId: perfRunId, ...snapshotCommentRenderDiagnostics() })}`);
+                        setLiquidGlassPerformanceTelemetryEnabled(false);
+                    });
+                }, perfDurationMs);
+            });
+        }, 1_000);
+        return () => {
+            active = false;
+            if (startTimer) clearTimeout(startTimer);
+            if (snapshotTimer) clearTimeout(snapshotTimer);
+            setLiquidGlassPerformanceTelemetryEnabled(false);
+        };
+    }, [id, networkStatus, perfDurationMs, perfListEngine, perfMode, perfRunId]);
 
     useEffect(() => {
         let active = true;
@@ -182,6 +339,11 @@ function CommentScreenContent() {
         }
 
         try {
+            if (networkStatus !== 'online' && perfMode === 'network-page') {
+                console.warn(`[COMMENTS_PERF_INVALID] runId=${perfRunId ?? ''} reason=network-offline`);
+                hasMoreRef.current = false;
+                return;
+            }
             if (networkStatus !== 'online') {
                 // Offline cache fetches root comments by score. If the user
                 // changed the online sort to time before losing connectivity,
@@ -203,18 +365,33 @@ function CommentScreenContent() {
                 hasMoreRef.current = Boolean(page && !page.isEnd && page.nextOffset);
                 return;
             }
-            const response = await getRootComments(id, normalizedType, refresh ? '' : offsetRef.current, sort);
+            const requestOffset = refresh ? '' : offsetRef.current;
+            const requestStartedAt = Date.now();
+            const response = await getRootComments(id, normalizedType, requestOffset, sort);
+            const responseAt = Date.now();
             const next = nextOffset(response?.paging?.next);
-            offsetRef.current = next;
-            hasMoreRef.current = Boolean(next) && response?.paging?.is_end !== true;
+            const hasNextPage = Boolean(next)
+                && next !== requestOffset
+                && response?.paging?.is_end !== true;
+            offsetRef.current = hasNextPage ? next : '';
+            hasMoreRef.current = hasNextPage;
             setCommentCount(Number(response?.counts?.total_counts || 0));
             const incoming = (response?.data ?? []).map(normalizeComment).filter(Boolean) as CommentViewModel[];
+            if (__DEV__ && perfRunId) {
+                console.info(`[COMMENTS_PERF_PAGE] ${JSON.stringify({ runId: perfRunId, mode: perfMode || 'production-path', page: requestOffset ? 'next' : 'first', rows: incoming.length, ids: commentIdFingerprint(incoming), apiMs: responseAt - requestStartedAt, hasNextPage, currentRows: commentsLengthRef.current, cacheWrite: perfMode === 'network-page' ? 'skipped' : 'async' })}`);
+            }
+            perfPendingCommitRef.current = { source: 'network-page', queuedAt: Date.now(), addedRows: incoming.length };
             setComments((current) => {
                 if (refresh) return incoming;
                 const merged = [...current, ...incoming];
-                return merged.filter((item, index) => merged.findIndex((candidate) => candidate.id === item.id) === index);
+                const seenIds = new Set<string>();
+                return merged.filter((item) => {
+                    if (seenIds.has(item.id)) return false;
+                    seenIds.add(item.id);
+                    return true;
+                });
             });
-            void saveCommentPage({
+            if (perfMode !== 'network-page') void saveCommentPage({
                 contentId: id,
                 contentType,
                 parentCommentId: null,
@@ -230,12 +407,57 @@ function CommentScreenContent() {
             inFlightRef.current = false;
             setRefreshing(false);
         }
-    }, [contentType, id, networkStatus, normalizedType, sort]);
+    }, [contentType, id, networkStatus, normalizedType, perfMode, perfRunId, sort]);
 
     useEffect(() => {
         setComments([]);
+        if (__DEV__ && (perfMode === 'full-cache' || perfMode === 'append-only')) {
+            inFlightRef.current = true;
+            void Promise.all([
+                getCachedComments(id ?? '', contentType, null, sort),
+                getPageState(id ?? '', contentType, null, sort),
+            ]).then(([cached, page]) => {
+                perfCachedRowsRef.current = cached;
+                const initial = perfMode === 'append-only' ? cached.slice(0, 10) : cached;
+                perfCachedIndexRef.current = initial.length;
+                offsetRef.current = '';
+                hasMoreRef.current = perfMode === 'append-only' && cached.length > initial.length;
+                setCommentCount(page?.totalCount || cached.length);
+                perfPendingCommitRef.current = { source: 'cache-seed', queuedAt: Date.now(), addedRows: initial.length };
+                setComments(initial);
+                const cacheComplete = perfExpectedRows > 0
+                    ? cached.length === perfExpectedRows
+                    : Boolean(page?.isEnd && !page.nextOffset);
+                console.info(`[COMMENTS_PERF_CACHE_READY] ${JSON.stringify({ runId: perfRunId ?? '', mode: perfMode, rows: cached.length, expectedRows: perfExpectedRows || null, totalCount: page?.totalCount ?? cached.length, isEnd: page?.isEnd ?? false, hasNextOffset: Boolean(page?.nextOffset), cacheComplete, ids: commentIdFingerprint(cached), initialRows: initial.length })}`);
+                if (!cacheComplete) console.warn(`[COMMENTS_PERF_INVALID] runId=${perfRunId ?? ''} reason=cache-not-complete cachedRows=${cached.length} expectedRows=${perfExpectedRows || 'pageState'}`);
+            }).catch((error) => {
+                console.error(`[COMMENTS_PERF_CACHE_ERROR] runId=${perfRunId ?? ''}`, error);
+            }).finally(() => {
+                inFlightRef.current = false;
+            });
+            return;
+        }
         loadComments(true);
-    }, [loadComments]);
+    }, [contentType, id, loadComments, perfExpectedRows, perfMode, perfRunId, sort]);
+
+    const handleEndReached = useCallback(() => {
+        if (__DEV__ && perfMode === 'append-only') {
+            const start = perfCachedIndexRef.current;
+            const end = Math.min(start + 10, perfCachedRowsRef.current.length);
+            if (end <= start || inFlightRef.current) return;
+            inFlightRef.current = true;
+            const appendStartedAt = Date.now();
+            const appended = perfCachedRowsRef.current.slice(start, end);
+            perfPendingCommitRef.current = { source: 'memory-append', queuedAt: appendStartedAt, addedRows: appended.length };
+            setComments((current) => current.concat(appended));
+            perfCachedIndexRef.current = end;
+            hasMoreRef.current = end < perfCachedRowsRef.current.length;
+            console.info(`[COMMENTS_PERF_APPEND] ${JSON.stringify({ runId: perfRunId ?? '', source: 'memory', rows: appended.length, totalRows: end, ids: commentIdFingerprint(appended), stateEnqueueMs: Date.now() - appendStartedAt, apiMs: 0, cacheWriteMs: 0, hasMore: hasMoreRef.current })}`);
+            requestAnimationFrame(() => { inFlightRef.current = false; });
+            return;
+        }
+        loadComments(false);
+    }, [loadComments, perfMode, perfRunId]);
 
     useEffect(() => {
         if (insightFilter !== 'author' || !id) return;
@@ -346,7 +568,7 @@ function CommentScreenContent() {
         if (!pendingFocus) return;
         const index = comments.findIndex((item) => item.id === pendingFocus.rootCommentId);
         if (index >= 0) {
-            listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.45 });
+            scrollToCommentIndex(index);
             if (pendingFocus.commentId && pendingFocus.commentId !== pendingFocus.rootCommentId) {
                 const timer = setTimeout(() => {
                     setChildFocusId(pendingFocus.commentId);
@@ -362,7 +584,7 @@ function CommentScreenContent() {
             const timer = setTimeout(() => loadComments(false), 120);
             return () => clearTimeout(timer);
         }
-    }, [comments, loadComments, pendingFocus]);
+    }, [comments, loadComments, pendingFocus, scrollToCommentIndex]);
 
     const openHeaderMenu = useCallback(() => {
         menuButtonRef.current?.measureInWindow((x, y, width, height) => {
@@ -436,8 +658,8 @@ function CommentScreenContent() {
             />
         }>
 
-            <PageFlatList
-                listRef={listRef}
+            {perfListEngine === 'flashlist' ? <PageFlashList
+                listRef={flashListRef}
                 data={visibleComments}
                 keyExtractor={(item) => item.id}
                 renderItem={renderComment}
@@ -445,16 +667,11 @@ function CommentScreenContent() {
                 ListHeaderComponent={insightFilterHeader}
                 refreshing={refreshing}
                 onRefresh={() => loadComments(true)}
-                onEndReached={() => loadComments(false)}
+                onEndReached={handleEndReached}
                 onEndReachedThreshold={0.35}
-                initialNumToRender={5}
-                maxToRenderPerBatch={5}
-                updateCellsBatchingPeriod={32}
-                windowSize={5}
-                removeClippedSubviews
                 showsVerticalScrollIndicator={false}
-                onScrollToIndexFailed={({ index }) => {
-                    listRef.current?.scrollToOffset({ offset: index * 220, animated: true });
+                onLoad={({ elapsedTimeInMs }) => {
+                    if (__DEV__ && perfRunId) console.info(`[COMMENTS_PERF_FLASHLIST_LOAD] runId=${perfRunId} elapsedMs=${elapsedTimeInMs}`);
                 }}
                 ListEmptyComponent={!refreshing ? (
                     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.spacing.xl }}>
@@ -469,7 +686,40 @@ function CommentScreenContent() {
                         </Text>
                     </View>
                 ) : null}
-            />
+            /> : <PageFlatList
+                listRef={flatListRef}
+                data={visibleComments}
+                keyExtractor={(item) => item.id}
+                renderItem={renderComment}
+                contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xl, flexGrow: 1 }}
+                ListHeaderComponent={insightFilterHeader}
+                refreshing={refreshing}
+                onRefresh={() => loadComments(true)}
+                onEndReached={handleEndReached}
+                onEndReachedThreshold={0.35}
+                initialNumToRender={5}
+                maxToRenderPerBatch={5}
+                updateCellsBatchingPeriod={32}
+                windowSize={5}
+                removeClippedSubviews
+                showsVerticalScrollIndicator={false}
+                onScrollToIndexFailed={({ index }) => {
+                    scrollToCommentOffset(index * 220);
+                }}
+                ListEmptyComponent={!refreshing ? (
+                    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.spacing.xl }}>
+                        <Text type="body1" color={theme.colors.onSurfaceVariantSummary}>
+                            {insightFilter !== 'all'
+                                ? authorLoading && insightFilter === 'author'
+                                    ? '正在聚合作者回复…'
+                                    : '当前筛选下没有评论'
+                                : commentCount > 0
+                                    ? '评论暂时无法加载'
+                                    : '还没有评论'}
+                        </Text>
+                    </View>
+                ) : null}
+            />}
 
             <ChildComment
                 visible={Boolean(childId)}

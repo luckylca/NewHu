@@ -5,6 +5,7 @@ import ImageReanimatedModal from "./ImageReanimatedModal";
 import { resolveImageUri } from "@/src/services/resourceService";
 import { useNetworkStore } from "@/src/stores/useNetworkStore";
 import { useCommentInteractionHost } from "@/src/components/CommentInteractionHost";
+import { isCommentRenderDiagnosticsEnabled, recordCommentTextParse, recordCommentTextRender } from '@/src/components/commentRenderDiagnostics';
 
 type Token =
     | { type: "text"; text: string }
@@ -74,6 +75,7 @@ function htmlToTokens(html: string): Token[] {
         tokenCache.set(html, cached);
         return cached;
     }
+    const parseStartedAt = isCommentRenderDiagnosticsEnabled() ? performance.now() : null;
     let tmp = html
         .replace(/<br\s*\/?>/gi, "\n")
         .replace(/<\/p>\s*<p[^>]*>/gi, "\n")
@@ -124,6 +126,7 @@ function htmlToTokens(html: string): Token[] {
         const oldest = tokenCache.keys().next().value;
         if (oldest !== undefined) tokenCache.delete(oldest);
     }
+    if (parseStartedAt != null) recordCommentTextParse(performance.now() - parseStartedAt, tokens.length);
     return tokens;
 }
 
@@ -134,6 +137,7 @@ export default function CommentText({
     content: string;
     emojiMap: Record<string, any>;
 }) {
+    recordCommentTextRender();
     const tokens = useMemo(() => htmlToTokens(content), [content]);
     const [imageUrl, setImageUrl] = React.useState<string>("");
     const imageToken = useMemo(() => tokens.find((token): token is Extract<Token, { type: "image" }> => token.type === "image") ?? null, [tokens]);

@@ -9,9 +9,11 @@ import java.util.concurrent.CopyOnWriteArrayList
 internal object CoreLiquidGlassRegistry {
     private val providers = ConcurrentHashMap<String, WeakReference<ExpoGlassProviderCoreView>>()
     private val waiting = CopyOnWriteArrayList<Pair<String, WeakReference<GlassViewController>>>()
+    @Volatile private var scrollTelemetryEnabled = false
 
     fun registerProvider(id: String, provider: ExpoGlassProviderCoreView) {
         providers[id] = WeakReference(provider)
+        provider.setDetailedScrollTelemetryEnabled(scrollTelemetryEnabled)
         waiting.removeAll { (wantedId, reference) ->
             val controller = reference.get() ?: return@removeAll true
             if (wantedId != id) return@removeAll false
@@ -25,6 +27,11 @@ internal object CoreLiquidGlassRegistry {
     }
 
     fun provider(id: String): LiquidGlassBackdropSource? = providers[id]?.get()
+
+    fun setScrollTelemetryEnabled(enabled: Boolean) {
+        scrollTelemetryEnabled = enabled
+        for (reference in providers.values) reference.get()?.setDetailedScrollTelemetryEnabled(enabled)
+    }
 
     fun resolve(id: String, controller: GlassViewController) {
         val provider = providers[id]?.get()

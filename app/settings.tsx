@@ -2,33 +2,22 @@ import { AI_TEXT_SENSITIVITY_THRESHOLDS, type AiTextDetectionSensitivity } from 
 import { useSettingStore } from '@/src/stores/useSettingStore';
 import { useAiAnalysisStore } from '@/src/stores/useAiAnalysisStore';
 import { useUserStore } from '@/src/stores/useUserStore';
-import { Divider, Icon, ListRow, PageScaffold, PageScrollView, PageSettingsList, PreferenceGroup, Switch, TopAppBar } from '@/src/ui';
+import { Divider, Icon, ListRow, PageScaffold, PageScrollView, PreferenceGroup, SettingsPage, Switch, TopAppBar } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import type { IconName } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
-import { getGlassNativeEngine } from '@newhu/react-native-liquid-glass';
 import { router, useLocalSearchParams } from 'expo-router';
 import React from 'react';
 import type { ReactNode } from 'react';
-import { FlatList, View } from 'react-native';
-
-const SETTINGS_BENCHMARK_SCROLL_DISTANCE = 640;
-const SETTINGS_BENCHMARK_DEFAULT_DURATION_MS = 12_000;
-
-type SettingsBenchmarkScrollTarget = { scrollTo: (offset: number, animated: boolean) => void };
+import { View } from 'react-native';
 
 export default function SettingsScreen() {
-    const { settingsBenchCase, settingsBenchRun, settingsBenchDurationMs } = useLocalSearchParams<{ settingsBenchCase?: string; settingsBenchRun?: string; settingsBenchDurationMs?: string }>();
-    const benchmarkCase = settingsBenchCase?.toUpperCase();
-    const benchmarkEnabled = ['A', 'B', 'C', 'D', 'E', 'F', 'F0', 'F1', 'F2', 'F3', 'F4'].includes(benchmarkCase ?? '');
-    const benchmarkScrollTarget = React.useRef<SettingsBenchmarkScrollTarget | null>(null);
-    const benchmarkContentHeight = React.useRef(0);
-    const benchmarkViewportHeight = React.useRef(0);
+    const routeParams = useLocalSearchParams<{ runtime?: string | string[]; routeCapture?: string | string[] }>();
+    const requestedRuntime = Array.isArray(routeParams.runtime) ? routeParams.runtime[0] : routeParams.runtime;
+    const useStaticCandidate = __DEV__ && requestedRuntime === 'static';
+    const requestedRouteCapture = Array.isArray(routeParams.routeCapture) ? routeParams.routeCapture[0] : routeParams.routeCapture;
+    const routeBackdropCaptureEnabled = !(__DEV__ && useStaticCandidate && requestedRouteCapture === 'off');
     const theme = useTheme();
-    const requestedDuration = Number(settingsBenchDurationMs);
-    const benchmarkDurationMs = Number.isFinite(requestedDuration) && requestedDuration >= 1000
-        ? requestedDuration
-        : SETTINGS_BENCHMARK_DEFAULT_DURATION_MS;
     const isLoggedIn = useUserStore((state) => state.isLoggedIn);
     const username = useUserStore((state) => state.username);
     const filterAds = useSettingStore((state) => state.isAds);
@@ -205,102 +194,34 @@ export default function SettingsScreen() {
         username,
     ]);
 
-    React.useEffect(() => {
-        if (!benchmarkEnabled) return;
-        const run = settingsBenchRun ?? '0';
-        let startTimer: ReturnType<typeof setTimeout> | undefined;
-        let motionTimer: ReturnType<typeof setInterval> | undefined;
-        let finishTimer: ReturnType<typeof setTimeout> | undefined;
-        const readyTimer = setTimeout(() => {
-            const maxOffset = Math.max(0, benchmarkContentHeight.current - benchmarkViewportHeight.current);
-            const distance = Math.min(SETTINGS_BENCHMARK_SCROLL_DISTANCE, maxOffset);
-            console.info(`[SETTINGS_ISOLATION_READY] case=${benchmarkCase} run=${run} distance=${distance} content=${benchmarkContentHeight.current} viewport=${benchmarkViewportHeight.current} theme=${theme.name} glass=${theme.glass.enabled} engine=${getGlassNativeEngine()}`);
-            startTimer = setTimeout(() => {
-                console.info(`[SETTINGS_ISOLATION_START] case=${benchmarkCase} run=${run}`);
-                const maxOffset = Math.max(0, benchmarkContentHeight.current - benchmarkViewportHeight.current);
-                const distance = Math.min(SETTINGS_BENCHMARK_SCROLL_DISTANCE, maxOffset);
-                let offset = 0;
-                let direction = 1;
-                benchmarkScrollTarget.current?.scrollTo(offset, false);
-                motionTimer = setInterval(() => {
-                    const nextOffset = offset + direction * Math.min(120, distance);
-                    if (nextOffset >= distance || nextOffset <= 0) direction *= -1;
-                    offset = Math.max(0, Math.min(distance, nextOffset));
-                    benchmarkScrollTarget.current?.scrollTo(offset, true);
-                }, 250);
-                finishTimer = setTimeout(() => {
-                    if (motionTimer) clearInterval(motionTimer);
-                    benchmarkScrollTarget.current?.scrollTo(0, false);
-                    console.info(`[SETTINGS_ISOLATION_DONE] case=${benchmarkCase} run=${run} durationMs=${benchmarkDurationMs}`);
-                }, benchmarkDurationMs);
-            }, 2_500);
-        }, 3_500);
-        return () => {
-            clearTimeout(readyTimer);
-            if (startTimer) clearTimeout(startTimer);
-            if (motionTimer) clearInterval(motionTimer);
-            if (finishTimer) clearTimeout(finishTimer);
-        };
-    }, [benchmarkCase, benchmarkDurationMs, benchmarkEnabled, settingsBenchRun, theme.glass.enabled, theme.name]);
-
-    const selectedSections = React.useMemo(() => {
-        if (benchmarkCase === 'F0') return [];
-        if (benchmarkCase === 'F1') return settingsSections.slice(0, 1);
-        if (benchmarkCase === 'F2') return settingsSections.slice(0, 2);
-        if (benchmarkCase === 'F3') return settingsSections.slice(0, 3);
-        if (benchmarkCase === 'F4') return settingsSections;
-        return settingsSections;
-    }, [benchmarkCase, settingsSections]);
-    const benchmarkContentStyle = React.useMemo(() => ({
-        minHeight: 1600,
-        paddingHorizontal: theme.spacing.lg,
-        paddingBottom: theme.spacing.xxl,
-    }), [theme.spacing.lg, theme.spacing.xxl]);
-
-    const onBenchmarkLayout = React.useCallback((event: { nativeEvent: { layout: { height: number } } }) => {
-        benchmarkViewportHeight.current = event.nativeEvent.layout.height;
-    }, []);
-    const onBenchmarkContentSizeChange = React.useCallback((_width: number, height: number) => {
-        benchmarkContentHeight.current = height;
-    }, []);
-
-    const topBar = <TopAppBar title="设置" back={() => router.back()} opticalBackingEnabled={benchmarkCase !== 'B'} />;
-    const diagnosticSections = selectedSections.map((section) => benchmarkCase === 'C'
-        ? { ...section, node: React.cloneElement(section.node as React.ReactElement<{ materialOverride?: 'solid' }>, { materialOverride: 'solid' }) }
-        : section);
+    if (useStaticCandidate) {
+        return (
+            <PageScaffold
+                topBar={<TopAppBar title="设置" back={() => router.back()} />}
+                routeBackdropCaptureEnabled={routeBackdropCaptureEnabled}
+            >
+                <PageScrollView
+                    contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
+                    showsVerticalScrollIndicator={false}
+                    testID="settings-static-candidate"
+                >
+                    {settingsSections.map((section) => (
+                        <React.Fragment key={section.key}>{section.node}</React.Fragment>
+                    ))}
+                </PageScrollView>
+            </PageScaffold>
+        );
+    }
 
     return (
-        <PageScaffold topBar={topBar}>
-            <View style={{ flex: 1 }} onLayout={benchmarkEnabled ? onBenchmarkLayout : undefined}>
-                {benchmarkCase === 'F' ? (
-                    <PageScrollView
-                        pageScrollRef={(instance) => { benchmarkScrollTarget.current = instance ? { scrollTo: (offset, animated) => instance.scrollTo({ y: offset, animated }) } : null; }}
-                        onContentSizeChange={onBenchmarkContentSizeChange}
-                        contentContainerStyle={benchmarkContentStyle}
-                        showsVerticalScrollIndicator={false}
-                    >
-                        <Text>Minimal Settings content benchmark</Text>
-                    </PageScrollView>
-                ) : benchmarkCase === 'E' ? (
-                    <PageScrollView
-                        pageScrollRef={(instance) => { benchmarkScrollTarget.current = instance ? { scrollTo: (offset, animated) => instance.scrollTo({ y: offset, animated }) } : null; }}
-                        onContentSizeChange={onBenchmarkContentSizeChange}
-                        contentContainerStyle={benchmarkContentStyle}
-                        showsVerticalScrollIndicator={false}
-                    >
-                        {diagnosticSections.map((section) => <React.Fragment key={section.key}>{section.node}</React.Fragment>)}
-                    </PageScrollView>
-                ) : (
-                    <PageSettingsList
-                        listRef={(instance: FlatList<{ key: string; node: ReactNode }> | null) => { benchmarkScrollTarget.current = instance ? { scrollTo: (offset, animated) => instance.scrollToOffset({ offset, animated }) } : null; }}
-                        sections={diagnosticSections}
-                        contentContainerStyle={benchmarkEnabled ? benchmarkContentStyle : { paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
-                        onContentSizeChange={benchmarkEnabled ? onBenchmarkContentSizeChange : undefined}
-                        showsVerticalScrollIndicator={false}
-                    />
-                )}
-            </View>
-        </PageScaffold>
+        <SettingsPage
+            title="设置"
+            back={() => router.back()}
+            sections={settingsSections}
+            contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
+            showsVerticalScrollIndicator={false}
+            testID="settings-scroll"
+        />
     );
 }
 

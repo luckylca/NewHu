@@ -8,7 +8,7 @@ import type { GlassOpticsModel } from './types';
 export interface GlassCaptureSourceProps extends ViewProps {
     providerId: string;
     underlayProviderId?: string;
-    captureMode?: 'live' | 'static' | 'oneShot' | 'frozen';
+    captureMode?: 'live' | 'static' | 'oneShot' | 'oneShotPassThrough' | 'frozen';
     snapshotBlurRadiusDp?: number;
     sourceRevision?: string;
     children?: React.ReactNode;

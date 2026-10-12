@@ -4,6 +4,7 @@ import type { LayoutChangeEvent, StyleProp, ViewProps, ViewStyle } from 'react-n
 import Animated, { useAnimatedProps } from 'react-native-reanimated';
 import type { AnimatedStyle, SharedValue } from 'react-native-reanimated';
 import { LocalGlassMaterial } from './LocalGlassMaterial';
+import type { GlassSurfaceRole } from './surfaceRendererPolicy';
 import { getGlassNativeEngine, subscribeGlassNativeEngine } from './glassNativeEngine';
 import type { GlassNativeEngine } from './glassNativeEngine';
 import { CoreGlassCaptureSource, CoreGlassSurfaceView, LegacyGlassCaptureSource, LegacyGlassSurfaceView } from './nativeGlassViews';
@@ -154,7 +155,7 @@ export function RouteGlassCaptureSource({ children }: { children: React.ReactNod
         <GlassCaptureSourceView
             providerId={providerId}
             underlayProviderId={host.themeBackdropProviderId}
-            captureMode="live"
+            captureMode={Platform.OS === 'android' && getGlassNativeEngine() === 'core' ? 'oneShotPassThrough' : 'live'}
             pointerEvents="box-none"
             style={styles.captureSource}
         >
@@ -505,6 +506,8 @@ const PortalFallbackSurface = React.memo(function PortalFallbackSurface({ entry 
 
 export interface GlassSurfaceProps {
     variant?: GlassVariant;
+    /** Surface purpose used by the shared local renderer policy. */
+    surfaceRole?: GlassSurfaceRole;
     /** Semantic placement role. The parent owns actual layout and coordinates. */
     positioning?: 'inFlow' | 'floating';
     /** Optical sampling source. Backdrop sampling is explicitly opt-in. */
@@ -542,6 +545,7 @@ export interface GlassSurfaceProps {
 /** Theme-driven glass material. Callers select a role; all optical settings live in AppTheme. */
 export const GlassSurface = React.memo(function GlassSurface({
     variant = 'surface',
+    surfaceRole = 'staticGroup',
     positioning,
     sampling,
     samplingSource = 'routeScene',
@@ -633,6 +637,7 @@ export const GlassSurface = React.memo(function GlassSurface({
         return (
             <LocalGlassSurface
                 variant={variant}
+                surfaceRole={surfaceRole}
                 style={style}
                 contentStyle={contentStyle}
                 animatedStyle={animatedStyle}
@@ -763,12 +768,13 @@ const InlineBackdropSurface = React.memo(function InlineBackdropSurface({
 
 function LocalGlassSurface({
     variant,
+    surfaceRole,
     style,
     contentStyle,
     animatedStyle,
     pointerEvents,
     children,
-}: Pick<GlassSurfaceProps, 'variant' | 'style' | 'contentStyle' | 'animatedStyle' | 'pointerEvents' | 'children'>) {
+}: Pick<GlassSurfaceProps, 'variant' | 'surfaceRole' | 'style' | 'contentStyle' | 'animatedStyle' | 'pointerEvents' | 'children'>) {
     const runtime = useContext(GlassRuntimeContext);
     if (!runtime?.tokens.enabled) return <Animated.View style={[style, animatedStyle]}><View style={contentStyle}>{children}</View></Animated.View>;
     const { tokens, dark } = runtime;
@@ -793,7 +799,7 @@ function LocalGlassSurface({
                     ]}
                 />
             ) : (
-                <LocalGlassMaterial tokens={tokens} material={material} dark={dark} />
+                <LocalGlassMaterial tokens={tokens} material={material} dark={dark} surfaceRole={surfaceRole} />
             )}
             <View style={[styles.localContent, contentStyle]}>{children}</View>
         </Animated.View>
@@ -826,7 +832,11 @@ const styles = StyleSheet.create({
     routeContent: { ...StyleSheet.absoluteFillObject },
     measureOnly: {},
     localSurface: { position: 'relative', overflow: 'hidden' },
-    localContent: { flex: 1, overflow: 'hidden' },
+    // In-flow local surfaces wrap their content by default. A default flex:1
+    // makes controls inside a virtualized list header consume the viewport,
+    // pushing the actual feed cells below the visible area. Callers that need
+    // a filling surface opt into flex through contentStyle.
+    localContent: { overflow: 'hidden' },
     portalSurface: { position: 'absolute', overflow: 'visible' },
     nativeSurface: { backgroundColor: 'transparent', overflow: 'hidden' },
     fallbackSurface: { backgroundColor: 'transparent', borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },

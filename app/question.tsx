@@ -1,13 +1,16 @@
 import { getQuestion, getQuestionAnswers } from "@/src/api/ZhihuApi";
-import { Card, Divider, Icon, ListRow, PageContent, PageFlatList, PageScaffold, TopAppBar } from "@/src/ui";
+import { Card, Divider, ListRow, PageFlatList, PageScaffold, TopAppBar } from "@/src/ui";
 import { Text } from "@/src/ui/primitives";
 import { useTheme } from "@/src/ui/theme";
+import { ActivityFeed, normalizeActivityFeedEntry, normalizeActivityFeedItem } from '@/src/components/feed/ActivityFeed';
+import type { ActivityFeedEntry } from '@/src/components/feed/ActivityFeed';
 import { formatProfileText } from '@/src/utils/profileText';
 import { useUserStore } from '@/src/stores/useUserStore';
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import { Image, View } from "react-native";
 import { RenderItem } from "./home";
+import { DiagnosticListCell, isPageRenderDiagnosticsEnabled, recordPageRenderDiagnostic } from '@/src/components/feed/pageRenderDiagnostics';
 
 export type QuestionParams = {
     id: string;
@@ -19,6 +22,7 @@ export type QuestionParams = {
     followerCount?: string;
     commentCount?: string;
     createdAt?: string;
+    questionRuntime?: string | string[];
 };
 
 function routeString(value: string | string[] | undefined) {
@@ -28,6 +32,10 @@ function routeString(value: string | string[] | undefined) {
 const QuestionScreen = () => {
     const params = useLocalSearchParams<QuestionParams>();
     const id = routeString(params.id);
+    const requestedRuntime = routeString(params.questionRuntime);
+    const diagnosticRuntime = __DEV__ && (requestedRuntime === 'home' || requestedRuntime === 'generic');
+    const useHomeListRuntime = diagnosticRuntime && requestedRuntime === 'home';
+    if (__DEV__ && isPageRenderDiagnosticsEnabled()) recordPageRenderDiagnostic('question', 'screenRenders');
     const routeTitle = routeString(params.title);
     const routeExcerpt = routeString(params.excerpt);
     const routeAuthorName = routeString(params.authorName);
@@ -44,7 +52,7 @@ const QuestionScreen = () => {
     const [pageNum, setPageNum] = React.useState(1)
 
     // 动态列表状态
-    const [activities, setActivities] = React.useState<any[]>([])
+    const [activities, setActivities] = React.useState<ActivityFeedEntry[]>([])
     const [isLoadingActivities, setIsLoadingActivities] = React.useState(false)
     const [hasMoreActivities, setHasMoreActivities] = React.useState(true)
 
@@ -63,27 +71,38 @@ const QuestionScreen = () => {
 
             if (data && data.data && data.data.length > 0) {
                 // 清洗活动数据，将其转换为类似于 home.tsx 的 feedList 结构
-                const processedActivities = data.data.map((answer: any) => {
+                const mappedActivities = data.data.map((answer: any) => {
                     const authorName = answer.author?.name || '匿名用户';
-                    return {
-                        id: answer.id,
+                    return normalizeActivityFeedEntry({
+                        id: String(answer.id),
                         actionText: `${authorName} 回答了问题`,
-                        createdTime: answer.created_time,
-                        displayTime: new Date(answer.created_time * 1000).toLocaleString(),
-                        feedType: answer.type, // 'answer'
-                        item: {
-                            id: answer.id,
+                        createdTime: Number(answer.created_time) || 0,
+                        feedType: 'answer',
+                        item: normalizeActivityFeedItem({
+                            id: String(answer.id),
                             title: answer.excerpt || '无标题',
-                            authorName: answer.author?.name || '匿名用户',
+                            authorName,
                             authorUrlToken: answer.author?.url_token || '',
                             authorAvatar: answer.author?.avatar_url || '',
                             excerpt: answer.excerpt || '',
                             updatedTime: answer.updated_time || answer.created_time || 0,
                             voteCount: answer.voteup_count || 0,
                             commentCount: answer.comment_count || 0,
-                        }
-                    };
+                            questionTitle: answer.question?.title || '',
+                            questionId: answer.question?.id ? String(answer.question.id) : questionId,
+                        }),
+                    });
                 }).filter((item: any) => item !== null);
+                const processedActivities = diagnosticRuntime ? mappedActivities.slice(0, 20) : mappedActivities;
+                if (diagnosticRuntime) {
+                    console.info('[QUESTION_CANDIDATE_DATA]', JSON.stringify({
+                        questionId,
+                        runtime: requestedRuntime,
+                        mappedAnswers: mappedActivities.length,
+                        fixedAnswerCount: processedActivities.length,
+                        answerIds: processedActivities.map((entry: ActivityFeedEntry) => entry.item.id),
+                    }));
+                }
 
                 setActivities(prev => isRefresh ? processedActivities : [...prev, ...processedActivities]);
 
@@ -109,7 +128,7 @@ const QuestionScreen = () => {
         } finally {
             setIsLoadingActivities(false);
         }
-    }, []);
+    }, [diagnosticRuntime, requestedRuntime]);
 
     React.useEffect(() => {
         if (!id || !cookies) {
@@ -161,7 +180,9 @@ const QuestionScreen = () => {
         </View>
     ), [theme.colors.onSurfaceVariantSummary]);
 
-    const questionHeader = React.useMemo(() => (
+    const questionHeader = React.useMemo(() => {
+        if (__DEV__ && isPageRenderDiagnosticsEnabled()) recordPageRenderDiagnostic('question', 'headerRenders');
+        return (
         <View style={{ padding: 16, backgroundColor: theme.colors.surface }}>
             <Text type="title2" weight="bold" style={{ marginBottom: 12 }}>
                 {visibleQuestionInfo?.title}
@@ -213,55 +234,96 @@ const QuestionScreen = () => {
             ) : null}
             <Divider style={{ marginTop: 16 }} />
         </View>
-    ), [cookies, renderStats, router, theme.colors.onSurfaceVariantSummary, theme.colors.secondaryContainer, theme.colors.surface, theme.radius.full, theme.radius.tabContour, visibleQuestionInfo]);
+        );
+    }, [cookies, renderStats, router, theme.colors.onSurfaceVariantSummary, theme.colors.secondaryContainer, theme.colors.surface, theme.radius.full, theme.radius.tabContour, visibleQuestionInfo]);
 
-    const renderActivity = React.useCallback(({ item }: { item: any }) => (
-        <View style={{ paddingHorizontal: 16, marginBottom: 16, alignItems: 'center' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 4 }}>
-                <Icon name="history" size={16} color={theme.colors.onSurfaceVariantSummary} />
-                <Text type="footnote1" color={theme.colors.onSurfaceVariantSummary}>
-                    {item.actionText} · {item.displayTime}
-                </Text>
-            </View>
-            <RenderItem item={item.item} type={item.feedType} needToGet={true} hideTitle={true} />
-        </View>
-    ), [theme.colors.onSurfaceVariantSummary]);
-
-    const keyExtractor = React.useCallback((item: any, index: number) => item.id + index, []);
+    const renderActivityContent = React.useCallback((activity: ActivityFeedEntry) => {
+        const item = (
+            <RenderItem
+                item={activity.item}
+                type={activity.feedType}
+                needToGet={true}
+                hideTitle={true}
+                diagnosticPage={__DEV__ && isPageRenderDiagnosticsEnabled() ? 'question' : undefined}
+            />
+        );
+        return __DEV__ && isPageRenderDiagnosticsEnabled()
+            ? <DiagnosticListCell page="question">{item}</DiagnosticListCell>
+            : item;
+    }, []);
     const handleEndReached = React.useCallback(() => {
+        if (diagnosticRuntime) return;
         if (!isLoadingActivities && hasMoreActivities) {
             void fetchActivities(id, offsetString, pageNum);
         }
-    }, [fetchActivities, hasMoreActivities, id, isLoadingActivities, offsetString, pageNum]);
+    }, [diagnosticRuntime, fetchActivities, hasMoreActivities, id, isLoadingActivities, offsetString, pageNum]);
     const activityFooter = React.useMemo(() => (
         <View style={{ marginVertical: 20, alignItems: 'center' }}>
             {isLoadingActivities && <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>加载中...</Text>}
             {!hasMoreActivities && activities.length > 0 && <Text type="body2" color={theme.colors.onSurfaceVariantSummary}>没有更多了</Text>}
         </View>
     ), [activities.length, hasMoreActivities, isLoadingActivities, theme.colors.onSurfaceVariantSummary]);
+    const renderHomeRuntimeItem = React.useCallback(({ item }: { item: ActivityFeedEntry }) => {
+        const content = (
+            <RenderItem
+                item={item.item}
+                type={item.feedType}
+                needToGet={true}
+                hideTitle={true}
+                diagnosticPage={__DEV__ && isPageRenderDiagnosticsEnabled() ? 'question' : undefined}
+            />
+        );
+        return __DEV__ && isPageRenderDiagnosticsEnabled()
+            ? <DiagnosticListCell page="question">{content}</DiagnosticListCell>
+            : content;
+    }, []);
+
+    const emptyContent = !visibleQuestionInfo ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <Text type="body1" color={theme.colors.onSurfaceVariantSummary}>
+                {cookies ? 'Loading...' : '公开问题摘要不可用，请从首页热榜重新打开。'}
+            </Text>
+        </View>
+    ) : null;
+
+    if (useHomeListRuntime) {
+        const fixedAnswers = activities.slice(0, 20);
+        return (
+            <PageScaffold topBar={<TopAppBar title={visibleQuestionInfo?.title || '问题信息'} back={() => router.back()} />}>
+                <PageFlatList
+                    data={fixedAnswers}
+                    renderItem={renderHomeRuntimeItem}
+                    keyExtractor={(item) => item.id}
+                    ListHeaderComponent={visibleQuestionInfo ? questionHeader : null}
+                    ListEmptyComponent={emptyContent}
+                    contentContainerStyle={{ alignItems: 'center', paddingBottom: 40 }}
+                    showsVerticalScrollIndicator={false}
+                    initialNumToRender={4}
+                    maxToRenderPerBatch={4}
+                    windowSize={5}
+                    updateCellsBatchingPeriod={48}
+                    removeClippedSubviews={true}
+                    testID="question-home-runtime"
+                />
+            </PageScaffold>
+        );
+    }
 
     return (
-        <PageScaffold topBar={<TopAppBar title={visibleQuestionInfo ? visibleQuestionInfo.title : "问题信息"} back={() => router.back()} />}>
-            {visibleQuestionInfo ? (
-                <PageFlatList
-                    data={activities}
-                    keyExtractor={keyExtractor}
-                    contentContainerStyle={{ paddingBottom: 40 }}
-                    ListHeaderComponent={questionHeader}
-                    renderItem={renderActivity}
-                    onEndReached={handleEndReached}
-                    onEndReachedThreshold={0.5}
-                    ListFooterComponent={activityFooter}
-                />
-            ) : (
-                <PageContent style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                    <Text type="body1" color={theme.colors.onSurfaceVariantSummary}>
-                        {cookies ? 'Loading...' : '公开问题摘要不可用，请从首页热榜重新打开。'}
-                    </Text>
-                </PageContent>
-            )}
-        </PageScaffold>
-    )
+        <ActivityFeed
+            title={visibleQuestionInfo?.title || '问题信息'}
+            back={() => router.back()}
+            data={activities}
+            renderContent={renderActivityContent}
+            header={visibleQuestionInfo ? questionHeader : null}
+            footer={activityFooter}
+            emptyContent={emptyContent}
+            contentContainerStyle={{ paddingBottom: 40 }}
+            onEndReached={handleEndReached}
+            onEndReachedThreshold={0.5}
+            testID="question-feed"
+        />
+    );
 }
 
 export default QuestionScreen;

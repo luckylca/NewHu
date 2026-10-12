@@ -9,7 +9,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent, RefreshControl, ScrollView, View, StyleSheet, Share } from 'react-native';
 import type { FlatListProps, GestureResponderEvent, LayoutChangeEvent } from 'react-native';
-import { Card, Icon, Menu, PageFlatList, PageScaffold, PageScrollView, SearchBar, Text, usePageContentInset } from '@/src/ui';
+import { Card, FeedPage, Icon, Menu, PageFlatList, PageScrollView, SearchBar, Text, usePageContentInset } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { useSettingStore } from '../src/stores/useSettingStore';
 import { useStoreHydrated } from '@/src/hooks/useStoreHydrated';
@@ -30,6 +30,7 @@ import { ProductRecommendationReason } from '@/src/components/ProductRecommendat
 import GuestHomeFeed from '@/src/components/GuestHomeFeed';
 import { MAIN_PAGE_TOP_SPACING, useMainTabBottomContentInset } from '@/src/components/MainTabLayout';
 import type { ProductV1DomainClassificationPriority } from '@/src/product-v1/domainTaskQueue';
+import { DiagnosticListCell, isPageRenderDiagnosticsEnabled, recordPageRenderDiagnostic } from '@/src/components/feed/pageRenderDiagnostics';
 
 const { width: WindowWidth } = Dimensions.get('window');
 const WindowHeight = Dimensions.get('window').height;
@@ -86,7 +87,7 @@ function openFeedContent(item: FeedItem, type: FeedType, needToGet: boolean) {
 }
 
 // ==================== 普通模式 Item ====================
-export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetection, showDomainLabels, domainPriority, onOpenMenu }: {
+export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetection, showDomainLabels, domainPriority, onOpenMenu, diagnosticPage }: {
     item: FeedItem;
     type: FeedType;
     needToGet: boolean;
@@ -95,7 +96,9 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetect
     showDomainLabels?: boolean;
     domainPriority?: ProductV1DomainClassificationPriority;
     onOpenMenu?: (item: FeedItem, feedType: FeedType, event: GestureResponderEvent) => void;
+    diagnosticPage?: 'home' | 'question';
 }) => {
+    if (__DEV__ && diagnosticPage) recordPageRenderDiagnostic(diagnosticPage, 'renderItemRenders');
     const title = (type === 'answer' && item.questionTitle) ? item.questionTitle : item.title;
     const theme = useTheme();
     const metaColor = theme.colors.onSurfaceVariantSummary;
@@ -114,6 +117,7 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetect
     return (
         <Card
             feedback="none"
+            surfaceRole="recycledCard"
             showIndication
             glassVariant="preferencePanel"
             onPress={openItem}
@@ -185,7 +189,8 @@ export const RenderItem = memo(({ item, type, needToGet, hideTitle, showAiDetect
         prevProps.hideTitle === nextProps.hideTitle &&
         prevProps.showAiDetection === nextProps.showAiDetection &&
         prevProps.showDomainLabels === nextProps.showDomainLabels &&
-        prevProps.domainPriority === nextProps.domainPriority;
+        prevProps.domainPriority === nextProps.domainPriority &&
+        prevProps.diagnosticPage === nextProps.diagnosticPage;
 });
 RenderItem.displayName = 'RenderItem';
 
@@ -244,6 +249,7 @@ const WaterfallItem = memo(({ item, type, needToGet, measurementKey, showDomainL
         <View onLayout={handleLayout} style={{ width: '100%' }}>
             <Card
                 feedback="none"
+                surfaceRole="recycledCard"
                 showIndication
                 glassVariant="preferencePanel"
                 onPress={openItem}
@@ -345,6 +351,7 @@ export const RenderCardModeItem = memo(({ item, type, needToGet, disableAnimatio
             <View style={{ width: CARD_WIDTH, height: CARD_HEIGHT, borderRadius: 24, overflow: 'hidden' }}>
                 <Card
                     feedback={disableAnimations ? 'none' : 'sink'}
+                    surfaceRole="recycledCard"
                     showIndication
                     glassVariant="preferencePanel"
                     onPress={openItem}
@@ -445,6 +452,7 @@ type HomeScreenProps = {
 };
 
 const HomeScreen = ({ active = true }: HomeScreenProps) => {
+    if (__DEV__ && active) recordPageRenderDiagnostic('home', 'screenRenders');
     const theme = useTheme();
     const bottomContentInset = useMainTabBottomContentInset();
     
@@ -993,7 +1001,7 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
     ], [actionMenuTarget, handleDislikeItem, handleShareItem]);
 
     const renderListItem = useCallback(({ item }: { item: FeedItemInfo }) => {
-        return (
+        const content = (
             <RenderItem
                 item={item.item}
                 type={item.feedType}
@@ -1002,9 +1010,13 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
                 showDomainLabels={domainLabelsEnabled}
                 domainPriority={visibleDomainKeys.has(`${item.feedType}:${item.item.id}`) ? 'high' : 'low'}
                 onOpenMenu={openActionMenu}
+                diagnosticPage={__DEV__ && active && isPageRenderDiagnosticsEnabled() ? 'home' : undefined}
             />
         );
-    }, [domainLabelsEnabled, openActionMenu, visibleDomainKeys]);
+        return __DEV__ && active && isPageRenderDiagnosticsEnabled()
+            ? <DiagnosticListCell page="home">{content}</DiagnosticListCell>
+            : content;
+    }, [active, domainLabelsEnabled, openActionMenu, visibleDomainKeys]);
 
     // 关键改动：在这里把 item.feedType 作为形参绑定闭包传给 RenderCardModeItem
     const renderCardListItem = useCallback(({ item }: { item: FeedItemInfo }) => {
@@ -1128,6 +1140,8 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
         return <GuestHomeFeed active={active} />;
     }
 
+    // Count the page-owned search header only during an explicit Debug diagnostic session.
+    if (__DEV__ && active && isPageRenderDiagnosticsEnabled()) recordPageRenderDiagnostic('home', 'headerRenders');
     const searchAccessory = (
         <SearchBar
             label="搜索知乎内容"
@@ -1139,10 +1153,11 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
     );
 
     return (
-        <PageScaffold
+        <FeedPage
             searchAccessory={searchAccessory}
             searchAccessoryTopSpacing={MAIN_PAGE_TOP_SPACING}
             searchAccessoryBottomSpacing={10}
+            topBar={null}
         >
             {displayMode === 'card' ? (
                 <View
@@ -1251,7 +1266,7 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
                 anchor={actionMenuAnchor}
                 items={actionMenuItems}
             />
-        </PageScaffold>
+        </FeedPage>
     );
 }
 

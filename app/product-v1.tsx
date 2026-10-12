@@ -14,7 +14,7 @@ import {
   warmProductV1Runtime,
 } from '@/src/product-v1';
 import type { ProductV1Settings, ProductV1Trace } from '@/src/product-v1/types';
-import { Button, Card, Dialog, Divider, Icon, ListRow, PageContent, PageScaffold, PageSettingsList, SegmentedControl, Slider, Switch, Text, TopAppBar } from '@/src/ui';
+import { Button, Card, Dialog, Divider, Icon, ListRow, PageContent, PageScaffold, SegmentedControl, SettingsPage, Slider, Switch, Text, TopAppBar } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
 import { notify } from '@/src/stores/useNotificationStore';
 import { getApiInstance } from '@/src/api/ZhihuApi';
@@ -330,8 +330,9 @@ export default function ProductV1Screen() {
   }
 
   return (
-    <PageScaffold topBar={topBar}>
-      <PageSettingsList
+      <SettingsPage
+        title="Native512 推荐"
+        back={() => router.back()}
         sections={[
           {
             key: 'runtime',
@@ -458,8 +459,9 @@ export default function ProductV1Screen() {
         ]}
         contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl, gap: theme.spacing.lg }}
         showsVerticalScrollIndicator={false}
-      />
-
+        testID="product-v1"
+        overlays={(
+          <>
       <Dialog visible={pickerVisible} onClose={() => setPickerVisible(false)} title="选择兴趣">
         <ScrollView style={{ maxHeight: 360 }}>
           {INTEREST_OPTIONS.map((interest) => {
@@ -503,6 +505,8 @@ export default function ProductV1Screen() {
           </>
         ) : null}
       </Dialog>
-    </PageScaffold>
+          </>
+        )}
+      />
   );
 }

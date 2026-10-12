@@ -11,10 +11,12 @@ import { setCommentVote } from '@/src/services/offlineActions';
 import { getNetworkStatus } from '@/src/stores/useNetworkStore';
 import { commentMatchesContentAuthor, type CommentAuthorIdentity } from '@/src/utils/commentAuthor';
 import { useCommentInteractionHost } from '@/src/components/CommentInteractionHost';
+import { recordCommentRowMount, recordCommentRowRender, recordCommentRowUnmount } from '@/src/components/commentRenderDiagnostics';
 import { GlassSurface } from '@newhu/react-native-liquid-glass';
+import { useRecyclingState } from '@shopify/flash-list';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -67,6 +69,7 @@ function formatTime(timestamp: number) {
 }
 
 export const CommentItem = memo(function CommentItem({ item, contentAuthor, onOpenReplies, onReply, onNavigateAway, style }: CommentItemProps) {
+    recordCommentRowRender();
     const theme = useTheme();
     const router = useRouter();
     const isContentAuthor = item.isAuthorFromApi === true
@@ -80,15 +83,21 @@ export const CommentItem = memo(function CommentItem({ item, contentAuthor, onOp
     const swipeableRef = useRef<Swipeable>(null);
     const pressed = useSharedValue(0);
     const likePressed = useSharedValue(0);
-    const [liked, setLiked] = useState(item.isVote);
-    const [voteCount, setVoteCount] = useState(item.voteCount);
-    const [menuVisible, setMenuVisible] = useState(false);
-    const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0, width: 1, height: 1 });
+    const [liked, setLiked] = useRecyclingState(item.isVote, [item.id, item.isVote]);
+    const [voteCount, setVoteCount] = useRecyclingState(item.voteCount, [item.id, item.voteCount]);
+    const [menuVisible, setMenuVisible] = useRecyclingState(false, [item.id]);
+    const [menuAnchor, setMenuAnchor] = useRecyclingState({ x: 0, y: 0, width: 1, height: 1 }, [item.id]);
 
     useEffect(() => {
-        setLiked(item.isVote);
-        setVoteCount(item.voteCount);
-    }, [item.isVote, item.voteCount]);
+        recordCommentRowMount();
+        return recordCommentRowUnmount;
+    }, []);
+
+    useEffect(() => {
+        swipeableRef.current?.close();
+        pressed.value = 0;
+        likePressed.value = 0;
+    }, [item.id, likePressed, pressed]);
 
     const toggleLike = useCallback(async () => {
         if (isContentAuthor || item.id.startsWith('local:')) return;
@@ -108,7 +117,7 @@ export const CommentItem = memo(function CommentItem({ item, contentAuthor, onOp
             setVoteCount(voteCount);
             notify(message || '点赞同步失败');
         }
-    }, [isContentAuthor, item.id, liked, voteCount]);
+    }, [isContentAuthor, item.id, liked, setLiked, setVoteCount, voteCount]);
 
     const renderRightActions = useCallback((_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
         const translateX = dragX.interpolate({ inputRange: [-80, 0], outputRange: [0, 80], extrapolate: 'clamp' });
@@ -262,6 +271,7 @@ export const CommentItem = memo(function CommentItem({ item, contentAuthor, onOp
                 {usesGlassMaterial ? (
                     <GlassSurface
                         variant="preferencePanel"
+                        surfaceRole="recycledCard"
                         positioning="inFlow"
                         sampling="local"
                         style={{

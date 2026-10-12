@@ -1,7 +1,7 @@
 import { fetchAiAnalysisModels } from '@/src/services/aiAnalysisService';
 import { useAiAnalysisStore } from '@/src/stores/useAiAnalysisStore';
 import { notify } from '@/src/stores/useNotificationStore';
-import { Button, Card, Input, PageScaffold, PageSettingsList, Pressable, Switch, TopAppBar } from '@/src/ui';
+import { Button, Card, Input, Pressable, StaticSettingsPage, Switch } from '@/src/ui';
 import { Text } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { router } from 'expo-router';
@@ -153,17 +153,18 @@ export default function AiAnalysisSettingsScreen() {
     }, [apiKey, baseUrl, enabled, loadingModels, model, models, refreshModels, setApiKey, setBaseUrl, setEnabled, setModel, setModels, theme]);
 
     return (
-        <PageScaffold topBar={<TopAppBar title="AI 分析" back={() => router.back()} />}>
-            <PageSettingsList
-                sections={sections}
-                contentContainerStyle={{
-                    padding: theme.spacing.lg,
-                    paddingBottom: theme.spacing.xxl,
-                    gap: theme.spacing.md,
-                }}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-            />
-        </PageScaffold>
+        <StaticSettingsPage
+            title="AI 分析"
+            back={() => router.back()}
+            contentContainerStyle={{
+                padding: theme.spacing.lg,
+                paddingBottom: theme.spacing.xxl,
+                gap: theme.spacing.md,
+            }}
+            keyboardShouldPersistTaps="handled"
+            testID="ai-analysis-settings"
+        >
+            {sections.map((section) => <React.Fragment key={section.key}>{section.node}</React.Fragment>)}
+        </StaticSettingsPage>
     );
 }
