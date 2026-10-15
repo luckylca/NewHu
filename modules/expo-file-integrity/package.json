@@ -1,0 +1,11 @@
+{
+  "name": "expo-file-integrity",
+  "version": "1.0.0",
+  "description": "Background file integrity checks for NewHu runtime assets.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "peerDependencies": {
+    "expo": "*",
+    "react-native": "*"
+  }
+}

@@ -6,28 +6,29 @@ import { cleanupTransientCache } from '@/src/services/cacheCleanupService';
 import { removeCachedContents } from '@/src/services/offlineCacheService';
 import { resetProductV1Runtime } from '@/src/product-v1';
 import {
-    getProductV1RuntimeStorageStatus,
+    getProductV1RuntimeStorageStatusAsync,
     removeProductV1RuntimeAssets,
 } from '@/src/product-v1/runtimeAssets';
 import {
-    getSemanticV2RuntimeStorageStatus,
+    getSemanticV2RuntimeStorageStatusAsync,
     removeSemanticV2RuntimeAssets,
 } from '@/src/semantic-v2/runtimeAssets';
 import { resetSemanticV2Runtime } from '@/src/semantic-v2/badgeSelector';
 import { notify } from '@/src/stores/useNotificationStore';
-import { Button, Card, Dialog, Divider, Icon, PageFlatList, PageScaffold, Pressable, TopAppBar } from '@/src/ui';
+import { Button, Card, Dialog, Divider, Icon, PageFlashList, PageScaffold, Pressable, TopAppBar } from '@/src/ui';
+import { GlassOverlay } from '@newhu/react-native-liquid-glass';
 import { Text } from '@/src/ui/primitives';
 import type { IconName } from '@/src/ui/primitives';
 import { useTheme } from '@/src/ui/theme';
 import { storageManage } from '@/src/ui/motion';
-import { router } from 'expo-router';
-import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import React, { memo, Profiler, useCallback, useEffect, useMemo, useState } from 'react';
 import { InteractionManager, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 type CacheSummary = Awaited<ReturnType<typeof getCacheSummary>>;
-type RuntimeAssetStatus = ReturnType<typeof getProductV1RuntimeStorageStatus>;
-type SemanticRuntimeAssetStatus = ReturnType<typeof getSemanticV2RuntimeStorageStatus>;
+type RuntimeAssetStatus = Awaited<ReturnType<typeof getProductV1RuntimeStorageStatusAsync>>;
+type SemanticRuntimeAssetStatus = Awaited<ReturnType<typeof getSemanticV2RuntimeStorageStatusAsync>>;
 
 const EMPTY_SUMMARY: CacheSummary = {
     transientBytes: 0,
@@ -54,6 +55,24 @@ function formatBytes(bytes: number) {
 
 export default function StorageManagementScreen() {
     const theme = useTheme();
+    const perfParams = useLocalSearchParams<{ perf?: string; perfPlan?: string }>();
+    const storagePerfEnabled = perfParams.perf === '1' || perfParams.perfPlan === '1';
+    const reportStoragePerf = useCallback((name: string, durationMs: number) => {
+        if (storagePerfEnabled) console.info(`[StoragePerf] ${name} ${durationMs.toFixed(2)}ms`);
+    }, [storagePerfEnabled]);
+    const reportStorageEvent = useCallback((name: string) => {
+        if (storagePerfEnabled) {
+            const at = globalThis.performance?.now?.() ?? Date.now();
+            console.info(`[StoragePerf] ${name} at=${at.toFixed(2)}ms`);
+        }
+    }, [storagePerfEnabled]);
+    const reportDonutEntranceStart = useCallback(() => reportStorageEvent('donut.spring-start'), [reportStorageEvent]);
+    const storagePerfOptions = useMemo(() => ({
+        onTiming: reportStoragePerf,
+        onPlan: perfParams.perfPlan === '1'
+            ? (name: string, rows: unknown[]) => console.info(`[StoragePerf] EXPLAIN ${name} ${JSON.stringify(rows)}`)
+            : undefined,
+    }), [perfParams.perfPlan, reportStoragePerf]);
     const [items, setItems] = useState<OfflineCacheListItem[]>([]);
     const [summary, setSummary] = useState<CacheSummary>(EMPTY_SUMMARY);
     const [runtimeAssets, setRuntimeAssets] = useState<RuntimeAssetStatus>(EMPTY_RUNTIME_ASSETS);
@@ -71,14 +90,30 @@ export default function StorageManagementScreen() {
 
     const reload = useCallback(async () => {
         try {
-            const [nextItems, nextSummary] = await Promise.all([
-                listOfflineCacheItems(),
-                getCacheSummary(),
+            const [nextItems, nextSummary, nextRuntimeAssets, nextSemanticRuntimeAssets] = await Promise.all([
+                listOfflineCacheItems(storagePerfOptions),
+                getCacheSummary(storagePerfOptions),
+                (async () => {
+                    const startedAt = globalThis.performance?.now?.() ?? Date.now();
+                    try {
+                        return await getProductV1RuntimeStorageStatusAsync();
+                    } finally {
+                        reportStoragePerf('fs.product-v1-scan', (globalThis.performance?.now?.() ?? Date.now()) - startedAt);
+                    }
+                })(),
+                (async () => {
+                    const startedAt = globalThis.performance?.now?.() ?? Date.now();
+                    try {
+                        return await getSemanticV2RuntimeStorageStatusAsync();
+                    } finally {
+                        reportStoragePerf('fs.semantic-v2-scan', (globalThis.performance?.now?.() ?? Date.now()) - startedAt);
+                    }
+                })(),
             ]);
             setItems(nextItems);
             setSummary(nextSummary);
-            setRuntimeAssets(getProductV1RuntimeStorageStatus());
-            setSemanticRuntimeAssets(getSemanticV2RuntimeStorageStatus());
+            setRuntimeAssets(nextRuntimeAssets);
+            setSemanticRuntimeAssets(nextSemanticRuntimeAssets);
             setSelected((current) => {
                 const available = new Set(nextItems.map((item) => `${item.contentType}:${item.contentId}`));
                 return new Set([...current].filter((key) => available.has(key)));
@@ -88,7 +123,7 @@ export default function StorageManagementScreen() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [reportStoragePerf, storagePerfOptions]);
 
     useEffect(() => {
         // Database result delivery during the native screen transition makes
@@ -217,6 +252,7 @@ export default function StorageManagementScreen() {
                 runtimeAssets={runtimeAssets}
                 semanticRuntimeAssets={semanticRuntimeAssets}
                 segments={segments}
+                onDonutEntranceStart={reportDonutEntranceStart}
                 cleaning={cleaning}
                 runtimeDeleting={runtimeDeleting}
                 onClean={clean}
@@ -237,7 +273,7 @@ export default function StorageManagementScreen() {
                 </Animated.View>
             </View>
         </>
-    ), [allSelected, clean, cleaning, items.length, loading, managing, runtimeAssets, semanticRuntimeAssets, runtimeDeleting, segments, selectionHeaderStyle, summary, theme, toggleAll]);
+    ), [allSelected, clean, cleaning, items.length, loading, managing, reportDonutEntranceStart, runtimeAssets, semanticRuntimeAssets, runtimeDeleting, segments, selectionHeaderStyle, summary, theme, toggleAll]);
 
     const renderItem = useCallback(({ item, index }: { item: OfflineCacheListItem; index: number }) => {
         const key = `${item.contentType}:${item.contentId}`;
@@ -254,6 +290,12 @@ export default function StorageManagementScreen() {
     }, [handleItemPress, items.length, managing, selected]);
 
     return (
+        <Profiler id="StorageManagementScreen" onRender={(_id, phase, actualDuration, baseDuration, _startTime, commitTime) => {
+            if (storagePerfEnabled) {
+                console.info(`[StoragePerf] react.${phase} actual=${actualDuration.toFixed(2)}ms base=${baseDuration.toFixed(2)}ms commit=${commitTime.toFixed(2)}ms`);
+            }
+        }}>
+        <View style={{ flex: 1 }}>
         <PageScaffold topBar={<TopAppBar
                 title="存储管理"
                 back={() => router.back()}
@@ -263,10 +305,12 @@ export default function StorageManagementScreen() {
                     </Pressable>
                 ) : null}
             />}>
-            <PageFlatList
+            <>
+            <PageFlashList
                 data={items}
                 keyExtractor={(item) => `${item.contentType}:${item.contentId}`}
                 renderItem={renderItem}
+                extraData={selected}
                 ItemSeparatorComponent={OfflineItemSeparator}
                 ListHeaderComponent={listHeader}
                 ListEmptyComponent={!loading ? (
@@ -277,24 +321,10 @@ export default function StorageManagementScreen() {
                     </View>
                 ) : null}
                 ListFooterComponent={<View style={{ height: theme.spacing.xl }} />}
-                initialNumToRender={6}
-                maxToRenderPerBatch={4}
-                updateCellsBatchingPeriod={48}
-                windowSize={3}
-                removeClippedSubviews
                 contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: 122 }}
                 showsVerticalScrollIndicator={false}
                 style={{ flex: 1 }}
             />
-
-            <Animated.View
-                pointerEvents={managing ? 'auto' : 'none'}
-                style={[{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: theme.spacing.lg, paddingBottom: theme.spacing.xl, backgroundColor: theme.colors.background, borderTopWidth: 1, borderTopColor: theme.colors.dividerLine }, actionBarStyle]}
-            >
-                    <Button type="primary" disabled={selected.size === 0 || deleting} onPress={() => setConfirmVisible(true)}>
-                        {selected.size > 0 ? `删除 ${selected.size} 篇 · ${formatBytes(selectedBytes)}` : '选择要删除的内容'}
-                    </Button>
-            </Animated.View>
 
             <Dialog
                 visible={confirmVisible}
@@ -302,7 +332,7 @@ export default function StorageManagementScreen() {
                 summary={`将释放约 ${formatBytes(selectedBytes)}，离线后将无法阅读这些内容。推荐历史不会被删除。`}
                 closeOnClickModal={!deleting}
                 onClose={() => { if (!deleting) setConfirmVisible(false); }}
-            >
+        >
                 <View style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
                     <Button type="default" disabled={deleting} onPress={() => setConfirmVisible(false)} style={{ flex: 1 }}>取消</Button>
                     <Button type="primary" disabled={deleting} onPress={() => void removeSelected()} style={{ flex: 1 }}>
@@ -325,15 +355,30 @@ export default function StorageManagementScreen() {
                     </Button>
                 </View>
             </Dialog>
+            </>
         </PageScaffold>
+
+        <GlassOverlay zIndex={20}>
+            <Animated.View
+                pointerEvents={managing ? 'auto' : 'none'}
+                style={[{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 20, padding: theme.spacing.lg, paddingBottom: theme.spacing.xl, backgroundColor: theme.colors.background, borderTopWidth: 1, borderTopColor: theme.colors.dividerLine }, actionBarStyle]}
+            >
+                <Button type="primary" disabled={selected.size === 0 || deleting} onPress={() => setConfirmVisible(true)}>
+                    {selected.size > 0 ? `删除 ${selected.size} 篇 · ${formatBytes(selectedBytes)}` : '选择要删除的内容'}
+                </Button>
+            </Animated.View>
+        </GlassOverlay>
+        </View>
+        </Profiler>
     );
 }
 
-const StorageOverview = memo(function StorageOverview({ summary, runtimeAssets, semanticRuntimeAssets, segments, cleaning, runtimeDeleting, onClean, onRemoveRuntimeAssets }: {
+const StorageOverview = memo(function StorageOverview({ summary, runtimeAssets, semanticRuntimeAssets, segments, onDonutEntranceStart, cleaning, runtimeDeleting, onClean, onRemoveRuntimeAssets }: {
     summary: CacheSummary;
     runtimeAssets: RuntimeAssetStatus;
     semanticRuntimeAssets: SemanticRuntimeAssetStatus;
     segments: StorageSegment[];
+    onDonutEntranceStart: () => void;
     cleaning: boolean;
     runtimeDeleting: boolean;
     onClean: () => void;
@@ -349,7 +394,7 @@ const StorageOverview = memo(function StorageOverview({ summary, runtimeAssets, 
     return (
         <Card feedback="none" contentStyle={{ padding: theme.spacing.lg }}>
             <View style={{ alignItems: 'center' }}>
-                <StorageDonut segments={segments} totalText={formatBytes(summary.managedBytes + runtimeAssets.bytes)} />
+                <StorageDonut segments={segments} totalText={formatBytes(summary.managedBytes + runtimeAssets.bytes)} onEntranceStart={onDonutEntranceStart} />
                 <Text type="body2" color={theme.colors.onSurfaceVariantSummary} style={{ marginTop: theme.spacing.sm }}>
                     NewHU 在本机管理的数据
                 </Text>

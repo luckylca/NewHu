@@ -1,5 +1,6 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
+import { sha256FileInBackground } from 'expo-file-integrity';
 import CryptoJS from 'crypto-js';
 import { yieldToUI } from '@/src/product-v1/core/cooperative';
 
@@ -388,6 +389,9 @@ function bytesToWordArray(bytes: Uint8Array) {
 }
 
 async function sha256File(file: File) {
+  const nativeHash = await sha256FileInBackground(file.uri);
+  if (nativeHash !== null) return nativeHash;
+
   const hasher = CryptoJS.algo.SHA256.create();
   const handle = file.open();
   let remaining = file.size;
@@ -463,6 +467,33 @@ export function getSemanticV2RuntimeStorageStatus() {
     bytes: entries.reduce((sum, file) => sum + (file.exists ? file.size : 0), 0),
     fileCount: entries.length,
     installed: getSemanticV2RuntimeAssetStatus().installed,
+  };
+}
+
+/** Async equivalent for screens so storage enumeration doesn't block a UI frame. */
+export async function getSemanticV2RuntimeStorageStatusAsync() {
+  const directoryInfo = await LegacyFileSystem.getInfoAsync(assetDirectory.uri);
+  if (!directoryInfo.exists || !directoryInfo.isDirectory) {
+    return { bytes: 0, fileCount: 0, installed: false };
+  }
+
+  const names = await LegacyFileSystem.readDirectoryAsync(assetDirectory.uri);
+  const entries = await Promise.all(names.map((name) => (
+    LegacyFileSystem.getInfoAsync(new File(assetDirectory, name).uri)
+  )));
+  const fileCount = entries.filter((entry) => entry.exists && !entry.isDirectory).length;
+  const entryByName = new Map(names.map((name, index) => [name, entries[index]]));
+  const installedCount = ORDER.filter((key) => {
+    const info = entryByName.get(SPECS[key].name);
+    return info?.exists === true && info.size === SPECS[key].size;
+  }).length;
+
+  return {
+    bytes: entries.reduce((sum, entry) => (
+      entry.exists && !entry.isDirectory ? sum + entry.size : sum
+    ), 0),
+    fileCount,
+    installed: installedCount === ORDER.length,
   };
 }
 

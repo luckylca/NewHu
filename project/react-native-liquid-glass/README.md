@@ -70,7 +70,7 @@ cd example/android-native
 ANDROID_HOME="$HOME/Library/Android/sdk" ./gradlew :liquidglass-core:assembleDebug :app:assembleDebug
 ```
 
-The sample is a native `RecyclerView` with comment-like rows, a native `LocalGlassView` per row, and a native backdrop top bar. It accepts `count=5|20|80` and `mode=live|frozen`; it auto-scrolls for 12 seconds and reports FrameMetrics, gfxinfo artifacts, capture telemetry, shader pool counts, and frozen snapshot counters. See [the native sample README](example/android-native/README.md) and `docs/performance/runs/` for device records.
+The sample is a native `RecyclerView` with comment-like rows, a native `LocalGlassView` per row, and a native backdrop top bar. It accepts `count=5|20|80` and `mode=live|frozen`; it auto-scrolls for 12 seconds and reports FrameMetrics, gfxinfo artifacts, capture telemetry, shader pool counts, and frozen snapshot counters. See [the native sample README](example/android-native/README.md) and the root AGENTS.md plus scripts/performance/ for repeatable device checks; per-run output is disposable and ignored.
 
 ## Materials and rendering
 

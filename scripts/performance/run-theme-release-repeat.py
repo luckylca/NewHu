@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Repeatable ThemeSet Release run with route lifecycle, gestures, and Perfetto evidence."""
 from __future__ import annotations
-import csv, hashlib, json, pathlib, subprocess, sys, time, xml.etree.ElementTree as ET
+import csv, hashlib, json, os, pathlib, re, subprocess, sys, time, xml.etree.ElementTree as ET
 
-ROOT = pathlib.Path.cwd()
-BASE = ROOT / "docs/performance/runs/20261015-themeSet-native-draw-state"
-DEVICE = "9ea3b4d2"
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+BASE = pathlib.Path(os.environ.get("NEWHU_PERF_OUTPUT", str(ROOT / ".perf-runs" / "themeSet-native"))).expanduser()
+DEVICE = os.environ.get("DEVICE_ID", "9ea3b4d2")
 APP = "com.anonymous.NewHu"
-ADB = ["adb", "-s", DEVICE]
-TP = pathlib.Path.home() / ".local/share/perfetto/prebuilts/trace_processor_shell-d29864d1ba3b3685"
+ADB = [os.environ.get("ADB", "adb"), "-s", DEVICE]
+TP = pathlib.Path(os.environ.get("TRACE_PROCESSOR", str(pathlib.Path.home() / ".local/share/perfetto/prebuilts/trace_processor_shell-d29864d1ba3b3685"))).expanduser()
 SOURCES = [
     "app/themeSet.tsx",
     "project/react-native-liquid-glass/android-core/src/main/java/com/newhu/liquidglass/backdrop/GlassBackdropCoordinator.kt",
@@ -214,7 +214,7 @@ def write_manifest(out, scenario, repeat, apk):
 
 def main():
     if len(sys.argv) != 3 or sys.argv[1] not in {"cold", "warm", "recent"}:
-        raise SystemExit("usage: run-release-repeat.py {cold|warm|recent} REPEAT_INDEX")
+        raise SystemExit("usage: run-theme-release-repeat.py {cold|warm|recent} REPEAT_INDEX")
     scenario, repeat = sys.argv[1], int(sys.argv[2])
     out = BASE / f"final-{scenario}-{repeat}"
     out.mkdir(parents=True, exist_ok=True)
@@ -224,8 +224,8 @@ def main():
     (out / "thermal-before.txt").write_text(shell("dumpsys", "thermalservice") + "\n")
     (out / "gfxinfo-reset.txt").write_text(shell("dumpsys", "gfxinfo", APP, "reset") + "\n")
 
-    config_source = BASE / "diag-path-scroll-1/trace-config.pbtxt"
-    config = config_source.read_text().replace("duration_ms: 22000", "duration_ms: 34000")
+    config_source = ROOT / "scripts/performance/configs/android-route-frametimeline.pbtxt"
+    config = re.sub(r"duration_ms:\s*\d+", "duration_ms: 34000", config_source.read_text(), count=1)
     (out / "trace-config.pbtxt").write_text(config)
     trace_name = f"newhu-themeSet-final-{scenario}-{repeat}-{int(time.time())}.pftrace"
     t0 = time.monotonic()

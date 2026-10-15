@@ -7,7 +7,7 @@ import { useUserStore } from '@/src/stores/useUserStore';
 import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, FlatList, NativeScrollEvent, NativeSyntheticEvent, RefreshControl, ScrollView, View, StyleSheet, Share } from 'react-native';
+import { Dimensions, FlatList, InteractionManager, NativeScrollEvent, NativeSyntheticEvent, RefreshControl, ScrollView, View, StyleSheet, Share } from 'react-native';
 import type { FlatListProps, GestureResponderEvent, LayoutChangeEvent } from 'react-native';
 import { Card, FeedPage, Icon, Menu, PageFlatList, PageScrollView, SearchBar, Text, usePageContentInset } from '@/src/ui';
 import { useTheme } from '@/src/ui/theme';
@@ -451,8 +451,16 @@ type HomeScreenProps = {
     active?: boolean;
 };
 
+type PendingProductPage = {
+    items: FeedItemInfo[];
+    session: string;
+    generation: number;
+};
+
 const HomeScreen = ({ active = true }: HomeScreenProps) => {
     if (__DEV__ && active) recordPageRenderDiagnostic('home', 'screenRenders');
+    const activeRef = useRef(active);
+    activeRef.current = active;
     const theme = useTheme();
     const bottomContentInset = useMainTabBottomContentInset();
     
@@ -524,6 +532,8 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
     }, [active]);
     const requestInFlightRef = useRef(false);
     const productMergeGenerationRef = useRef(0);
+    const pendingProductPagesRef = useRef<PendingProductPage[]>([]);
+    const drainingProductPagesRef = useRef(false);
     const offlineSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
     const lastOfflineSaveCursorRef = useRef('');
     const previousBrowseAndSaveEnabledRef = useRef(browseAndSaveOfflineEnabled);
@@ -549,7 +559,8 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
     const sessionTokenRef = useRef("");
     const androidRecommendCursorRef = useRef('');
     const feedListRef = useRef(feedList);
-    feedListRef.current = feedList;
+    const previousActiveRef = useRef(active);
+    if (active && previousActiveRef.current) feedListRef.current = feedList;
     const seenFeedKeysRef = useRef(seenFeedKeys);
     seenFeedKeysRef.current = seenFeedKeys;
     const visibleFeedListRef = useRef(visibleFeedList);
@@ -563,6 +574,28 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
     // value would skip that load when NetInfo resolves before the effect.
     const previousNetworkStatusRef = useRef<NetworkStatus>('unknown');
     const onlineFeedStartedRef = useRef(false);
+
+    useEffect(() => {
+        if (active) {
+            if (!previousActiveRef.current && feedListRef.current !== feedList) {
+                setFeedList(feedListRef.current);
+            }
+            previousActiveRef.current = true;
+            return;
+        }
+
+        feedListRef.current = feedList;
+        previousActiveRef.current = false;
+        // Other screens can intentionally change the feed (for example, clear
+        // personalization explanations). Keep those external changes as the
+        // source of truth while suppressing Home's own hidden feed commits.
+        const unsubscribe = useContentStore.subscribe((state, previousState) => {
+            if (state.feedList !== previousState.feedList) {
+                feedListRef.current = state.feedList;
+            }
+        });
+        return unsubscribe;
+    }, [active, feedList, setFeedList]);
 
     const flatListRef = useRef<FlatList>(null);
     const waterfallScrollRef = useRef<ScrollView>(null);
@@ -595,6 +628,67 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
 
     const getFeedKey = (feed: FeedItemInfo) => `${feed.feedType}:${feed.item.id}`;
 
+    const processProductPage = useCallback(async (page: PendingProductPage) => {
+        if (page.generation !== productMergeGenerationRef.current) return;
+
+        try {
+            const rankedPage = await processProductV1Feed(page.items);
+            const persistedPage = await saveFeedEntries(rankedPage, 'product-v1', page.session, false);
+            if (page.generation !== productMergeGenerationRef.current) return;
+
+            const getKey = (feed: FeedItemInfo) => `${feed.feedType}:${feed.item.id}`;
+            const replacements = new Map(persistedPage.map((item) => [getKey(item), item]));
+            const current = feedListRef.current;
+            const currentKeys = new Set(current.map(getKey));
+            const merged = current.map((item) => replacements.get(getKey(item)) ?? item);
+            for (const item of persistedPage) {
+                const key = getKey(item);
+                if (!currentKeys.has(key)) {
+                    currentKeys.add(key);
+                    merged.push(item);
+                }
+            }
+            feedListRef.current = merged;
+            if (activeRef.current) setFeedList(merged);
+        } catch (error) {
+            console.error('Product 推荐后台处理失败:', error);
+        }
+    }, [setFeedList]);
+
+    const queueProductPage = useCallback((page: PendingProductPage) => {
+        if (page.generation !== productMergeGenerationRef.current) return;
+        if (activeRef.current) {
+            void processProductPage(page);
+            return;
+        }
+
+        pendingProductPagesRef.current = pendingProductPagesRef.current.filter(
+            (pending) => pending.generation === page.generation,
+        );
+        pendingProductPagesRef.current.push(page);
+    }, [processProductPage]);
+
+    const drainProductPages = useCallback(async () => {
+        if (!activeRef.current || drainingProductPagesRef.current) return;
+        drainingProductPagesRef.current = true;
+        try {
+            while (activeRef.current && pendingProductPagesRef.current.length > 0) {
+                const page = pendingProductPagesRef.current.shift();
+                if (page) await processProductPage(page);
+            }
+        } finally {
+            drainingProductPagesRef.current = false;
+        }
+    }, [processProductPage]);
+
+    useEffect(() => {
+        if (!active || pendingProductPagesRef.current.length === 0) return;
+        const task = InteractionManager.runAfterInteractions(() => {
+            void drainProductPages();
+        });
+        return () => task.cancel();
+    }, [active, drainProductPages]);
+
     const loadOfflineFeed = async () => {
         // Offline mode exposes only entries explicitly saved from the
         // offline-cache page, so every visible item has its own body/comment
@@ -604,7 +698,7 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
         // 防止本地 Feed 异步回写到在线首页的最前面。
         if (getNetworkStatus() !== 'offline') return;
         feedListRef.current = cached;
-        setFeedList(cached);
+        if (activeRef.current) setFeedList(cached);
         sessionTokenRef.current = '';
         androidRecommendCursorRef.current = '';
     };
@@ -617,6 +711,7 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
 
         if (isRefresh) {
             productMergeGenerationRef.current += 1;
+            pendingProductPagesRef.current = [];
             setIsRefreshing(true);
             sessionTokenRef.current = ""; 
             androidRecommendCursorRef.current = '';
@@ -710,7 +805,7 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
                         array.findIndex((item) => getFeedKey(item) === getFeedKey(value)) === index
                     );
                     feedListRef.current = uniqueData;
-                    setFeedList(uniqueData);
+                    if (activeRef.current) setFeedList(uniqueData);
                     hasRenderedRefreshPage = true;
                     visibleItemCount += persistedPage.filter((item) => (
                         !(filterAds && item.isAds) && !(filterPaid && item.isPaid)
@@ -720,27 +815,11 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
                     // personalization can take several seconds on a device. Merge its
                     // results into the list when it finishes without blocking scroll.
                     if (useConsentStore.getState().aiInterestAnalysisEnabled) {
-                        const productInput = [...persistedPage];
-                        const productSession = pageSession;
-                        void processProductV1Feed(productInput)
-                            .then((rankedPage) => saveFeedEntries(rankedPage, 'product-v1', productSession, false))
-                            .then((rankedPage) => {
-                                if (productMergeGenerationRef.current !== productMergeGeneration) return;
-                                const replacements = new Map(rankedPage.map((item) => [getFeedKey(item), item]));
-                                const current = feedListRef.current;
-                                const currentKeys = new Set(current.map(getFeedKey));
-                                const merged = current.map((item) => replacements.get(getFeedKey(item)) ?? item);
-                                for (const item of rankedPage) {
-                                    const key = getFeedKey(item);
-                                    if (!currentKeys.has(key)) {
-                                        currentKeys.add(key);
-                                        merged.push(item);
-                                    }
-                                }
-                                feedListRef.current = merged;
-                                setFeedList(merged);
-                            })
-                            .catch((error) => console.error('Product 推荐后台处理失败:', error));
+                        queueProductPage({
+                            items: [...persistedPage],
+                            session: pageSession,
+                            generation: productMergeGeneration,
+                        });
                     }
                 }
 
@@ -881,14 +960,14 @@ const HomeScreen = ({ active = true }: HomeScreenProps) => {
         } else if (networkStatus === 'online' && !cookies) {
             onlineFeedStartedRef.current = false;
             feedListRef.current = [];
-            setFeedList([]);
+            if (activeRef.current) setFeedList([]);
             sessionTokenRef.current = '';
         } else if (networkStatus === 'online' && (!onlineFeedStartedRef.current || previous === 'offline')) {
             onlineFeedStartedRef.current = true;
             // 在线模式只显示本次推荐请求结果，不能把离线数据库里的 Feed
             // 混进来；SQLite 仍然只负责历史去重和持久化。
             feedListRef.current = [];
-            setFeedList([]);
+            if (activeRef.current) setFeedList([]);
             sessionTokenRef.current = '';
             getApiInstance(cookies);
             void refreshHome(true);

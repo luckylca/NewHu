@@ -1,5 +1,6 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
+import { sha256FileInBackground } from 'expo-file-integrity';
 import CryptoJS from 'crypto-js';
 import { yieldToUI } from './core/cooperative';
 
@@ -126,6 +127,9 @@ function bytesToWordArray(bytes: Uint8Array) {
 }
 
 async function sha256File(file: File) {
+  const nativeHash = await sha256FileInBackground(file.uri);
+  if (nativeHash !== null) return nativeHash;
+
   const hasher = CryptoJS.algo.SHA256.create();
   const handle = file.open();
   let remaining = file.size;
@@ -314,6 +318,37 @@ export function getProductV1RuntimeStorageStatus(): ProductV1RuntimeStorageStatu
     && seedBankFile.exists && seedBankFile.size === PRODUCT_V1_SEED_BANK_SPEC.size
     && seedEmbeddingsFile.exists && seedEmbeddingsFile.size === PRODUCT_V1_SEED_EMBEDDINGS_SPEC.size;
   return { bytes, fileCount: files.length, installed };
+}
+
+/** Async equivalent for screens so storage enumeration doesn't block a UI frame. */
+export async function getProductV1RuntimeStorageStatusAsync(): Promise<ProductV1RuntimeStorageStatus> {
+  const directoryInfo = await LegacyFileSystem.getInfoAsync(assetDirectory.uri);
+  if (!directoryInfo.exists || !directoryInfo.isDirectory) {
+    return { bytes: 0, fileCount: 0, installed: false };
+  }
+
+  const names = await LegacyFileSystem.readDirectoryAsync(assetDirectory.uri);
+  const entries = await Promise.all(names.map((name) => (
+    LegacyFileSystem.getInfoAsync(new File(assetDirectory, name).uri)
+  )));
+  const fileCount = entries.filter((entry) => entry.exists && !entry.isDirectory).length;
+  const entryByName = new Map(names.map((name, index) => [name, entries[index]]));
+  const modelInfo = entryByName.get(PRODUCT_V1_MODEL_SPEC.name);
+  const seedBankInfo = entryByName.get(PRODUCT_V1_SEED_BANK_SPEC.name);
+  const seedEmbeddingsInfo = entryByName.get(PRODUCT_V1_SEED_EMBEDDINGS_SPEC.name);
+  const hasSize = (info: typeof modelInfo, expectedSize: number) => (
+    info?.exists === true && info.size === expectedSize
+  );
+
+  return {
+    bytes: entries.reduce((sum, entry) => (
+      entry.exists && !entry.isDirectory ? sum + entry.size : sum
+    ), 0),
+    fileCount,
+    installed: hasSize(modelInfo, PRODUCT_V1_MODEL_SPEC.size)
+      && hasSize(seedBankInfo, PRODUCT_V1_SEED_BANK_SPEC.size)
+      && hasSize(seedEmbeddingsInfo, PRODUCT_V1_SEED_EMBEDDINGS_SPEC.size),
+  };
 }
 
 export function removeProductV1RuntimeAssets() {

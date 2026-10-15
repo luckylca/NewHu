@@ -4,7 +4,7 @@ import android.graphics.Shader
 import android.os.Build
 import com.newhu.liquidglass.telemetry.LocalGlassTelemetry
 
-internal object LocalGlassRuntimeShaderPool {
+public object LocalGlassRuntimeShaderPool {
     private const val MAX_POOLED_SHADERS = 32
     private val shaders = ArrayDeque<Shader>()
 
@@ -26,7 +26,7 @@ internal object LocalGlassRuntimeShaderPool {
     }
 }
 
-internal object RuntimeShaderBridge {
+public object RuntimeShaderBridge {
     private val shaderType: Class<*>? by lazy(LazyThreadSafetyMode.PUBLICATION) {
         runCatching { Class.forName("android.graphics.RuntimeShader") }.getOrNull()
     }

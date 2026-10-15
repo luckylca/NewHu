@@ -8,7 +8,7 @@ import { storageEnter } from '@/src/ui/motion';
 
 export type StorageSegment = { value: number; color: string };
 
-function StorageDonut({ segments, totalText }: { segments: StorageSegment[]; totalText: string }) {
+function StorageDonut({ segments, totalText, onEntranceStart }: { segments: StorageSegment[]; totalText: string; onEntranceStart?: () => void }) {
     const theme = useTheme();
     const size = 196;
     const strokeWidth = 15;
@@ -21,10 +21,11 @@ function StorageDonut({ segments, totalText }: { segments: StorageSegment[]; tot
     React.useEffect(() => {
         if (total <= 0) return;
         const task = InteractionManager.runAfterInteractions(() => {
+            onEntranceStart?.();
             entrance.value = withSpring(1, storageEnter);
         });
         return () => task.cancel();
-    }, [entrance, total]);
+    }, [entrance, onEntranceStart, total]);
 
     const ringStyle = useAnimatedStyle(() => ({
         opacity: entrance.value,
@@ -81,6 +82,7 @@ function StorageDonut({ segments, totalText }: { segments: StorageSegment[]; tot
 
 export default React.memo(StorageDonut, (previous, next) => (
     previous.totalText === next.totalText
+    && previous.onEntranceStart === next.onEntranceStart
     && previous.segments.length === next.segments.length
     && previous.segments.every((segment, index) => segment.value === next.segments[index]?.value && segment.color === next.segments[index]?.color)
 ));

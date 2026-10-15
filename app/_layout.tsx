@@ -12,7 +12,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import React, { useEffect } from 'react';
 import type { ReactNode } from 'react';
-import { AppState, StatusBar, View } from 'react-native';
+import { AppState, Platform, StatusBar, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -91,10 +91,16 @@ function FocusedRouteExtras() {
 void SplashScreen.preventAutoHideAsync();
 SplashScreen.setOptions({ duration: 180, fade: true });
 
+// Pick the Android glass engine before any route/provider mounts. Switching
+// theme families must not swap the native surface component tree at runtime.
+if (Platform.OS === 'android') setGlassRuntime({ engine: 'core' });
+
 export default function RootLayout() {
 	const uiTheme = useAppTheme();
 	React.useLayoutEffect(() => {
-		setGlassRuntime({ engine: uiTheme.name === 'liquidGlass' ? 'core' : 'legacy' });
+		if (Platform.OS !== 'android') {
+			setGlassRuntime({ engine: uiTheme.name === 'liquidGlass' ? 'core' : 'legacy' });
+		}
 	}, [uiTheme.name]);
 	const networkStatus = useNetworkStore((state) => state.status);
 	const consentHydrated = useStoreHydrated(useConsentStore);

@@ -1,6 +1,6 @@
 package com.newhu.liquidglass.local
 
-internal object LocalGlassShader {
+public object LocalGlassShader {
     const val SOURCE = """
 uniform float2 resolution;
 uniform float4 baseTint;
@@ -57,4 +57,3 @@ half4 main(float2 position) {
 }
 """
 }
-

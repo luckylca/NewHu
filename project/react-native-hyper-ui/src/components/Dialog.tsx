@@ -123,6 +123,8 @@ export const Dialog = React.memo(function Dialog({ visible = false, onClose, tit
                             variant="dialog"
                             positioning="floating"
                             sampling="backdrop"
+                            inlineBackdrop
+                            intrinsicInlineBackdrop
                             placement={isLarge ? 'center' : 'bottom'}
                             bottomInset={c.outsideMargin}
                             animatedStyle={isLarge ? largeStyle : mobileStyle}

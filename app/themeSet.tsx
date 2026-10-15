@@ -3,6 +3,13 @@ import { notify } from '@/src/stores/useNotificationStore';
 import { Button, Card, Icon, ListRow, SegmentedControl, StaticSettingsPage, Switch, Text } from '@/src/ui';
 import { getWallpaperBlurRadius, resolveBackdropSource, resolveBaseTheme, type AppTheme, type ThemeName, type WallpaperBlurLevel, useTheme, wallpaperConfig } from '../project/react-native-hyper-ui/src/theme';
 import { GlassAppearanceProvider, GlassSurface } from '@newhu/react-native-liquid-glass';
+import { TopAppBar } from '../project/react-native-hyper-ui/src/components/TopAppBar';
+import {
+    supportsNativeThemePreviewLiquidGlass,
+    supportsNativeThemePreviewThumbnail,
+    ThemePreviewLiquidGlass,
+    ThemePreviewThumbnail,
+} from 'expo-theme-preview';
 import { DefaultAmbientBackdrop } from '@/src/components/background/DefaultAmbientBackdrop';
 import { File, Paths } from 'expo-file-system';
 import { useRouter } from 'expo-router';
@@ -14,6 +21,7 @@ const BLUR_LEVELS: Exclude<WallpaperBlurLevel, 'off'>[] = ['low', 'medium', 'hig
 
 const ThemeSetScreen = () => {
     const router = useRouter();
+    const goBack = useCallback(() => router.back(), [router]);
     const theme = useTheme();
 
     const followSystemTheme = useSettingStore((state) => state.followSystemTheme);
@@ -246,7 +254,8 @@ const ThemeSetScreen = () => {
     return (
         <StaticSettingsPage
             title="主题设置"
-            back={() => router.back()}
+            back={goBack}
+            topBar={<TopAppBar title="主题设置" back={goBack} samplingSource="routeScene" />}
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
             testID="theme-settings"
@@ -276,6 +285,11 @@ function ThemeStyleCard({
     const previewBase = theme.dark ? theme.wallpaper.base.dark : theme.wallpaper.base.light;
     const primaryText = glass ? theme.colors.onGlass : theme.colors.onSurface;
     const secondaryText = glass ? theme.colors.onGlassSecondary : theme.colors.onSurfaceVariantSummary;
+    const glassPreviewMaterials = useMemo(() => ({
+        bar: resolvePreviewMaterial(theme, 'bar'),
+        card: resolvePreviewMaterial(theme, 'card'),
+        tabBar: resolvePreviewMaterial(theme, 'tabBar'),
+    }), [theme]);
 
     return (
         <GlassAppearanceProvider tokens={theme.glass} dark={theme.dark}>
@@ -292,71 +306,101 @@ function ThemeStyleCard({
                 ]}
             >
                 <View style={[styles.themePreview, { backgroundColor: previewBase }]}>
-                    {theme.wallpaper.defaultBackdrop === 'ambient' ? <DefaultAmbientBackdrop dark={theme.dark} /> : null}
-
-                    {glass ? (
-                        <GlassSurface
-                            variant="bar"
-                            positioning="floating"
-                            sampling="local"
-                            style={[styles.previewHeader, { backgroundColor: 'transparent' }]}
-                            contentStyle={styles.previewLineRow}
-                        >
-                            <View style={[styles.previewDot, { backgroundColor: theme.colors.primary }]} />
-                            <View style={[styles.previewLine, { width: '45%', backgroundColor: primaryText }]} />
-                            <View style={[styles.previewLine, { width: '20%', backgroundColor: secondaryText }]} />
-                        </GlassSurface>
+                    {!glass && supportsNativeThemePreviewThumbnail ? (
+                        <ThemePreviewThumbnail
+                            style={{ flex: 1 }}
+                            surfaceColor={theme.colors.surfaceContainer}
+                            outlineColor={theme.colors.outline}
+                            primaryTextColor={primaryText}
+                            secondaryTextColor={secondaryText}
+                            dotColor={theme.colors.primary}
+                        />
                     ) : (
-                        <View style={[styles.previewHeader, { backgroundColor: theme.colors.surfaceContainer }]}>
-                            <View style={styles.previewLineRow}>
-                                <View style={[styles.previewDot, { backgroundColor: theme.colors.primary }]} />
-                                <View style={[styles.previewLine, { width: '45%', backgroundColor: primaryText }]} />
-                                <View style={[styles.previewLine, { width: '20%', backgroundColor: secondaryText }]} />
-                            </View>
-                        </View>
-                    )}
+                        <>
+                            {theme.wallpaper.defaultBackdrop === 'ambient' ? <DefaultAmbientBackdrop dark={theme.dark} /> : null}
 
-                    <View style={styles.previewContent}>
-                        {glass ? (
-                            <GlassSurface
-                                variant="card"
-                                positioning="inFlow"
-                                sampling="local"
-                                style={[styles.previewCard, { backgroundColor: 'transparent', borderColor: theme.colors.outline }]}
-                            >
-                                <View style={{ gap: 5 }}>
-                                    <View style={[styles.previewLine, { width: '72%', backgroundColor: primaryText }]} />
-                                    <View style={[styles.previewLine, { width: '48%', backgroundColor: secondaryText }]} />
-                                </View>
-                            </GlassSurface>
-                        ) : (
-                            <View style={[styles.previewCard, { backgroundColor: theme.colors.surfaceContainer, borderColor: theme.colors.outline }]}>
-                                <View style={{ gap: 5 }}>
-                                    <View style={[styles.previewLine, { width: '72%', backgroundColor: primaryText }]} />
-                                    <View style={[styles.previewLine, { width: '48%', backgroundColor: secondaryText }]} />
-                                </View>
-                            </View>
-                        )}
-                    </View>
+                            {glass && supportsNativeThemePreviewLiquidGlass ? (
+                                <ThemePreviewLiquidGlass
+                                    style={styles.previewGlassComposite}
+                                    pointerEvents="none"
+                                    barMaterial={glassPreviewMaterials.bar}
+                                    cardMaterial={glassPreviewMaterials.card}
+                                    tabBarMaterial={glassPreviewMaterials.tabBar}
+                                    outlineColor={theme.colors.outline}
+                                    primaryTextColor={primaryText}
+                                    secondaryTextColor={secondaryText}
+                                    dotColor={theme.colors.primary}
+                                />
+                            ) : (
+                                <>
 
-                    {glass ? (
-                        <GlassSurface
-                            variant="tabBar"
-                            positioning="floating"
-                            sampling="local"
-                            style={[styles.previewBar, { backgroundColor: 'transparent', borderColor: theme.colors.outline }]}
-                            contentStyle={styles.previewLineRow}
-                        >
-                            <View style={[styles.previewLine, { width: '40%', backgroundColor: primaryText }]} />
-                            <View style={[styles.previewLine, { width: '18%', backgroundColor: secondaryText }]} />
-                        </GlassSurface>
-                    ) : (
-                        <View style={[styles.previewBar, { backgroundColor: theme.colors.surfaceContainer, borderColor: theme.colors.outline }]}>
-                            <View style={styles.previewLineRow}>
-                                <View style={[styles.previewLine, { width: '40%', backgroundColor: primaryText }]} />
-                                <View style={[styles.previewLine, { width: '18%', backgroundColor: secondaryText }]} />
+                            {glass ? (
+                                <GlassSurface
+                                    variant="bar"
+                                    positioning="floating"
+                                    sampling="local"
+                                    style={[styles.previewHeader, { backgroundColor: 'transparent' }]}
+                                    contentStyle={styles.previewLineRow}
+                                >
+                                    <View style={[styles.previewDot, { backgroundColor: theme.colors.primary }]} />
+                                    <View style={[styles.previewLine, { width: '45%', backgroundColor: primaryText }]} />
+                                    <View style={[styles.previewLine, { width: '20%', backgroundColor: secondaryText }]} />
+                                </GlassSurface>
+                            ) : (
+                                <View style={[styles.previewHeader, { backgroundColor: theme.colors.surfaceContainer }]}>
+                                    <View style={styles.previewLineRow}>
+                                        <View style={[styles.previewDot, { backgroundColor: theme.colors.primary }]} />
+                                        <View style={[styles.previewLine, { width: '45%', backgroundColor: primaryText }]} />
+                                        <View style={[styles.previewLine, { width: '20%', backgroundColor: secondaryText }]} />
+                                    </View>
+                                </View>
+                            )}
+
+                            <View style={styles.previewContent}>
+                                {glass ? (
+                                    <GlassSurface
+                                        variant="card"
+                                        positioning="inFlow"
+                                        sampling="local"
+                                        style={[styles.previewCard, { backgroundColor: 'transparent', borderColor: theme.colors.outline }]}
+                                    >
+                                        <View style={{ gap: 5 }}>
+                                            <View style={[styles.previewLine, { width: '72%', backgroundColor: primaryText }]} />
+                                            <View style={[styles.previewLine, { width: '48%', backgroundColor: secondaryText }]} />
+                                        </View>
+                                    </GlassSurface>
+                                ) : (
+                                    <View style={[styles.previewCard, { backgroundColor: theme.colors.surfaceContainer, borderColor: theme.colors.outline }]}>
+                                        <View style={{ gap: 5 }}>
+                                            <View style={[styles.previewLine, { width: '72%', backgroundColor: primaryText }]} />
+                                            <View style={[styles.previewLine, { width: '48%', backgroundColor: secondaryText }]} />
+                                        </View>
+                                    </View>
+                                )}
                             </View>
-                        </View>
+
+                            {glass ? (
+                                <GlassSurface
+                                    variant="tabBar"
+                                    positioning="floating"
+                                    sampling="local"
+                                    style={[styles.previewBar, { backgroundColor: 'transparent', borderColor: theme.colors.outline }]}
+                                    contentStyle={styles.previewLineRow}
+                                >
+                                    <View style={[styles.previewLine, { width: '40%', backgroundColor: primaryText }]} />
+                                    <View style={[styles.previewLine, { width: '18%', backgroundColor: secondaryText }]} />
+                                </GlassSurface>
+                            ) : (
+                                <View style={[styles.previewBar, { backgroundColor: theme.colors.surfaceContainer, borderColor: theme.colors.outline }]}>
+                                    <View style={styles.previewLineRow}>
+                                        <View style={[styles.previewLine, { width: '40%', backgroundColor: primaryText }]} />
+                                        <View style={[styles.previewLine, { width: '18%', backgroundColor: secondaryText }]} />
+                                    </View>
+                                </View>
+                            )}
+                                </>
+                            )}
+                        </>
                     )}
                 </View>
                 <View style={styles.themeChoiceText}>
@@ -380,6 +424,51 @@ function CardSectionTitle({ children }: { children: React.ReactNode }) {
             <Text type="footnote1" weight="bold" color={theme.colors.primary}>{children}</Text>
         </View>
     );
+}
+
+type PreviewGlassVariant = 'bar' | 'card' | 'tabBar';
+
+function resolvePreviewMaterial(theme: AppTheme, variant: PreviewGlassVariant) {
+    const material = theme.glass.materials[variant];
+    const mode = theme.dark ? 'dark' : 'light';
+    const colors = [
+        theme.glass.procedural.baseTint[mode],
+        (material.accentTint ?? theme.glass.procedural.accentTint)[mode],
+        theme.glass.procedural.highlightTint[mode],
+        theme.glass.procedural.innerShade[mode],
+    ];
+    return [
+        ...colors.flatMap(parseGlassRgba),
+        material.refractionAmount,
+        material.chromaticAberration,
+        material.highlightAlpha,
+        theme.glass.procedural.noiseStrength,
+        material.opacity ?? 1,
+        material.radius,
+    ];
+}
+
+function parseGlassRgba(value: string): number[] {
+    const functional = value.match(/rgba?\(([^)]+)\)/i);
+    if (functional) {
+        const parts = functional[1].split(',').map((part) => Number.parseFloat(part.trim()));
+        if (parts.length >= 3 && parts.slice(0, 3).every(Number.isFinite)) {
+            return [parts[0] / 255, parts[1] / 255, parts[2] / 255, parts[3] ?? 1];
+        }
+    }
+    const hex = value.replace('#', '').trim();
+    if (/^[0-9a-f]{3}$/i.test(hex)) {
+        return [...hex].map((digit) => Number.parseInt(`${digit}${digit}`, 16) / 255).concat(1);
+    }
+    if (/^[0-9a-f]{6}([0-9a-f]{2})?$/i.test(hex)) {
+        return [
+            Number.parseInt(hex.slice(0, 2), 16) / 255,
+            Number.parseInt(hex.slice(2, 4), 16) / 255,
+            Number.parseInt(hex.slice(4, 6), 16) / 255,
+            hex.length === 8 ? Number.parseInt(hex.slice(6, 8), 16) / 255 : 1,
+        ];
+    }
+    return [1, 1, 1, 0.2];
 }
 
 const styles = StyleSheet.create({
@@ -495,6 +584,13 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
         justifyContent: 'flex-end',
         padding: 12,
+    },
+    previewGlassComposite: {
+        position: 'absolute',
+        left: 8,
+        right: 8,
+        top: 8,
+        bottom: 8,
     },
     emptyPreview: {
         ...StyleSheet.absoluteFillObject,

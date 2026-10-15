@@ -1,0 +1,12 @@
+{
+  "name": "expo-theme-preview",
+  "version": "1.0.0",
+  "description": "Android native drawing primitives for compact theme preview line art.",
+  "main": "src/index.tsx",
+  "types": "src/index.tsx",
+  "react-native": "src/index.tsx",
+  "peerDependencies": {
+    "expo": "*",
+    "react-native": "*"
+  }
+}

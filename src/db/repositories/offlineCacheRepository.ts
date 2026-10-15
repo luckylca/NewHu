@@ -4,6 +4,27 @@ import type { CacheJob, OfflinePin, RootCommentMode } from '../types';
 
 const now = () => Date.now();
 
+export type StoragePerfOptions = {
+    onTiming?: (name: string, durationMs: number) => void;
+    onPlan?: (name: string, rows: unknown[]) => void;
+};
+
+const perfNow = () => globalThis.performance?.now?.() ?? Date.now();
+
+async function measure<T>(options: StoragePerfOptions | undefined, name: string, work: () => Promise<T>) {
+    const startedAt = perfNow();
+    try {
+        return await work();
+    } finally {
+        options?.onTiming?.(name, perfNow() - startedAt);
+    }
+}
+
+async function explainQuery(db: Awaited<ReturnType<typeof getDatabase>>, options: StoragePerfOptions | undefined, name: string, sql: string) {
+    if (!options?.onPlan) return;
+    options.onPlan(name, await db.getAllAsync(`EXPLAIN QUERY PLAN ${sql}`));
+}
+
 function rowToPin(row: any): OfflinePin {
     return {
         contentId: row.content_id,
@@ -60,9 +81,9 @@ function usableTitle(value: unknown) {
 }
 
 /** List offline entries with their logical local size, without touching access timestamps. */
-export async function listOfflineCacheItems(): Promise<OfflineCacheListItem[]> {
-    const db = await getDatabase();
-    const rows = await db.getAllAsync<any>(
+export async function listOfflineCacheItems(options?: StoragePerfOptions): Promise<OfflineCacheListItem[]> {
+    const db = await measure(options, 'sqlite.open.list', getDatabase);
+    const sql =
         `WITH comment_stats AS (
             SELECT content_id, content_type,
                    SUM(LENGTH(content_html) + LENGTH(COALESCE(author_name, '')) + LENGTH(COALESCE(author_avatar, ''))) AS bytes,
@@ -94,9 +115,11 @@ export async function listOfflineCacheItems(): Promise<OfflineCacheListItem[]> {
          LEFT JOIN comment_stats cs ON cs.content_id = p.content_id AND cs.content_type = p.content_type
          LEFT JOIN resource_stats rs ON rs.owner_id = p.content_id AND rs.owner_type = p.content_type
          WHERE p.status = 'active'
-         ORDER BY p.updated_at DESC`,
-    );
-    return rows.map((row) => {
+         ORDER BY p.updated_at DESC`;
+    await explainQuery(db, options, 'offline-list', sql);
+    const rows = await measure(options, 'sqlite.offline-list', () => db.getAllAsync<any>(sql));
+    const mapStartedAt = perfNow();
+    const items = rows.map((row) => {
         const pin = rowToPin(row);
         const title = pin.contentType === 'answer'
             ? usableTitle(row.question_title) || usableTitle(row.title)
@@ -110,6 +133,8 @@ export async function listOfflineCacheItems(): Promise<OfflineCacheListItem[]> {
             commentCount: Number(row.cached_comment_count || 0),
         };
     });
+    options?.onTiming?.('js.offline-list-map', perfNow() - mapStartedAt);
+    return items;
 }
 
 export async function upsertOfflinePin(options: {
@@ -236,21 +261,29 @@ export async function recoverRunningJobs() {
     await db.runAsync("UPDATE cache_jobs SET status = 'paused', updated_at = ? WHERE status = 'running'", now());
 }
 
-export async function getCacheSummary() {
-    const db = await getDatabase();
-    const bodyRow = await db.getFirstAsync<{ transient_bytes: number; pinned_bytes: number }>(
+export async function getCacheSummary(options?: StoragePerfOptions) {
+    const db = await measure(options, 'sqlite.open.summary', getDatabase);
+    const queryFirst = async <T,>(name: string, sql: string) => {
+        await explainQuery(db, options, `summary-${name}`, sql);
+        return measure(options, `sqlite.summary.${name}`, () => db.getFirstAsync<T>(sql));
+    };
+    const bodyRow = await queryFirst<{ transient_bytes: number; pinned_bytes: number }>(
+        'bodies',
         `SELECT
            COALESCE(SUM(CASE WHEN cache_state = 'transient' THEN LENGTH(html) ELSE 0 END), 0) AS transient_bytes,
            COALESCE(SUM(CASE WHEN cache_state = 'pinned' THEN LENGTH(html) ELSE 0 END), 0) AS pinned_bytes
          FROM content_bodies`,
     );
-    const commentRow = await db.getFirstAsync<{ transient_bytes: number; pinned_bytes: number }>(
+    const commentRow = await queryFirst<{ transient_bytes: number; pinned_bytes: number; comment_count: number }>(
+        'comments',
         `SELECT
            COALESCE(SUM(CASE WHEN cache_state = 'transient' THEN LENGTH(content_html) + LENGTH(COALESCE(author_name, '')) + LENGTH(COALESCE(author_avatar, '')) ELSE 0 END), 0) AS transient_bytes,
-           COALESCE(SUM(CASE WHEN cache_state = 'pinned' THEN LENGTH(content_html) + LENGTH(COALESCE(author_name, '')) + LENGTH(COALESCE(author_avatar, '')) ELSE 0 END), 0) AS pinned_bytes
+           COALESCE(SUM(CASE WHEN cache_state = 'pinned' THEN LENGTH(content_html) + LENGTH(COALESCE(author_name, '')) + LENGTH(COALESCE(author_avatar, '')) ELSE 0 END), 0) AS pinned_bytes,
+           COUNT(*) AS comment_count
          FROM comments WHERE local_only = 0`,
     );
-    const resourceRow = await db.getFirstAsync<{ transient_bytes: number; pinned_bytes: number }>(
+    const resourceRow = await queryFirst<{ transient_bytes: number; pinned_bytes: number }>(
+        'resources',
         `SELECT
            COALESCE(SUM(CASE WHEN EXISTS (
              SELECT 1 FROM resource_refs rr JOIN offline_pins p
@@ -264,13 +297,14 @@ export async function getCacheSummary() {
            ) THEN r.file_size ELSE 0 END), 0) AS pinned_bytes
          FROM resources r WHERE r.status = 'ready'`,
     );
-    const commentsRow = await db.getFirstAsync<{ count: number }>("SELECT COUNT(*) AS count FROM comments WHERE local_only = 0");
-    const outboxRow = await db.getFirstAsync<{ count: number }>("SELECT COUNT(*) AS count FROM pending_actions WHERE status NOT IN ('synced')");
-    const pinnedCount = await db.getFirstAsync<{ count: number }>("SELECT COUNT(*) AS count FROM offline_pins WHERE status = 'active'");
-    const modelRow = await db.getFirstAsync<{ bytes: number; count: number }>(
+    const outboxRow = await queryFirst<{ count: number }>('outbox', "SELECT COUNT(*) AS count FROM pending_actions WHERE status NOT IN ('synced')");
+    const pinnedCount = await queryFirst<{ count: number }>('pinned-count', "SELECT COUNT(*) AS count FROM offline_pins WHERE status = 'active'");
+    const modelRow = await queryFirst<{ bytes: number; count: number }>(
+        'embeddings',
         "SELECT COALESCE(SUM(LENGTH(embedding)), 0) AS bytes, COUNT(*) AS count FROM content_embeddings WHERE embedding IS NOT NULL",
     );
-    const readingRow = await db.getFirstAsync<{ bytes: number; count: number }>(
+    const readingRow = await queryFirst<{ bytes: number; count: number }>(
+        'reading',
         `SELECT COALESCE(SUM(
             LENGTH(content_id) + LENGTH(content_type) + LENGTH(event_type) + LENGTH(COALESCE(value_text, '')) + 32
          ), 0) AS bytes, COUNT(*) AS count FROM user_events`,
@@ -287,7 +321,7 @@ export async function getCacheSummary() {
         modelBytes: Number(modelRow?.bytes ?? 0),
         readingBytes: Number(readingRow?.bytes ?? 0),
         managedBytes: transientBytes + pinnedBytes + Number(modelRow?.bytes ?? 0) + Number(readingRow?.bytes ?? 0),
-        commentCount: Number(commentsRow?.count ?? 0),
+        commentCount: Number(commentRow?.comment_count ?? 0),
         outboxCount: Number(outboxRow?.count ?? 0),
         pinnedCount: Number(pinnedCount?.count ?? 0),
         modelCount: Number(modelRow?.count ?? 0),

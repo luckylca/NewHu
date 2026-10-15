@@ -56,6 +56,8 @@ export interface GlassSurfaceProps {
     samplingSource?: GlassSamplingSource;
     /** Draw the optical backing in place beneath its ordinary route children. */
     inlineBackdrop?: boolean;
+    /** Keep intrinsic content height for inline backdrops with no fixed parent height. */
+    intrinsicInlineBackdrop?: boolean;
     /** @deprecated Use sampling; kept for source compatibility. */
     renderMode?: 'local' | 'backdrop';
     pointerEvents?: ViewProps['pointerEvents'];

@@ -19,7 +19,11 @@ else
   TRACE_DURATION_MS="${TRACE_DURATION_MS:-24000}"
 fi
 
-if [[ "$INTERACTION_MODE" == "animation-toggle" ]]; then
+if [[ "$INTERACTION_MODE" == "idle" ]]; then
+  ACTION_DESCRIPTION="no synthetic input; stationary screen for the full trace"
+elif [[ "$INTERACTION_MODE" == "inertia" ]]; then
+  ACTION_DESCRIPTION="three 220ms alternating ADB flings with 3s post-touch settling windows; synthetic input, offset cadence analyzed separately"
+elif [[ "$INTERACTION_MODE" == "animation-toggle" ]]; then
   ACTION_DESCRIPTION="12 ADB taps; six Reduce UI Animations on/off cycles at (800,565); setting restored to initial value"
 else
   ACTION_DESCRIPTION="10s continuous vertical ADB swipe plus four 180ms reverse swipes; synthetic input"
@@ -29,6 +33,9 @@ case "$PAGE" in
   home) ROUTE="home"; SOURCE_FILE="$ROOT_DIR/app/home.tsx" ;;
   settings) ROUTE="settings"; SOURCE_FILE="$ROOT_DIR/app/settings.tsx" ;;
   animationSettings) ROUTE="animationSettings"; SOURCE_FILE="$ROOT_DIR/app/animationSettings.tsx" ;;
+  about) ROUTE="about"; SOURCE_FILE="$ROOT_DIR/app/about.tsx" ;;
+  storage-management) ROUTE="storage-management"; SOURCE_FILE="$ROOT_DIR/app/storage-management.tsx" ;;
+  legal) ROUTE="legal"; SOURCE_FILE="$ROOT_DIR/app/legal.tsx" ;;
   privacy-personalization) ROUTE="privacy-personalization"; SOURCE_FILE="$ROOT_DIR/app/privacy-personalization.tsx" ;;
   devmode) ROUTE="devmode"; SOURCE_FILE="$ROOT_DIR/app/devmode.tsx" ;;
   ai-analysis-settings) ROUTE="ai-analysis-settings"; SOURCE_FILE="$ROOT_DIR/app/ai-analysis-settings.tsx" ;;
@@ -55,7 +62,7 @@ escaped_uri="${uri//&/\\&}"
 
 printf 'head=%s\nsource=working-tree-built-as-Release\ndevice=%s\napp=%s\npage=%s\nroute=%s\nquery=%s\nmode=Release\nrefresh_target=120Hz\ntrace_duration_ms=%s\ninteraction_mode=%s\naction_description=%s\n' \
   "$(git -C "$ROOT_DIR" rev-parse HEAD)" "$DEVICE_ID" "$APP_ID" "$PAGE" "$uri" "$BENCHMARK_QUERY" "$TRACE_DURATION_MS" "$INTERACTION_MODE" "$ACTION_DESCRIPTION" > "$OUT_DIR/environment.txt"
-RELEASE_APK_PATH="${RELEASE_APK_PATH:-$ROOT_DIR/docs/performance/runs/20261012-full-page-120hz-session/release-build/no-hidden-tabbar/app-release-no-hidden-tabbar.apk}"
+RELEASE_APK_PATH="${RELEASE_APK_PATH:-$ROOT_DIR/android/app/build/outputs/apk/release/app-release.apk}"
 if [[ -f "$RELEASE_APK_PATH" ]]; then
   printf 'release_apk=%s\nrelease_apk_sha256=%s\n' "$RELEASE_APK_PATH" "$(shasum -a 256 "$RELEASE_APK_PATH" | awk '{print $1}')" >> "$OUT_DIR/environment.txt"
 fi
@@ -80,16 +87,14 @@ sleep 8
 "$ADB_BIN" -s "$DEVICE_ID" shell dumpsys gfxinfo "$APP_ID" reset > "$OUT_DIR/gfxinfo-reset.txt" 2>&1
 "$ADB_BIN" -s "$DEVICE_ID" shell dumpsys SurfaceFlinger --latency-clear > "$OUT_DIR/surfaceflinger-clear.txt" 2>&1 || true
 
-python3 - "$ROOT_DIR/docs/performance/runs/20261012-full-page-120hz-session/comments/list-engine/C6-flashlist-state-reset/trace-config.pbtxt" "$OUT_DIR/trace-config.pbtxt" "$TRACE_DURATION_MS" <<'PY'
+TRACE_CONFIG_PATH="${TRACE_CONFIG_PATH:-$ROOT_DIR/scripts/performance/configs/android-route-frametimeline.pbtxt}"
+python3 - "$TRACE_CONFIG_PATH" "$OUT_DIR/trace-config.pbtxt" "$TRACE_DURATION_MS" <<'PY'
 import pathlib
+import re
 import sys
 
 source = pathlib.Path(sys.argv[1]).read_text()
-source = source.replace(
-    "duration_ms: 24000",
-    f"duration_ms: {sys.argv[3]}\nincremental_state_config {{ clear_period_ms: 5000 }}",
-    1,
-)
+source = re.sub(r"duration_ms:\s*\d+", f"duration_ms: {sys.argv[3]}", source, count=1)
 pathlib.Path(sys.argv[2]).write_text(source)
 PY
 
@@ -97,7 +102,26 @@ PY
   -o "/data/misc/perfetto-traces/$TRACE_NAME" \
   < "$OUT_DIR/trace-config.pbtxt" > "$OUT_DIR/perfetto-start.txt" 2>&1
 
-if [[ "$INTERACTION_MODE" == "animation-toggle" ]]; then
+if [[ "$INTERACTION_MODE" == "idle" ]]; then
+  printf 'index,action,driver\n' > "$OUT_DIR/gestures.csv"
+  printf 'index,action,driver\n' > "$OUT_DIR/action-timeline.csv"
+  sleep "$(( (TRACE_DURATION_MS + 999) / 1000 + 1 ))"
+elif [[ "$INTERACTION_MODE" == "inertia" ]]; then
+  POST_TOUCH_WAIT_MS="${POST_TOUCH_WAIT_MS:-3000}"
+  printf 'index,gesture,driver,duration_ms,uptime_before,uptime_after,post_touch_wait_ms\n' > "$OUT_DIR/gestures.csv"
+  printf 'index,action,driver,uptime_before,uptime_after,post_touch_wait_ms\n' > "$OUT_DIR/action-timeline.csv"
+  for index in 1 2 3; do
+    if (( index % 2 == 1 )); then y1=2700; y2=650; else y1=650; y2=2700; fi
+    uptime_before=$("$ADB_BIN" -s "$DEVICE_ID" shell cat /proc/uptime | awk '{print $1}')
+    "$ADB_BIN" -s "$DEVICE_ID" shell input swipe 720 "$y1" 720 "$y2" 220
+    uptime_after=$("$ADB_BIN" -s "$DEVICE_ID" shell cat /proc/uptime | awk '{print $1}')
+    printf '%s,fast-fling,adb-input-swipe,220,%s,%s,%s\n' "$index" "$uptime_before" "$uptime_after" "$POST_TOUCH_WAIT_MS" >> "$OUT_DIR/gestures.csv"
+    printf '%s,fast-fling,adb-input-swipe,%s,%s,%s\n' "$index" "$uptime_before" "$uptime_after" "$POST_TOUCH_WAIT_MS" >> "$OUT_DIR/action-timeline.csv"
+    sleep "$(awk -v ms="$POST_TOUCH_WAIT_MS" 'BEGIN { printf "%.3f", ms / 1000 }')"
+  done
+  remaining_seconds=$(( (TRACE_DURATION_MS + 999) / 1000 - 10 ))
+  if (( remaining_seconds > 0 )); then sleep "$remaining_seconds"; fi
+elif [[ "$INTERACTION_MODE" == "animation-toggle" ]]; then
   if [[ "$PAGE" != "animationSettings" ]]; then
     echo "animation-toggle interaction is only valid for animationSettings" >&2
     exit 2

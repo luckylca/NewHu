@@ -47,3 +47,14 @@ app-example
 modules/**/android/build/
 
 .claude/
+
+# Disposable performance captures (never commit native traces/APKs/caches)
+.perf-runs/
+docs/performance/runs/
+docs/performance/traces/
+**/__pycache__/
+*.pyc
+project/react-native-liquid-glass/android-core/build/
+project/react-native-liquid-glass/android/build/
+project/react-native-liquid-glass/lib/commonjs/surfaceRendererPolicy.js*
+project/react-native-liquid-glass/lib/module/surfaceRendererPolicy.js*

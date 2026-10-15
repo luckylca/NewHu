@@ -516,6 +516,8 @@ export interface GlassSurfaceProps {
     samplingSource?: GlassSamplingSource;
     /** Draw the optical backing in place beneath its ordinary route children. */
     inlineBackdrop?: boolean;
+    /** Keep intrinsic content height for inline backdrops with no fixed parent height. */
+    intrinsicInlineBackdrop?: boolean;
     /** @deprecated Use sampling; kept for source compatibility. */
     renderMode?: 'local' | 'backdrop';
     pointerEvents?: ViewProps['pointerEvents'];
@@ -550,6 +552,7 @@ export const GlassSurface = React.memo(function GlassSurface({
     sampling,
     samplingSource = 'routeScene',
     inlineBackdrop = false,
+    intrinsicInlineBackdrop = false,
     renderMode,
     pointerEvents,
     interactive = false,
@@ -661,6 +664,7 @@ export const GlassSurface = React.memo(function GlassSurface({
                     opticalMotionY={opticalMotionY}
                     materialOverrides={materialOverrides}
                     displacementOnlyDebug={displacementOnlyDebug}
+                    intrinsicLayout={intrinsicInlineBackdrop}
                     contentStyle={contentStyle}
                     placement={placement}
                 >
@@ -695,6 +699,7 @@ const InlineBackdropSurface = React.memo(function InlineBackdropSurface({
     opticalMotionY,
     materialOverrides,
     displacementOnlyDebug,
+    intrinsicLayout,
     contentStyle,
     placement,
     children,
@@ -708,6 +713,7 @@ const InlineBackdropSurface = React.memo(function InlineBackdropSurface({
     opticalMotionY?: SharedValue<number>;
     materialOverrides?: Partial<GlassMaterialTokens>;
     displacementOnlyDebug: boolean;
+    intrinsicLayout: boolean;
     contentStyle?: StyleProp<ViewStyle>;
     placement: 'layout' | 'bottom' | 'center';
     children?: React.ReactNode;
@@ -725,7 +731,7 @@ const InlineBackdropSurface = React.memo(function InlineBackdropSurface({
         : tokens.materials[variant];
     const qualityScale = tokens.quality === 'high' ? 1.2 : tokens.quality === 'fallback' ? 0.45 : 1;
     return (
-        <View style={styles.inlineBackdropSurface}>
+        <View style={intrinsicLayout ? styles.inlineBackdropIntrinsicSurface : styles.inlineBackdropSurface}>
             <NativeBackdropSurface
                 providerId={providerId}
                 opticsModel={material.opticsModel}
@@ -844,6 +850,7 @@ const styles = StyleSheet.create({
     portalContentWrap: { flexGrow: 1, flexShrink: 1, overflow: 'hidden' },
     captureSource: { flex: 1 },
     inlineBackdropSurface: { flex: 1 },
+    inlineBackdropIntrinsicSurface: { flexGrow: 1 },
     bottomPlacement: { alignItems: 'center', justifyContent: 'flex-end' },
     centerPlacement: { alignItems: 'center', justifyContent: 'center' },
 });
