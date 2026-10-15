@@ -13,6 +13,7 @@ import android.widget.ScrollView
 import com.newhu.liquidglass.scheduler.GlassFrameScheduler
 import com.newhu.liquidglass.telemetry.EffectiveScrollFpsProbe
 import com.newhu.liquidglass.telemetry.LiquidGlassPerfTelemetry
+import com.newhu.liquidglass.telemetry.LiquidGlassTrace
 import java.util.IdentityHashMap
 
 /** Reasons a provider or one of its glass consumers needs another frame. */
@@ -72,26 +73,46 @@ public class GlassBackdropCoordinator(
 
     private val scrollFrameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
-            if (!LiquidGlassPerfTelemetry.isEnabled() || !isScrollActive) {
+            val telemetryEnabled = LiquidGlassPerfTelemetry.isEnabled()
+            val tracing = LiquidGlassTrace.isEnabled()
+            if ((!telemetryEnabled && !tracing) || !isScrollActive) {
                 samplingScrollFrames = false
                 frameScrollTargets.clear()
                 return
             }
-            LiquidGlassPerfTelemetry.scrollFrameSample(
-                providerId(),
-                frameTimeNanos,
-                sampleFrameScrollMovement(frameTimeNanos),
-                telemetryTouchActive,
-            )
+            val moved = sampleFrameScrollMovement(frameTimeNanos)
+            if (telemetryEnabled) {
+                LiquidGlassPerfTelemetry.scrollFrameSample(
+                    providerId(),
+                    frameTimeNanos,
+                    moved,
+                    telemetryTouchActive,
+                )
+            }
+            if (tracing) {
+                val prefix = traceProviderId()
+                LiquidGlassTrace.counter("$prefix.frameTimeNs", frameTimeNanos)
+                LiquidGlassTrace.counter("$prefix.frameScrollMoved", if (moved) 1L else 0L)
+                telemetryTouchTarget?.let { target ->
+                    LiquidGlassTrace.counter("$prefix.frameScrollY", target.scrollY.toLong())
+                    LiquidGlassTrace.counter("$prefix.frameScrollX", target.scrollX.toLong())
+                    LiquidGlassTrace.counter("$prefix.frameScrollCanUp", if (target.canScrollVertically(-1)) 1L else 0L)
+                    LiquidGlassTrace.counter("$prefix.frameScrollCanDown", if (target.canScrollVertically(1)) 1L else 0L)
+                }
+            }
             choreographer.postFrameCallback(this)
         }
     }
 
     private val frameScheduler = GlassFrameScheduler(::runScheduledFrame)
     private val settleScroll = Runnable {
+        val tracing = LiquidGlassTrace.isEnabled()
+        if (tracing) LiquidGlassTrace.beginSection("Coordinator.settle")
+        try {
         if (!host.hasBackdropConsumers) return@Runnable
         scrollActive = false
         refreshedTargetsForUntrackedScroll = false
+        traceState("settle")
         if (sourceRecordCauses.isNotEmpty()) {
             scrollSettleRerecordPending = true
             LiquidGlassPerfTelemetry.settleCaptureExecuted(providerId())
@@ -100,10 +121,24 @@ public class GlassBackdropCoordinator(
             scheduleFrame()
         }
         stopScrollFrameSampling()
+        } finally {
+            if (tracing) LiquidGlassTrace.endSection()
+        }
     }
     private val scrollChangedListener = ViewTreeObserver.OnScrollChangedListener {
+        val tracing = LiquidGlassTrace.isEnabled()
+        if (tracing) LiquidGlassTrace.beginSection("Coordinator.onScrollChanged")
+        try {
+            handleScrollChanged()
+        } finally {
+            if (tracing) LiquidGlassTrace.endSection()
+        }
+    }
+
+    private fun handleScrollChanged() {
         val changedTargets = changedScrollTargets()
         var trackedMovement = changedTargets.isNotEmpty()
+        var untrackedScrollCandidate = false
         LiquidGlassPerfTelemetry.scrollEventReceived(providerId())
         if (detailedScrollTelemetryEnabled && changedTargets.isNotEmpty()) {
             val uptimeMs = SystemClock.uptimeMillis()
@@ -130,10 +165,20 @@ public class GlassBackdropCoordinator(
             // A route child (commonly the virtualized scroll view) can mount
             // below a stable direct child after observation starts. Refresh
             // the target set once when the VTO reports untracked movement.
+            // The ViewTreeObserver belongs to the whole window, so a provider
+            // only gets this one-shot fallback when that refresh discovers a
+            // new scroll target with a non-empty scroll range.
+            val previousTargets = IdentityHashMap<View, Unit>()
+            scrollTargets.keys.forEach { previousTargets[it] = Unit }
             refreshScrollTargets()
             refreshedTargetsForUntrackedScroll = true
             val newlyTrackedTargets = changedScrollTargets()
             trackedMovement = newlyTrackedTargets.isNotEmpty()
+            val discoveredTarget = scrollTargets.keys.any { view -> !previousTargets.containsKey(view) }
+            untrackedScrollCandidate = !trackedMovement && discoveredTarget && scrollTargets.keys.any { view ->
+                view.canScrollVertically(-1) || view.canScrollVertically(1) ||
+                    view.canScrollHorizontally(-1) || view.canScrollHorizontally(1)
+            }
             if (detailedScrollTelemetryEnabled && newlyTrackedTargets.isNotEmpty()) {
                 val uptimeMs = SystemClock.uptimeMillis()
                 newlyTrackedTargets.forEach { view ->
@@ -149,9 +194,22 @@ public class GlassBackdropCoordinator(
             }
         }
         if (trackedMovement) refreshedTargetsForUntrackedScroll = false
-        // The VTO callback itself is authoritative that a descendant scroll
-        // changed. Keep sampling even when the view target was newly mounted.
-        if (trackedMovement || externalScrollActive() || host.hasBackdropConsumers) onScrollMoved()
+        // A ViewTreeObserver is shared by the window. Consumer presence alone
+        // does not show that this provider's scroll source moved.
+        val externallyActive = externalScrollActive()
+        if (LiquidGlassTrace.isEnabled()) {
+            val prefix = traceProviderId()
+            LiquidGlassTrace.counter("$prefix.vtoTrackedMovement", if (trackedMovement) 1L else 0L)
+            LiquidGlassTrace.counter("$prefix.vtoExternalScrollActive", if (externallyActive) 1L else 0L)
+            LiquidGlassTrace.counter("$prefix.vtoUntrackedScrollCandidate", if (untrackedScrollCandidate) 1L else 0L)
+            LiquidGlassTrace.counter("$prefix.vtoConsumerCount", if (host.hasBackdropConsumers) 1L else 0L)
+            LiquidGlassTrace.counter("$prefix.vtoChangedTargetCount", changedTargets.size.toLong())
+            scrollTargets.keys.forEachIndexed { index, view ->
+                LiquidGlassTrace.counter("$prefix.vtoTarget$index.scrollX", view.scrollX.toLong())
+                LiquidGlassTrace.counter("$prefix.vtoTarget$index.scrollY", view.scrollY.toLong())
+            }
+        }
+        if (trackedMovement || externallyActive || untrackedScrollCandidate) onScrollMoved()
     }
 
     public val isScrollActive: Boolean
@@ -166,6 +224,9 @@ public class GlassBackdropCoordinator(
 
     /** Track source tree changes explicitly so descendant paint invalidations stay cheap. */
     public fun markDirty(reason: GlassBackdropDirtyReason, consumerAlreadyInvalidated: Boolean = false) {
+        val tracing = LiquidGlassTrace.isEnabled()
+        if (tracing) LiquidGlassTrace.beginSection("Coordinator.markDirty.$reason")
+        try {
         LiquidGlassPerfTelemetry.dirtyReceived(providerId(), reason)
         when (reason) {
             GlassBackdropDirtyReason.SOURCE_PAINT -> {
@@ -184,6 +245,10 @@ public class GlassBackdropCoordinator(
             }
         }
         if (!consumerAlreadyInvalidated) scheduleFrame()
+        traceState("dirty-$reason")
+        } finally {
+            if (tracing) LiquidGlassTrace.endSection()
+        }
     }
 
     public fun sourceRecordCompleted() {
@@ -211,6 +276,9 @@ public class GlassBackdropCoordinator(
 
     public fun onScrollMoved() {
         if (!host.hasBackdropConsumers) return
+        val tracing = LiquidGlassTrace.isEnabled()
+        if (tracing) LiquidGlassTrace.beginSection("Coordinator.onScrollMoved")
+        try {
         scrollActive = true
         consumerRefreshPending = true
         LiquidGlassPerfTelemetry.dirtyReceived(providerId(), GlassBackdropDirtyReason.SCROLL)
@@ -218,6 +286,10 @@ public class GlassBackdropCoordinator(
         scheduleFrame()
         mainHandler.removeCallbacks(settleScroll)
         mainHandler.postDelayed(settleScroll, settleDelayMs)
+        traceState("scroll-moved")
+        } finally {
+            if (tracing) LiquidGlassTrace.endSection()
+        }
     }
 
     public fun setScrollObservationEnabled(enabled: Boolean) {
@@ -244,15 +316,23 @@ public class GlassBackdropCoordinator(
 
     /** Called by both host adapters before forwarding the event to their children. */
     public fun onMotionEvent(event: MotionEvent) {
-        if (!LiquidGlassPerfTelemetry.isEnabled()) return
+        val tracing = LiquidGlassTrace.isEnabled()
+        val telemetryEnabled = LiquidGlassPerfTelemetry.isEnabled()
+        if (!telemetryEnabled && !tracing) return
+        if (tracing) LiquidGlassTrace.beginSection("Coordinator.onMotionEvent.${event.actionMasked}")
+        try {
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-            EffectiveScrollFpsProbe.registerProviderTargets(scrollTargets.keys)
+            if (telemetryEnabled) EffectiveScrollFpsProbe.registerProviderTargets(scrollTargets.keys)
         }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 val target = findScrollTargetAt(event.rawX.toInt(), event.rawY.toInt())
                 telemetryTouchTarget = target
                 telemetryTouchActive = true
+                if (tracing) {
+                    LiquidGlassTrace.counter("${traceProviderId()}.touchTargetId", target?.let { System.identityHashCode(it).toLong() } ?: -1L)
+                    LiquidGlassTrace.counter("${traceProviderId()}.touchTargetClass", target?.javaClass?.simpleName?.hashCode()?.toLong() ?: 0L)
+                }
                 LiquidGlassPerfTelemetry.scrollTouchDown(
                     providerId(),
                     event.eventTime,
@@ -283,6 +363,24 @@ public class GlassBackdropCoordinator(
                 )
                 telemetryTouchActive = false
             }
+        }
+        if (tracing) {
+            val prefix = traceProviderId()
+            LiquidGlassTrace.counter("$prefix.touchAction", event.actionMasked.toLong())
+            LiquidGlassTrace.counter("$prefix.touchEventTimeMs", event.eventTime)
+            LiquidGlassTrace.counter("$prefix.touchDispatchUptimeMs", SystemClock.uptimeMillis())
+            LiquidGlassTrace.counter("$prefix.touchX", event.rawX.toLong())
+            LiquidGlassTrace.counter("$prefix.touchY", event.rawY.toLong())
+            telemetryTouchTarget?.let { target ->
+                val targetPrefix = "$prefix.${scrollViewTelemetryKey(target)}"
+                LiquidGlassTrace.counter("$targetPrefix.scrollY", target.scrollY.toLong())
+                LiquidGlassTrace.counter("$targetPrefix.scrollRangeY", ((target as? android.view.ViewGroup)?.let { group ->
+                    (0 until group.childCount).maxOfOrNull { index -> group.getChildAt(index).bottom } ?: target.height
+                } ?: target.height).minus(target.height).coerceAtLeast(0).toLong())
+            }
+        }
+        } finally {
+            if (tracing) LiquidGlassTrace.endSection()
         }
     }
 
@@ -331,12 +429,16 @@ public class GlassBackdropCoordinator(
     }
 
     private fun runScheduledFrame() {
+        val tracing = LiquidGlassTrace.isEnabled()
+        if (tracing) LiquidGlassTrace.beginSection("Coordinator.runScheduledFrame")
+        try {
         if (!host.hasBackdropConsumers) {
             consumerRefreshPending = false
             return
         }
 
         if (scrollActive) {
+            traceState("frame-scroll-active")
             if (consumerRefreshPending) {
                 consumerRefreshPending = false
                 if (sourceRecordCauses.isEmpty()) recordPaintOnlyReuse()
@@ -362,6 +464,10 @@ public class GlassBackdropCoordinator(
             LiquidGlassPerfTelemetry.consumerInvalidationExecuted()
             host.refreshBackdropConsumers()
         }
+        traceState("frame-complete")
+        } finally {
+            if (tracing) LiquidGlassTrace.endSection()
+        }
     }
 
     private fun recordPaintOnlyReuse() {
@@ -369,6 +475,26 @@ public class GlassBackdropCoordinator(
         LiquidGlassPerfTelemetry.sourceRerecordAvoided(providerId(), paintDirtyPending)
         paintDirtyPending = 0L
     }
+
+    private fun traceState(event: String) {
+        if (!LiquidGlassTrace.isEnabled()) return
+        val prefix = traceProviderId()
+        LiquidGlassTrace.counter("$prefix.event", event.hashCode().toLong())
+        LiquidGlassTrace.counter("$prefix.scrollActive", if (scrollActive) 1L else 0L)
+        LiquidGlassTrace.counter("$prefix.consumerRefreshPending", if (consumerRefreshPending) 1L else 0L)
+        LiquidGlassTrace.counter("$prefix.sourceRecordCauseCount", sourceRecordCauses.size.toLong())
+        LiquidGlassTrace.counter("$prefix.sourceRecordRequestIssued", if (sourceRecordRequestIssued) 1L else 0L)
+        LiquidGlassTrace.counter("$prefix.scrollTargetCount", scrollTargets.size.toLong())
+        scrollTargets.keys.forEachIndexed { index, view ->
+            val target = "$prefix.scrollTarget$index.${LiquidGlassTrace.safe(view.javaClass.simpleName)}"
+            LiquidGlassTrace.counter("$target.scrollX", view.scrollX.toLong())
+            LiquidGlassTrace.counter("$target.scrollY", view.scrollY.toLong())
+            LiquidGlassTrace.counter("$target.canScrollUp", if (view.canScrollVertically(-1)) 1L else 0L)
+            LiquidGlassTrace.counter("$target.canScrollDown", if (view.canScrollVertically(1)) 1L else 0L)
+        }
+    }
+
+    private fun traceProviderId(): String = LiquidGlassTrace.safe(providerId())
 
     private fun collectScrollTargets(view: View) {
         if (view !== sourceView && (canScroll(view) || isScrollContainer(view))) {
@@ -397,12 +523,11 @@ public class GlassBackdropCoordinator(
             previous[0] = view.scrollX
             previous[1] = view.scrollY
         }
-        if (scrollTargets.isEmpty() && host.hasBackdropConsumers) refreshScrollTargets()
         return changedTargets
     }
 
     private fun startScrollFrameSampling() {
-        if (samplingScrollFrames || !LiquidGlassPerfTelemetry.isEnabled()) return
+        if (samplingScrollFrames || (!LiquidGlassPerfTelemetry.isEnabled() && !LiquidGlassTrace.isEnabled())) return
         samplingScrollFrames = true
         frameScrollTargets.clear()
         for ((view, _) in scrollTargets) frameScrollTargets[view] = intArrayOf(view.scrollX, view.scrollY)

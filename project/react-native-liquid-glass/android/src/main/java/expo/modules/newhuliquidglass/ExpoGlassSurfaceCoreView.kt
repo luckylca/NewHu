@@ -6,6 +6,7 @@ import android.view.MotionEvent
 import com.newhu.liquidglass.backdrop.CORNER_RADIUS_CAPSULE
 import com.newhu.liquidglass.backdrop.GlassViewController
 import com.newhu.liquidglass.core.GlassOpticsModel
+import com.newhu.liquidglass.telemetry.LiquidGlassTrace
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
 
@@ -43,8 +44,24 @@ internal class ExpoGlassSurfaceCoreView(
     }
 
     override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        glass.draw(canvas)
+        val tracing = LiquidGlassTrace.isEnabled()
+        if (!tracing) {
+            super.onDraw(canvas)
+            glass.draw(canvas)
+            return
+        }
+        LiquidGlassTrace.beginSection("Consumer.onDraw")
+        try {
+            val backdrop = glass.provider
+            LiquidGlassTrace.counter("consumerViewId", System.identityHashCode(this).toLong())
+            LiquidGlassTrace.counter("consumerTop", top.toLong())
+            LiquidGlassTrace.counter("consumerScrollSampleOriginY", backdrop?.recordedOriginYFor(this)?.toLong() ?: -1L)
+            LiquidGlassTrace.counter("consumerHasSourceRecording", if (backdrop?.hasRecording == true) 1L else 0L)
+            super.onDraw(canvas)
+            glass.draw(canvas)
+        } finally {
+            LiquidGlassTrace.endSection()
+        }
     }
 
     fun setCornerRadius(radius: Float?) { glass.cornerRadiusDp = radius ?: CORNER_RADIUS_CAPSULE }

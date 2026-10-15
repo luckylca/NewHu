@@ -7,6 +7,7 @@ import android.os.Build
 import android.view.View
 import androidx.annotation.RequiresApi
 import com.newhu.liquidglass.telemetry.LiquidGlassPerfTelemetry
+import com.newhu.liquidglass.telemetry.LiquidGlassTrace
 import java.util.IdentityHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -132,6 +133,9 @@ public class BackdropRecorder {
         width: Int,
         height: Int,
     ): Long {
+        val tracing = LiquidGlassTrace.isEnabled()
+        if (tracing) LiquidGlassTrace.beginSection("BackdropRecorder.updateConsumerRegions")
+        try {
         if (Build.VERSION.SDK_INT < 29 || width <= 0 || height <= 0 || !source.hasDisplayList()) return 0L
         val removed = consumerRegionNodes.keys.filter { !regions.containsKey(it) }
         for (consumer in removed) {
@@ -173,7 +177,14 @@ public class BackdropRecorder {
             recordedPixels += regionPixels
             LiquidGlassPerfTelemetry.regionRenderNodeRecord(bounds.width(), bounds.height())
         }
+        if (tracing) {
+            LiquidGlassTrace.counter("regionNodeCount", consumerRegionNodes.size.toLong())
+            LiquidGlassTrace.counter("regionRecordedPixels", recordedPixels)
+        }
         return recordedPixels
+        } finally {
+            if (tracing) LiquidGlassTrace.endSection()
+        }
     }
 
     public fun renderNodeFor(consumer: View): RenderNode? = consumerRegionNodes[consumer] ?: contentNode
@@ -183,7 +194,26 @@ public class BackdropRecorder {
 
     /** Re-draw consumers against nested RenderNodes without re-recording the route tree. */
     public fun invalidateConsumers() {
-        for (consumer in consumers) consumer.postInvalidateOnAnimation()
+        val tracing = LiquidGlassTrace.isEnabled()
+        if (!tracing) {
+            for (consumer in consumers) consumer.postInvalidateOnAnimation()
+            return
+        }
+        if (tracing) LiquidGlassTrace.beginSection("BackdropRecorder.invalidateConsumers")
+        try {
+            if (tracing) LiquidGlassTrace.counter("consumerInvalidateCount", consumers.size.toLong())
+            for (consumer in consumers) {
+                LiquidGlassTrace.beginSection("BackdropRecorder.postInvalidateOnAnimation")
+                try {
+                    LiquidGlassTrace.counter("consumerInvalidateView", System.identityHashCode(consumer).toLong())
+                    consumer.postInvalidateOnAnimation()
+                } finally {
+                    LiquidGlassTrace.endSection()
+                }
+            }
+        } finally {
+            LiquidGlassTrace.endSection()
+        }
     }
 
     /** Record the backdrop while leaving the owner's normal on-screen draw pass intact. */
@@ -193,6 +223,9 @@ public class BackdropRecorder {
         captureBounds: Rect? = null,
         drawContent: (Canvas) -> Unit,
     ) {
+        val tracing = LiquidGlassTrace.isEnabled()
+        if (tracing) LiquidGlassTrace.beginSection("BackdropRecorder.recordOnly")
+        try {
         if (Build.VERSION.SDK_INT >= 29 && width > 0 && height > 0) {
             val node = contentNode
                 ?: RenderNode("LiquidGlassBackdrop").also { contentNode = it }
@@ -224,7 +257,18 @@ public class BackdropRecorder {
             this.originY = originY
             LiquidGlassPerfTelemetry.sourceRenderNodeRecorded(recordedWidth, recordedHeight)
         }
-        for (consumer in consumers) consumer.postInvalidateOnAnimation()
+        if (tracing) {
+            LiquidGlassTrace.beginSection("BackdropRecorder.recordOnly.invalidateConsumers")
+            LiquidGlassTrace.counter("recordOnlyConsumerInvalidateCount", consumers.size.toLong())
+        }
+        try {
+            for (consumer in consumers) consumer.postInvalidateOnAnimation()
+        } finally {
+            if (tracing) LiquidGlassTrace.endSection()
+        }
+        } finally {
+            if (tracing) LiquidGlassTrace.endSection()
+        }
     }
 
     /** Record only a source window; its owner remains responsible for normal screen drawing. */
@@ -234,6 +278,9 @@ public class BackdropRecorder {
         captureBounds: Rect,
         drawContent: (Canvas) -> Unit,
     ): Boolean {
+        val tracing = LiquidGlassTrace.isEnabled()
+        if (tracing) LiquidGlassTrace.beginSection("BackdropRecorder.recordWindow")
+        try {
         if (Build.VERSION.SDK_INT < 29 || width <= 0 || height <= 0) return false
         clampedCaptureBounds.set(
             captureBounds.left.coerceIn(0, width),
@@ -260,7 +307,16 @@ public class BackdropRecorder {
         LiquidGlassPerfTelemetry.routeTreeTraversal()
         LiquidGlassPerfTelemetry.sourceRenderNodeRecorded(bounds.width(), bounds.height())
         LiquidGlassPerfTelemetry.sourceWindowRecorded(bounds.width(), bounds.height())
+        if (tracing) {
+            LiquidGlassTrace.counter("recordWindowWidth", bounds.width().toLong())
+            LiquidGlassTrace.counter("recordWindowHeight", bounds.height().toLong())
+            LiquidGlassTrace.counter("recordWindowOriginX", bounds.left.toLong())
+            LiquidGlassTrace.counter("recordWindowOriginY", bounds.top.toLong())
+        }
         return true
+        } finally {
+            if (tracing) LiquidGlassTrace.endSection()
+        }
     }
 
     /**

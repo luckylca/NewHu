@@ -92,9 +92,34 @@ def main():
         GROUP BY t.tid,t.name,s.state ORDER BY t.tid,duration_ms DESC;
     """)
 
-    actual_dur = [int(r["dur"]) / 1e6 for r in actual if r.get("dur", "").isdigit() and int(r["dur"]) > 0]
-    actual_ts = sorted(int(r["ts"]) for r in actual if r.get("ts", "").isdigit())
-    expected_ts = sorted(int(r["ts"]) for r in expected if r.get("ts", "").isdigit())
+    # A Skia Canvas or another native SurfaceView can add multiple app-owned
+    # SurfaceFlinger layers. Keep their timelines separate: summing them
+    # double-counts presents and deadline misses. The activity's BLAST layer is
+    # the app content surface used for the page-level cadence below.
+    activity_layer_prefix = "TX - com.anonymous.NewHu/com.anonymous.NewHu.MainActivity"
+    activity_actual = [r for r in actual if (r.get("layer_name") or "").startswith(activity_layer_prefix)]
+    activity_expected = [r for r in expected if (r.get("layer_name") or "").startswith(activity_layer_prefix)]
+
+    def summarize_layer(rows):
+        durations = [int(r["dur"]) / 1e6 for r in rows
+                     if r.get("dur", "").isdigit() and int(r["dur"]) > 0]
+        timestamps = sorted(int(r["ts"]) for r in rows if r.get("ts", "").isdigit())
+        intervals = [(b - a) / 1e6 for a, b in zip(timestamps, timestamps[1:]) if b > a]
+        return {
+            "actual_frames": len(rows),
+            "actual_duration_ms": stats(durations),
+            "actual_present_interval_ms": stats(intervals),
+            "actual_intervals_over_8_33ms": sum(v > 8.333 for v in intervals),
+            "actual_intervals_over_16_67ms": sum(v > 16.667 for v in intervals),
+            "deadline_missed_frames": sum("App Deadline Missed" in (r.get("jank_type") or "") for r in rows),
+            "late_present_frames": sum(r.get("present_type") == "Late Present" for r in rows),
+            "on_time_present_frames": sum(r.get("present_type") == "On-time Present" for r in rows),
+        }
+
+    actual_dur = [int(r["dur"]) / 1e6 for r in activity_actual
+                  if r.get("dur", "").isdigit() and int(r["dur"]) > 0]
+    actual_ts = sorted(int(r["ts"]) for r in activity_actual if r.get("ts", "").isdigit())
+    expected_ts = sorted(int(r["ts"]) for r in activity_expected if r.get("ts", "").isdigit())
     present_intervals = [(b-a)/1e6 for a,b in zip(actual_ts, actual_ts[1:]) if b > a]
     expected_intervals = [(b-a)/1e6 for a,b in zip(expected_ts, expected_ts[1:]) if b > a]
     scroll_callback_ts = sorted(int(r["ts"]) for r in fabric
@@ -103,11 +128,23 @@ def main():
     input_move_ts = sorted(int(r["ts"]) for r in input_dispatch
                            if "ACTION_MOVE" in r.get("name", "") and r.get("ts", "").isdigit())
     input_move_intervals = [(b-a)/1e6 for a,b in zip(input_move_ts, input_move_ts[1:]) if b > a]
-    jank = Counter(r.get("jank_type") for r in actual)
+    jank = Counter(r.get("jank_type") for r in activity_actual)
+    actual_by_layer = defaultdict(list)
+    for row in actual:
+        actual_by_layer[row.get("layer_name") or "[unnamed layer]"].append(row)
+    expected_counts = Counter(row.get("layer_name") or "[unnamed layer]" for row in expected)
+    other_surface_layers = {
+        layer: {
+            **summarize_layer(rows),
+            "expected_frames": expected_counts.get(layer, 0),
+        }
+        for layer, rows in actual_by_layer.items()
+        if not layer.startswith(activity_layer_prefix)
+    }
     frame_summary = {
-        "app_layer": "TX - com.anonymous.NewHu/com.anonymous.NewHu.MainActivity",
-        "expected_frames": len(expected),
-        "actual_frames": len(actual),
+        "app_layer": activity_layer_prefix,
+        "expected_frames": len(activity_expected),
+        "actual_frames": len(activity_actual),
         "actual_duration_ms": stats(actual_dur),
         "actual_present_interval_ms": stats(present_intervals),
         "expected_interval_ms": stats(expected_intervals),
@@ -115,10 +152,11 @@ def main():
         "actual_intervals_over_16_67ms": sum(v > 16.667 for v in present_intervals),
         "actual_durations_over_8_33ms": sum(v > 8.333 for v in actual_dur),
         "actual_durations_over_16_67ms": sum(v > 16.667 for v in actual_dur),
-        "app_deadline_missed_frames": sum("App Deadline Missed" in (r.get("jank_type") or "") for r in actual),
+        "app_deadline_missed_frames": sum("App Deadline Missed" in (r.get("jank_type") or "") for r in activity_actual),
         "jank_type_counts": dict(jank),
-        "late_present_frames": sum(r.get("present_type") == "Late Present" for r in actual),
-        "on_time_present_frames": sum(r.get("present_type") == "On-time Present" for r in actual),
+        "late_present_frames": sum(r.get("present_type") == "Late Present" for r in activity_actual),
+        "on_time_present_frames": sum(r.get("present_type") == "On-time Present" for r in activity_actual),
+        "other_surface_layers": other_surface_layers,
         "native_scroll_changed_callbacks": len(scroll_callback_ts),
         "native_scroll_callback_interval_ms": stats(scroll_callback_intervals),
         "app_input_move_dispatches": len(input_move_ts),
